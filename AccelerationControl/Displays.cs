@@ -87,6 +87,9 @@ namespace IngameScript
                     p.CustomData = gps;
                 foreach (IMyTextPanel p in _listPanels)
                     p.CustomData = gps;
+                // Store right away: the game only calls Save() when the world is saved,
+                // so recompiling the script would otherwise lose recent entries.
+                SaveState();
                 _mapChanged = false;
             }
         }
