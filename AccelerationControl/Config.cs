@@ -48,6 +48,9 @@ namespace IngameScript
         bool _logStone = false;
         double _mergeDistance = 150;
         double _gravityWellFactor = 1.7;
+        bool _survey = true;
+        double _surveyRange = 6000;
+        double _probeRange = 50000;
         double _defaultCruiseSpeed = 0.75;
         double _cruiseStep = 0.25;
         double _velocityGain = 2.0;
@@ -98,6 +101,9 @@ namespace IngameScript
             _logStone = _ini.Get(IniSection, "LogStone").ToBoolean(_logStone);
             _mergeDistance = _ini.Get(IniSection, "MergeDistance").ToDouble(_mergeDistance);
             _gravityWellFactor = _ini.Get(IniSection, "GravityWellFactor").ToDouble(_gravityWellFactor);
+            _survey = _ini.Get(IniSection, "Survey").ToBoolean(_survey);
+            _surveyRange = _ini.Get(IniSection, "SurveyRange").ToDouble(_surveyRange);
+            _probeRange = _ini.Get(IniSection, "SearchRange").ToDouble(_probeRange);
             _defaultCruiseSpeed = _ini.Get(IniSection, "CruiseSpeed").ToDouble(_defaultCruiseSpeed);
             _cruiseStep = _ini.Get(IniSection, "CruiseStep").ToDouble(_cruiseStep);
             _velocityGain = _ini.Get(IniSection, "VelocityGain").ToDouble(_velocityGain);
@@ -130,6 +136,9 @@ namespace IngameScript
             _ini.Set(IniSection, "LogStone", _logStone);
             _ini.Set(IniSection, "MergeDistance", _mergeDistance);
             _ini.Set(IniSection, "GravityWellFactor", _gravityWellFactor);
+            _ini.Set(IniSection, "Survey", _survey);
+            _ini.Set(IniSection, "SurveyRange", _surveyRange);
+            _ini.Set(IniSection, "SearchRange", _probeRange);
             _ini.Set(IniSection, "CruiseSpeed", _defaultCruiseSpeed);
             _ini.Set(IniSection, "CruiseStep", _cruiseStep);
             _ini.Set(IniSection, "VelocityGain", _velocityGain);

@@ -25,9 +25,11 @@ namespace IngameScript
     partial class Program
     {
         const float RadarRadius = 220;      // units for the full zoom range
-        const float PlaneTilt = 0.52f;      // vertical squash of the radar plane
+        const float PlaneTilt = 0.5f;       // vertical squash of the radar plane
         const float HeightScale = 0.85f;    // height stems relative to plane scale
-        const float RowHeight = 22;
+        const float MaxStem = 95;           // longest height stem (units)
+        const float ListRowHeight = 34;
+        const int RadarLabels = 5;          // labelled deposits besides the selection
         const int CircleSegments = 48;
 
         static readonly Color BgColor = new Color(8, 18, 24);
@@ -81,7 +83,7 @@ namespace IngameScript
                     _u = Math.Min(width, height) / 512f;
                     _origin = viewport.Position + new Vector2((width - 512 * _u) / 2, (height - 512 * _u) / 2);
                     DrawRadar();
-                    DrawButtons(RadarButtons, 462, active);
+                    DrawButtons(RadarButtons, 452, active);
                     if (active)
                         DrawDialog(512);
                 }
@@ -91,11 +93,26 @@ namespace IngameScript
                     _origin = viewport.Position;
                     float h = height / _u;
                     DrawList(h);
-                    DrawButtons(ListButtons, h - 46, active);
+                    DrawButtons(ListButtons, h - 56, active);
                     if (active)
                         DrawDialog(h);
                 }
             }
+        }
+
+        void DrawHeader(float height, string right)
+        {
+            Rect(0, 0, 512, height, PanelColor);
+            Text("ORE MAP", 12, height / 2 - 15, 0.95f, Cyan);
+            float x = 500;
+            if (_uiMode)
+            {
+                float w = MeasureText("UI MODE", 0.6f, "White") + 14;
+                Rect(x - w, height / 2 - 13, w, 26, Cyan);
+                Text("UI MODE", x - w / 2, height / 2 - 11, 0.6f, BgColor, TextAlignment.CENTER);
+                x -= w + 10;
+            }
+            Text(right, x, height / 2 - 10, 0.6f, DimColor, TextAlignment.RIGHT);
         }
 
         // -----------------------------------------------------------------
@@ -105,7 +122,7 @@ namespace IngameScript
         void DrawRadar()
         {
             IMyShipController reference = _controller ?? _layoutController;
-            float cx = 256, cy = 198;
+            float cx = 256, cy = 180;
             float scale = RadarRadius / (float)MapRange;       // units per meter
             MatrixD ship = reference != null ? reference.WorldMatrix : Me.WorldMatrix;
             Vector3D shipPos = ReferencePosition();
@@ -137,11 +154,8 @@ namespace IngameScript
                     toShip.Normalize();
                     Vector2 edge = center + new Vector2(toShip.X * rx, toShip.Y * ry);
                     if (Math.Abs(edge.X - cx) < RadarRadius && Math.Abs(edge.Y - cy) < RadarRadius * PlaneTilt + 20)
-                    {
-                        Text("GRAVITY WELL", edge.X, edge.Y + 4, 0.42f, GravityColor, TextAlignment.CENTER);
-                        Text("Planet " + FormatDistance(Vector3D.Distance(o.Center, shipPos) - o.Radius), edge.X, edge.Y + 18,
-                            0.36f, GravityColor, TextAlignment.CENTER, "Monospace");
-                    }
+                        Text("GRAVITY " + FormatDistance(Vector3D.Distance(o.Center, shipPos) - o.GravityRadius),
+                            edge.X, edge.Y + 4, 0.55f, GravityColor, TextAlignment.CENTER);
                 }
             }
 
@@ -151,9 +165,8 @@ namespace IngameScript
             EllipseOutline(cx, cy, RadarRadius / 4, RadarRadius / 4 * PlaneTilt, 1, GridFaint, false);
             Line(cx - RadarRadius, cy, cx + RadarRadius, cy, 1, GridFaint);
             Line(cx, cy - RadarRadius * PlaneTilt, cx, cy + RadarRadius * PlaneTilt, 1, GridFaint);
-            Text("FORWARD", cx, cy - RadarRadius * PlaneTilt - 16, 0.36f, DimColor, TextAlignment.CENTER, "Monospace");
-            Text(FormatDistance(MapRange), cx + RadarRadius * 0.72f, cy - RadarRadius * PlaneTilt * 0.72f - 14, 0.36f, DimColor, TextAlignment.LEFT, "Monospace");
-            Text(FormatDistance(MapRange / 2), cx + RadarRadius * 0.36f, cy - RadarRadius * PlaneTilt * 0.36f - 12, 0.32f, DimColor, TextAlignment.LEFT, "Monospace");
+            Text(FormatDistance(MapRange), cx + RadarRadius * 0.74f, cy - RadarRadius * PlaneTilt * 0.74f - 20, 0.5f, DimColor, TextAlignment.LEFT);
+            Text(FormatDistance(MapRange / 2), cx + RadarRadius * 0.37f, cy - RadarRadius * PlaneTilt * 0.37f - 18, 0.45f, DimColor, TextAlignment.LEFT);
 
             // Asteroids and deposits, far ones first
             _mapItems.Clear();
@@ -168,8 +181,8 @@ namespace IngameScript
             if (_mode == Mode.Approach)
             {
                 Vector2 target = ProjectedPoint(ToLocal(_approachTarget, shipPos, ship), cx, cy, scale);
-                Dashed(cx, cy, target.X, target.Y, 2.5f, RouteColor);
-                DiamondOutline(target.X, target.Y, 6, RouteColor);
+                Dashed(cx, cy, target.X, target.Y, 3, RouteColor);
+                DiamondOutline(target.X, target.Y, 8, RouteColor);
             }
 
             foreach (MapItem item in _mapItems)
@@ -181,19 +194,13 @@ namespace IngameScript
             }
 
             // Ship
-            _frame.Add(new MySprite(SpriteType.TEXTURE, "Triangle", P(cx, cy), new Vector2(14, 18) * _u, Cyan));
+            _frame.Add(new MySprite(SpriteType.TEXTURE, "Triangle", P(cx, cy), new Vector2(16, 20) * _u, Cyan));
 
             // Header and info panel are drawn last so they cover anything that
             // sticks out of the radar area.
-            Rect(0, 0, 512, 32, PanelColor);
-            Text("ORE MAP", 12, 4, 0.75f, Cyan);
-            string header = "Range " + FormatDistance(MapRange) + "   Filter: " + (_filter ?? "all");
-            if (inGravity)
-                header = "IN GRAVITY   " + header;
-            Text(header, 500, 9, 0.42f, inGravity ? GravityColor : DimColor, TextAlignment.RIGHT, "Monospace");
-
-            Rect(0, 336, 512, 176, BgColor);
-            DrawSelectionPanel(8, 342, 496);
+            DrawHeader(44, (inGravity ? "IN GRAVITY  " : "") + FormatDistance(MapRange) + "  " + (_filter ?? "all"));
+            Rect(0, 294, 512, 218, BgColor);
+            DrawSelectionPanel(8, 298, 496, 146);
         }
 
         void DrawRock(MapItem item, float cx, float cy, float scale)
@@ -226,76 +233,94 @@ namespace IngameScript
             Vector2 pos = ProjectedPoint(p, cx, cy, scale);
             if (outside)
             {
-                // Beyond the range: small marker on the edge, pointing outwards.
-                Diamond(foot.X, foot.Y, 4, color * 0.6f);
+                // Beyond the range: small marker on the edge.
+                Marker(foot.X, foot.Y, 5, d.Ore, color * 0.6f);
                 if (!selected)
                     return;
                 pos = foot;
             }
             else
             {
-                Line(foot.X, foot.Y, pos.X, pos.Y, 1.5f, color * 0.85f);
-                Ellipse(foot.X, foot.Y, 2.5f, 1.3f, color * 0.8f, false);
-                Diamond(pos.X, pos.Y, 5, color);
+                Line(foot.X, foot.Y, pos.X, pos.Y, 2, color * 0.85f);
+                Ellipse(foot.X, foot.Y, 3, 1.6f, color * 0.8f, false);
+                Marker(pos.X, pos.Y, 7, d.Ore, color);
             }
 
+            // Labels only for the selection and the nearest deposits, so they stay readable.
+            if (!selected && _visibleDeposits.IndexOf(d) >= RadarLabels)
+                return;
             string name = ShortOre(d.Ore) + d.Number;
             string distance = FormatDistance(d.Distance);
-            float tx = pos.X + 8, ty = pos.Y - 11;
+            float tx = pos.X + 11, ty = pos.Y - 16;
             if (selected)
             {
-                float w = Math.Max(MeasureText(name, 0.42f, "White"), MeasureText(distance, 0.36f, "Monospace"));
-                Rect(tx - 3, ty - 2, w + 6, 25, new Color(40, 30, 10) * 0.9f);
-                Box(tx - 3, ty - 2, w + 6, 25, 1, RouteColor);
+                float w = Math.Max(MeasureText(name, 0.62f, "White"), MeasureText(distance, 0.52f, "White"));
+                Rect(tx - 4, ty - 2, w + 8, 38, new Color(40, 30, 10) * 0.9f);
+                Box(tx - 4, ty - 2, w + 8, 38, 1.5f, RouteColor);
             }
-            Text(name, tx, ty, 0.42f, selected ? RouteColor : color);
-            Text(distance, tx, ty + 11, 0.36f, selected ? RouteColor : DimColor, TextAlignment.LEFT, "Monospace");
+            Text(name, tx, ty, 0.62f, selected ? RouteColor : color);
+            Text(distance, tx, ty + 17, 0.52f, selected ? RouteColor : DimColor);
         }
 
         // Info about the selected deposit and the current flight.
-        void DrawSelectionPanel(float x, float y, float width)
+        void DrawSelectionPanel(float x, float y, float width, float height)
         {
-            Rect(x, y, width, 96, PanelColor);
-            Box(x, y, width, 96, 1, GridColor);
-            float left = x + 10, right = x + width - 10;
+            Rect(x, y, width, height, PanelColor);
+            Box(x, y, width, height, 1, GridColor);
+            float left = x + 12, right = x + width - 12;
 
-            if (_selected == null)
+            if (_mode == Mode.Approach)
             {
-                Text(_deposits.Count == 0 ? "No deposits mapped yet" : "No deposit matches the filter", left, y + 8, 0.5f, DimColor);
-                Text("MARK: aim at ore and scan", left, y + 32, 0.38f, DimColor, TextAlignment.LEFT, "Monospace");
+                Text("> " + _targetName, left, y + 6, 0.8f, RouteColor);
+                Text(_currentSpeed.ToString("0") + " m/s", right, y + 10, 0.7f, TextColor, TextAlignment.RIGHT);
+                DrawApproachGauge(left, y + 44, right - left);
+            }
+            else if (_selected == null)
+            {
+                Text(_deposits.Count == 0 ? "No deposits mapped yet" : "No deposit matches the filter", left, y + 8, 0.7f, DimColor);
+                Text("MARK: aim at the ore and scan", left, y + 42, 0.6f, DimColor);
             }
             else
             {
-                Text(_selected.Label, left, y + 6, 0.55f, RouteColor);
-                Text(FormatDistance(_selected.Distance), right, y + 8, 0.45f, TextColor, TextAlignment.RIGHT, "Monospace");
-                Text(DirectionText(_selected.Position) + "   " + (_selected.Mined ? "logged while mining" : "marked by scan"),
-                    left, y + 30, 0.36f, DimColor, TextAlignment.LEFT, "Monospace");
+                Text(_selected.Label, left, y + 6, 0.8f, RouteColor);
+                Text(FormatDistance(_selected.Distance), right, y + 10, 0.7f, TextColor, TextAlignment.RIGHT);
+                Text(DirectionText(_selected.Position, false), left, y + 40, 0.6f, DimColor);
 
-                string flight;
-                Color flightColor = TextColor;
-                if (_mode == Mode.Approach)
-                    flight = "Flying to " + _targetName + ": " + FormatDistance(_targetDistance) + "  " + _currentSpeed.ToString("0") + " m/s";
-                else
-                {
-                    Obstacle blocking = FirstObstacleOnPath(ReferencePosition(), _selected.Position);
-                    flight = blocking == null ? "Direct path clear" : "Direct path blocked by " + (blocking.Planet ? "planet" : "asteroid");
-                    flightColor = blocking == null ? TextColor : WarnColor;
-                }
-                Text(flight, left, y + 48, 0.38f, flightColor, TextAlignment.LEFT, "Monospace");
+                Obstacle blocking = FirstObstacleOnPath(ReferencePosition(), _selected.Position);
+                Text(blocking == null ? "Direct path clear" : "Path blocked by " + (blocking.Planet ? "planet" : "asteroid"),
+                    left, y + 64, 0.6f, blocking == null ? TextColor : WarnColor);
 
                 double total = _deltaVHydrogen + _deltaVElectric;
                 if (total > 0)
                 {
-                    Text("dv", left, y + 68, 0.4f, TextColor, TextAlignment.LEFT, "Monospace");
-                    float barX = left + 24, barW = width - 200;
-                    Box(barX, y + 71, barW, 12, 1, GridColor);
-                    Rect(barX + 1, y + 72, (float)(barW - 2) * (float)Math.Min(TripDeltaV() / total, 1), 10, RouteColor);
-                    Text(string.Format("{0:0} / {1:0} m/s", TripDeltaV(), total), right, y + 68, 0.38f, TextColor, TextAlignment.RIGHT, "Monospace");
+                    float barW = width - 230;
+                    Text("dv", left, y + 90, 0.6f, TextColor);
+                    Box(left + 32, y + 94, barW, 14, 1, GridColor);
+                    Rect(left + 33, y + 95, (barW - 2) * (float)Math.Min(TripDeltaV() / total, 1), 12, RouteColor);
+                    Text(string.Format("{0:0} / {1:0} m/s", TripDeltaV(), total), right, y + 90, 0.55f, TextColor, TextAlignment.RIGHT);
                 }
             }
 
             if (_message.Length > 0)
-                Text(_message, left, y + 100, 0.36f, DimColor, TextAlignment.LEFT, "Monospace");
+                Text(_message, left, y + height - 26, 0.52f, DimColor);
+        }
+
+        // Distance to the target with the stopping distance marked: braking
+        // starts when the orange mark reaches the end of the bar.
+        void DrawApproachGauge(float x, float y, float width)
+        {
+            bool braking = _approachPhase == "BRAKING";
+            Text(_approachPhase, x, y, 0.6f, braking ? RouteColor : Cyan);
+            Text("stop " + FormatDistance(_stopDistance) + " / " + FormatDistance(_targetDistance),
+                x + width, y, 0.6f, TextColor, TextAlignment.RIGHT);
+            float by = y + 26, bh = 18;
+            double full = Math.Max(Math.Max(_targetDistance, _stopDistance), 1);
+            Box(x, by, width, bh, 1, GridColor);
+            Rect(x + 1, by + 1, (width - 2) * (float)(_targetDistance / full), bh - 2, Cyan * 0.6f);
+            float stop = x + (width - 2) * (float)Math.Min(_stopDistance / full, 1);
+            Rect(stop - 2, by - 4, 4, bh + 8, RouteColor);
+            if (_probing)
+                Text("searching ahead, nothing found yet", x, by + bh + 4, 0.5f, DimColor);
         }
 
         // -----------------------------------------------------------------
@@ -304,18 +329,10 @@ namespace IngameScript
 
         void DrawList(float height)
         {
-            Rect(0, 0, 512, 30, PanelColor);
-            Text("ORE MAP", 10, 3, 0.72f, Cyan);
-            Text(_visibleDeposits.Count + " deposits   Filter: " + (_filter ?? "all"), 502, 8, 0.4f, DimColor, TextAlignment.RIGHT, "Monospace");
+            DrawHeader(40, _visibleDeposits.Count + " entries  " + (_filter ?? "all"));
 
-            float y = 36;
-            Text("ORE", 34, y, 0.38f, DimColor, TextAlignment.LEFT, "Monospace");
-            Text("#", 150, y, 0.38f, DimColor, TextAlignment.LEFT, "Monospace");
-            Text("DIST", 250, y, 0.38f, DimColor, TextAlignment.RIGHT, "Monospace");
-            Text("DIRECTION", 268, y, 0.38f, DimColor, TextAlignment.LEFT, "Monospace");
-            y += 20;
-
-            int rows = Math.Max(1, (int)((height - y - 86) / RowHeight));
+            float y = 46;
+            int rows = Math.Max(1, (int)((height - y - 108) / ListRowHeight));
             int selectedIndex = _selected != null ? _visibleDeposits.IndexOf(_selected) : 0;
             int first = Math.Max(0, Math.Min(selectedIndex - rows / 2, _visibleDeposits.Count - rows));
 
@@ -330,44 +347,51 @@ namespace IngameScript
                 Color color = OreColor(d.Ore);
                 if (selected)
                 {
-                    Rect(6, y - 2, 500, RowHeight - 2, new Color(60, 45, 12));
-                    Box(6, y - 2, 500, RowHeight - 2, 1, RouteColor);
-                    Text(">", 12, y, 0.45f, RouteColor, TextAlignment.LEFT, "Monospace");
+                    Rect(4, y, 504, ListRowHeight - 3, new Color(60, 45, 12));
+                    Box(4, y, 504, ListRowHeight - 3, 1.5f, RouteColor);
                 }
-                Diamond(26, y + 8, 4.5f, color);
-                Text(d.Ore, 34, y, 0.45f, selected ? RouteColor : TextColor);
-                Text(d.Number.ToString(), 150, y + 1, 0.42f, TextColor, TextAlignment.LEFT, "Monospace");
-                Text(FormatDistance(d.Distance), 250, y + 1, 0.42f, TextColor, TextAlignment.RIGHT, "Monospace");
+                float ty = y + 3;
+                Marker(20, y + 15, 6.5f, d.Ore, color);
+                Text(d.Label, 34, ty, 0.72f, selected ? RouteColor : TextColor);
+                Text(FormatDistance(d.Distance), 322, ty + 2, 0.66f, TextColor, TextAlignment.RIGHT);
 
-                // Direction indicator: where the deposit is relative to the nose.
+                // Direction indicator: where the entry is relative to the nose.
                 Vector3D local = ToLocal(d.Position, shipPos, ship);
                 double yaw = Math.Atan2(local.X, local.Z), pitch = Math.Atan2(local.Y, new Vector2D(local.X, local.Z).Length());
                 bool behind = Math.Abs(yaw) > Math.PI / 2;
-                float ix = 276, iy = y + 8;
-                EllipseOutline(ix, iy, 7, 7, 1, GridColor, false);
-                float dx = (float)(Math.Sign(yaw) * Math.Min(Math.Abs(yaw), Math.PI / 2) / (Math.PI / 2) * 6);
-                float dy = (float)(-pitch / (Math.PI / 2) * 6);
-                Ellipse(ix + dx, iy + dy, 2, 2, behind ? WarnColor : color, false);
-                Text(DirectionText(d.Position), 290, y + 1, 0.42f, TextColor, TextAlignment.LEFT, "Monospace");
+                float ix = 342, iy = y + 15;
+                EllipseOutline(ix, iy, 10, 10, 1.5f, GridColor, false);
+                float dx = (float)(Math.Sign(yaw) * Math.Min(Math.Abs(yaw), Math.PI / 2) / (Math.PI / 2) * 8);
+                float dy = (float)(-pitch / (Math.PI / 2) * 8);
+                Ellipse(ix + dx, iy + dy, 3, 3, behind ? WarnColor : color, false);
+                Text(DirectionText(d.Position, true), 358, ty + 2, 0.6f, behind ? WarnColor : TextColor);
 
-                y += RowHeight;
+                y += ListRowHeight;
             }
 
             if (_visibleDeposits.Count == 0)
-                Text("No deposits yet. MARK: aim at ore and scan.", 34, y, 0.42f, DimColor, TextAlignment.LEFT, "Monospace");
-
-            // Summary of the selection
-            float fy = height - 80;
-            Line(6, fy, 506, fy, 1, GridColor);
-            if (_selected != null)
             {
-                Text(_selected.Label + "  " + FormatDistance(_selected.Distance), 10, fy + 6, 0.48f, RouteColor);
+                Text("No entries yet.", 20, y + 4, 0.7f, DimColor);
+                Text("MARK: aim at the ore and scan", 20, y + 34, 0.6f, DimColor);
+            }
+
+            // Selection or flight summary
+            float fy = height - 100;
+            Line(6, fy, 506, fy, 1, GridColor);
+            if (_mode == Mode.Approach)
+            {
+                Text(_approachPhase + "  " + FormatDistance(_targetDistance), 10, fy + 6, 0.66f, _approachPhase == "BRAKING" ? RouteColor : Cyan);
+                Text("stop " + FormatDistance(_stopDistance), 502, fy + 8, 0.6f, TextColor, TextAlignment.RIGHT);
+            }
+            else if (_selected != null)
+            {
+                Text(_selected.Label + "  " + FormatDistance(_selected.Distance), 10, fy + 6, 0.66f, RouteColor);
                 double total = _deltaVHydrogen + _deltaVElectric;
                 if (total > 0)
-                    Text(string.Format("dv {0:0} / {1:0} m/s", TripDeltaV(), total), 502, fy + 8, 0.4f, TextColor, TextAlignment.RIGHT, "Monospace");
+                    Text(string.Format("dv {0:0}/{1:0}", TripDeltaV(), total), 502, fy + 8, 0.6f, TextColor, TextAlignment.RIGHT);
             }
-            else if (_message.Length > 0)
-                Text(_message, 10, fy + 8, 0.38f, DimColor, TextAlignment.LEFT, "Monospace");
+            if (_message.Length > 0)
+                Text(_message, 10, fy + 30, 0.5f, DimColor);
         }
 
         // -----------------------------------------------------------------
@@ -376,14 +400,14 @@ namespace IngameScript
 
         void DrawButtons(string[] buttons, float y, bool active)
         {
-            float gap = 5, width = (496 - gap * (buttons.Length - 1)) / buttons.Length;
+            float gap = 5, width = (504 - gap * (buttons.Length - 1)) / buttons.Length;
             for (int i = 0; i < buttons.Length; i++)
             {
-                float x = 8 + i * (width + gap);
+                float x = 4 + i * (width + gap);
                 bool highlighted = active && i == _button && _dialog == Dialog.None;
-                Rect(x, y, width, 40, highlighted ? Cyan : PanelColor);
-                Box(x, y, width, 40, 1, active ? Cyan : GridColor);
-                Text(buttons[i], x + width / 2, y + 11, 0.5f, highlighted ? BgColor : active ? Cyan : DimColor, TextAlignment.CENTER);
+                Rect(x, y, width, 52, highlighted ? Cyan : PanelColor);
+                Box(x, y, width, 52, 1.5f, active ? Cyan : GridColor);
+                Text(buttons[i], x + width / 2, y + 12, 0.72f, highlighted ? BgColor : active ? Cyan : DimColor, TextAlignment.CENTER);
             }
         }
 
@@ -391,37 +415,37 @@ namespace IngameScript
         {
             if (_dialog == Dialog.None)
                 return;
-            float x = 96, w = 320, y = 44;
+            float x = 40, w = 432, y = 48;
             if (_dialog == Dialog.ConfirmDelete)
             {
-                float h = 90;
+                float h = 110;
                 y = (height - h) / 2 - 20;
                 Rect(x, y, w, h, PanelColor);
                 Box(x, y, w, h, 2, WarnColor);
-                Text("Delete " + (_selected != null ? _selected.Label : "") + "?", x + w / 2, y + 12, 0.6f, WarnColor, TextAlignment.CENTER);
-                Text("OK = delete   BACK = cancel", x + w / 2, y + 52, 0.4f, TextColor, TextAlignment.CENTER, "Monospace");
+                Text("Delete " + (_selected != null ? _selected.Label : "") + "?", x + w / 2, y + 14, 0.85f, WarnColor, TextAlignment.CENTER);
+                Text("OK = delete    BACK = cancel", x + w / 2, y + 64, 0.6f, TextColor, TextAlignment.CENTER);
                 return;
             }
 
             // Ore picker for MARK
-            int rows = Math.Max(3, Math.Min(_pickerOres.Count, (int)((height - y - 120) / RowHeight)));
-            float boxH = 60 + rows * RowHeight;
+            int rows = Math.Max(2, Math.Min(_pickerOres.Count, (int)((height - y - 150) / ListRowHeight)));
+            float boxH = 80 + rows * ListRowHeight;
             Rect(x, y, w, boxH, PanelColor);
             Box(x, y, w, boxH, 2, Cyan);
-            Text("MARK ORE", x + 10, y + 6, 0.55f, Cyan);
-            Text("aim at the ore, then OK", x + w - 10, y + 12, 0.34f, DimColor, TextAlignment.RIGHT, "Monospace");
+            Text("MARK", x + 12, y + 6, 0.85f, Cyan);
+            Text("aim at the ore first", x + w - 12, y + 12, 0.55f, DimColor, TextAlignment.RIGHT);
             int first = Math.Max(0, Math.Min(_pickerIndex - rows / 2, _pickerOres.Count - rows));
-            float ry = y + 34;
+            float ry = y + 42;
             for (int i = first; i < _pickerOres.Count && i < first + rows; i++)
             {
                 bool selected = i == _pickerIndex;
                 if (selected)
-                    Rect(x + 6, ry - 2, w - 12, RowHeight - 2, Cyan);
-                Diamond(x + 20, ry + 8, 4.5f, OreColor(_pickerOres[i]));
-                Text(_pickerOres[i], x + 32, ry, 0.45f, selected ? BgColor : TextColor);
-                ry += RowHeight;
+                    Rect(x + 6, ry, w - 12, ListRowHeight - 3, Cyan);
+                Marker(x + 24, ry + 15, 6.5f, _pickerOres[i], OreColor(_pickerOres[i]));
+                Text(_pickerOres[i], x + 40, ry + 3, 0.72f, selected ? BgColor : TextColor);
+                ry += ListRowHeight;
             }
-            Text("UP/DOWN select   OK scan   BACK cancel", x + w / 2, y + boxH - 22, 0.34f, DimColor, TextAlignment.CENTER, "Monospace");
+            Text("OK = scan    BACK = cancel", x + w / 2, y + boxH - 30, 0.55f, DimColor, TextAlignment.CENTER);
         }
 
         // -----------------------------------------------------------------
@@ -442,21 +466,23 @@ namespace IngameScript
 
         static Vector2 ProjectedPoint(Vector3D local, float cx, float cy, float scale)
         {
-            float height = MathHelper.Clamp((float)local.Y * scale * HeightScale, -140, 140);
+            float height = MathHelper.Clamp((float)local.Y * scale * HeightScale, -MaxStem, MaxStem);
             Vector2 plane = PlanePoint(local, cx, cy, scale);
             return new Vector2(plane.X, plane.Y - height);
         }
 
-        // "27° R  13° U" (+ "behind") relative to the ship's nose.
-        string DirectionText(Vector3D world)
+        // "27° R  13° U" (+ "behind") relative to the ship's nose; compact: "27°R 13°U".
+        string DirectionText(Vector3D world, bool compact)
         {
             IMyShipController reference = _controller ?? _layoutController;
             MatrixD ship = reference != null ? reference.WorldMatrix : Me.WorldMatrix;
             Vector3D local = ToLocal(world, ReferencePosition(), ship);
             double yaw = Math.Atan2(local.X, local.Z) * 180 / Math.PI;
             double pitch = Math.Atan2(local.Y, new Vector2D(local.X, local.Z).Length()) * 180 / Math.PI;
-            return string.Format("{0,3:0}° {1} {2,2:0}° {3}{4}", Math.Abs(yaw), yaw >= 0 ? "R" : "L",
-                Math.Abs(pitch), pitch >= 0 ? "U" : "D", Math.Abs(yaw) > 90 ? " behind" : "");
+            if (compact)
+                return string.Format("{0:0}°{1} {2:0}°{3}", Math.Abs(yaw), yaw >= 0 ? "R" : "L", Math.Abs(pitch), pitch >= 0 ? "U" : "D");
+            return string.Format("{0:0}° {1}   {2:0}° {3}{4}", Math.Abs(yaw), yaw >= 0 ? "right" : "left",
+                Math.Abs(pitch), pitch >= 0 ? "up" : "down", Math.Abs(yaw) > 90 ? "   behind" : "");
         }
 
         static Color OreColor(string ore)
@@ -474,6 +500,7 @@ namespace IngameScript
                 case "Uranium": return new Color(160, 255, 60);
                 case "Ice": return new Color(150, 230, 255);
                 case "Stone": return new Color(150, 150, 150);
+                case BaseName: return Cyan;
             }
             int hash = ore.GetHashCode();
             return new Color(128 + (hash & 127), 128 + ((hash >> 8) & 127), 128 + ((hash >> 16) & 127));
@@ -565,6 +592,18 @@ namespace IngameScript
         {
             _frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", P(x, y), new Vector2(r * 1.414f) * _u, color,
                 null, TextAlignment.CENTER, MathHelper.PiOver4));
+        }
+
+        // Deposit marker: a diamond, the base a square.
+        void Marker(float x, float y, float r, string ore, Color color)
+        {
+            if (ore == BaseName)
+            {
+                Rect(x - r, y - r, r * 2, r * 2, color);
+                Rect(x - r * 0.45f, y - r * 0.45f, r * 0.9f, r * 0.9f, BgColor);
+            }
+            else
+                Diamond(x, y, r, color);
         }
 
         void DiamondOutline(float x, float y, float r, Color color)

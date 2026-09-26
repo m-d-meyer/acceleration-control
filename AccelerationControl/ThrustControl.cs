@@ -45,7 +45,9 @@ namespace IngameScript
         void ControlThrust()
         {
             _controller = FindActiveController();
-            if (!_enabled || _controller == null)
+            if (_controller == null)
+                _uiMode = false;
+            if ((!_enabled && !_uiMode) || _controller == null)
             {
                 ReleaseAll();
                 return;
@@ -63,6 +65,12 @@ namespace IngameScript
             double mass = _controller.CalculateShipMass().PhysicalMass;
             Vector3 move = _controller.MoveIndicator;
             bool dampeners = _controller.DampenersOverride;
+            if (_uiMode)
+            {
+                // The movement keys operate the menu; the ship must not react to them.
+                UpdateUiInput(move);
+                move = Vector3.Zero;
+            }
             _currentSpeed = velocity.Length();
             _forwardSpeed = Vector3D.Dot(velocity, matrix.Forward);
 
@@ -70,6 +78,13 @@ namespace IngameScript
             Vector3D targetVelocity;
             double assistAccel;
             bool hasTarget = UpdateDriveAssist(matrix, velocity, move, out targetVelocity, out assistAccel);
+            if (_uiMode && !hasTarget)
+            {
+                // Hold the ship (or keep drifting with dampeners off), since the
+                // game would otherwise fire the thrusters for the pressed keys.
+                hasTarget = true;
+                targetVelocity = dampeners ? Vector3D.Zero : velocity;
+            }
 
             Vector3D[] axes = { matrix.Right, matrix.Up, matrix.Backward };
             for (int axis = 0; axis < 3; axis++)

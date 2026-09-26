@@ -77,6 +77,8 @@ namespace IngameScript
 
             UpdateScan();
             ControlThrust();
+            if (_ticks % SurveyTicks == 0)
+                UpdateSurvey();
 
             SampleFuelUse(1 / TicksPerSecond);
             if (_ticks % StatusTicks == 0)

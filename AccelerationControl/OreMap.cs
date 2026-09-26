@@ -21,14 +21,18 @@ using VRageMath;
 namespace IngameScript
 {
     // Ore map data: deposits (marked by camera scan or logged while mining),
-    // known obstacles (asteroids, planets with their gravity wells) and
-    // selection / filtering for the map screens.
+    // the base, known obstacles (asteroids, planets with their gravity wells,
+    // found by scans and by the background survey) and selection / filtering
+    // for the map screens.
     partial class Program
     {
         const double AsteroidRadiusFactor = 0.75;   // asteroid voxel boxes are larger than the rock itself
         const double GravityCutoff = 0.05 * 9.81;   // m/s^2 - roughly where planet gravity ends
         const double MinLoggedOre = 1.0;            // kg of new ore needed to log a deposit
         const string MapSection = "Map";
+        const string BaseName = "Base";
+        const int SurveyTicks = 10;                 // one survey scan attempt every 1/6 s
+        const int SurveyPattern = 97;               // directions per sweep of the camera cone
 
         static readonly string[] StandardOres = { "Iron", "Nickel", "Cobalt", "Magnesium", "Silicon",
             "Silver", "Gold", "Platinum", "Uranium", "Ice", "Stone" };
@@ -64,6 +68,8 @@ namespace IngameScript
         string _pendingMarkOre = "";
         bool _mapChanged = true;        // GPS export pending
         bool _oreBaseline;              // _previousOre holds a reading to compare with
+        int _surveyCamera;
+        int _surveyStep;
 
         // -----------------------------------------------------------------
         //  Commands
@@ -225,14 +231,49 @@ namespace IngameScript
         }
 
         // -----------------------------------------------------------------
+        //  Background survey
+        // -----------------------------------------------------------------
+
+        // Cameras take turns scanning their field of view in a spiral pattern,
+        // so asteroids the ship passes get onto the map without marking them.
+        // The approach camera is left alone while it is needed.
+        void UpdateSurvey()
+        {
+            if (!_survey || _cameras.Count == 0)
+                return;
+            for (int i = 0; i < _cameras.Count; i++)
+            {
+                IMyCameraBlock camera = _cameras[(_surveyCamera + i) % _cameras.Count];
+                bool busy = camera == _camera && (_scanPending || (_mode == Mode.Approach && _probing));
+                if (busy || !camera.IsWorking)
+                    continue;
+                camera.EnableRaycast = true;
+                if (!camera.CanScan(_surveyRange))
+                    continue;
+
+                // Sunflower spiral: evenly spread directions within the cone.
+                int step = _surveyStep++ % SurveyPattern;
+                double radius = Math.Sqrt((step + 0.5) / SurveyPattern) * Math.Min(camera.RaycastConeLimit, 45);
+                double angle = step * 2.39996;
+                MyDetectedEntityInfo hit = camera.Raycast(_surveyRange, (float)(radius * Math.Sin(angle)), (float)(radius * Math.Cos(angle)));
+                if (!hit.IsEmpty() && RegisterObstacle(hit))
+                    _message = "Found " + (hit.Type == MyDetectedEntityType.Planet ? "planet" : "asteroid")
+                        + " at " + FormatDistance(Vector3D.Distance(hit.Position, ReferencePosition()));
+                _surveyCamera = (_surveyCamera + i + 1) % _cameras.Count;
+                return;
+            }
+        }
+
+        // -----------------------------------------------------------------
         //  Obstacles and gravity wells
         // -----------------------------------------------------------------
 
-        void RegisterObstacle(MyDetectedEntityInfo hit)
+        // Returns true if the obstacle was not known before.
+        bool RegisterObstacle(MyDetectedEntityInfo hit)
         {
             bool planet = hit.Type == MyDetectedEntityType.Planet;
             if (!planet && hit.Type != MyDetectedEntityType.Asteroid)
-                return;
+                return false;
 
             BoundingBoxD box = hit.BoundingBox;
             Vector3D size = box.Max - box.Min;
@@ -242,16 +283,19 @@ namespace IngameScript
             foreach (Obstacle o in _obstacles)
                 if (o.EntityId == hit.EntityId)
                     obstacle = o;
-            if (obstacle == null)
+            bool added = obstacle == null;
+            if (added)
             {
                 obstacle = new Obstacle { EntityId = hit.EntityId, Planet = planet };
                 _obstacles.Add(obstacle);
+                _mapChanged = true;
             }
 
             obstacle.Center = planet ? hit.Position : box.Center;
             obstacle.Radius = planet ? halfSize : halfSize * AsteroidRadiusFactor;
             if (planet && obstacle.GravityRadius <= 0)
                 obstacle.GravityRadius = obstacle.Radius * _gravityWellFactor;
+            return added;
         }
 
         // In gravity, measure the planet's position and gravity well directly.

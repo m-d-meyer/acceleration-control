@@ -54,6 +54,8 @@ public void Main(string argument, UpdateType updateSource)
 
     UpdateScan();
     ControlThrust();
+    if (_ticks % SurveyTicks == 0)
+        UpdateSurvey();
 
     SampleFuelUse(1 / TicksPerSecond);
     if (_ticks % StatusTicks == 0)
@@ -272,6 +274,9 @@ bool _autoLog = true;
 bool _logStone = false;
 double _mergeDistance = 150;
 double _gravityWellFactor = 1.7;
+bool _survey = true;
+double _surveyRange = 6000;
+double _probeRange = 50000;
 double _defaultCruiseSpeed = 0.75;
 double _cruiseStep = 0.25;
 double _velocityGain = 2.0;
@@ -322,6 +327,9 @@ void LoadConfig()
     _logStone = _ini.Get(IniSection, "LogStone").ToBoolean(_logStone);
     _mergeDistance = _ini.Get(IniSection, "MergeDistance").ToDouble(_mergeDistance);
     _gravityWellFactor = _ini.Get(IniSection, "GravityWellFactor").ToDouble(_gravityWellFactor);
+    _survey = _ini.Get(IniSection, "Survey").ToBoolean(_survey);
+    _surveyRange = _ini.Get(IniSection, "SurveyRange").ToDouble(_surveyRange);
+    _probeRange = _ini.Get(IniSection, "SearchRange").ToDouble(_probeRange);
     _defaultCruiseSpeed = _ini.Get(IniSection, "CruiseSpeed").ToDouble(_defaultCruiseSpeed);
     _cruiseStep = _ini.Get(IniSection, "CruiseStep").ToDouble(_cruiseStep);
     _velocityGain = _ini.Get(IniSection, "VelocityGain").ToDouble(_velocityGain);
@@ -354,6 +362,9 @@ void LoadConfig()
     _ini.Set(IniSection, "LogStone", _logStone);
     _ini.Set(IniSection, "MergeDistance", _mergeDistance);
     _ini.Set(IniSection, "GravityWellFactor", _gravityWellFactor);
+    _ini.Set(IniSection, "Survey", _survey);
+    _ini.Set(IniSection, "SurveyRange", _surveyRange);
+    _ini.Set(IniSection, "SearchRange", _probeRange);
     _ini.Set(IniSection, "CruiseSpeed", _defaultCruiseSpeed);
     _ini.Set(IniSection, "CruiseStep", _cruiseStep);
     _ini.Set(IniSection, "VelocityGain", _velocityGain);
@@ -558,6 +569,7 @@ void AppendModeStatus()
             break;
         case Mode.Approach:
             _text.AppendFormat("Approach {0}: {1}, {2:0} m/s\n", _targetName, FormatDistance(_targetDistance), _currentSpeed);
+            _text.AppendFormat("{0}, stopping distance {1}\n", _approachPhase, FormatDistance(_stopDistance));
             break;
         default:
             _text.AppendFormat("Cruise speed: {0:0.00} m/s (off)\n", _cruiseSpeed);
@@ -692,6 +704,14 @@ ScanPurpose _scanPurpose;
 Vector3D _approachTarget;
 string _targetName = "";
 double _targetDistance;
+double _stopDistance;
+string _approachPhase = "";
+
+// Approach without a target in scan range: search along the line of sight.
+const double ProbeMinRange = 1000;
+bool _probing;
+Vector3D _probeDirection;
+Vector3D _clearUntil;
 
 // Returns true when a drive assist wants a target velocity. Movement
 // input that conflicts with the assist cancels it.
@@ -791,6 +811,8 @@ void StartScan(ScanPurpose purpose)
 // as the camera has charged enough range.
 void UpdateScan()
 {
+    if (_mode == Mode.Approach && _probing)
+        UpdateProbe();
     if (!_scanPending)
         return;
     if (_camera == null || !_camera.IsWorking)
@@ -799,30 +821,80 @@ void UpdateScan()
         _scanPending = false;
         return;
     }
-    if (!_camera.CanScan(_scanRange))
+
+    // Marking needs the full range. An approach starts with what is
+    // charged and keeps scanning ahead while flying (see UpdateProbe).
+    double range = _scanPurpose == ScanPurpose.Mark ? _scanRange
+        : Math.Min(_scanRange, Math.Max(ProbeMinRange, _camera.AvailableScanRange));
+    if (!_camera.CanScan(range))
         return;
 
     _scanPending = false;
-    MyDetectedEntityInfo hit = _camera.Raycast(_scanRange);
+    Vector3D origin = _camera.GetPosition();
+    Vector3D direction = _camera.WorldMatrix.Forward;
+    MyDetectedEntityInfo hit = _camera.Raycast(range);
     if (hit.IsEmpty() || !hit.HitPosition.HasValue)
     {
-        _message = "Nothing found within " + FormatDistance(_scanRange);
+        if (_scanPurpose == ScanPurpose.Mark)
+            _message = "Nothing found within " + FormatDistance(range) + ". Asteroids far away are often not detected, fly closer.";
+        else
+            StartProbe(origin, direction, range);
         return;
     }
 
     RegisterObstacle(hit);
-    Vector3D hitPos = hit.HitPosition.Value;
     if (_scanPurpose == ScanPurpose.Mark)
-    {
-        AddDeposit(_pendingMarkOre, hitPos, false);
-        return;
-    }
+        AddDeposit(_pendingMarkOre, hit.HitPosition.Value, false);
+    else
+        ApproachHit(hit);
+}
 
+void ApproachHit(MyDetectedEntityInfo hit)
+{
+    Vector3D hitPos = hit.HitPosition.Value;
     string name = hit.Type == MyDetectedEntityType.Asteroid ? "Asteroid"
         : hit.Type == MyDetectedEntityType.Planet ? "Planet"
         : hit.Name;
+    _probing = false;
     if (StartApproach(hitPos, name))
         _message = name + " at " + FormatDistance(Vector3D.Distance(hitPos, ReferencePosition()));
+}
+
+// Nothing in range yet: fly along the camera's line of sight and keep
+// scanning ahead. The speed is limited so the ship can always stop
+// within the part of the line that has been scanned clear.
+void StartProbe(Vector3D origin, Vector3D direction, double clearRange)
+{
+    _probing = true;
+    _probeDirection = direction;
+    _clearUntil = origin + direction * clearRange;
+    _approachTarget = origin + direction * _probeRange;
+    _targetName = "line of sight";
+    _enabled = true;
+    _mode = Mode.Approach;
+    _message = "Nothing within " + FormatDistance(clearRange) + ", searching ahead";
+}
+
+void UpdateProbe()
+{
+    if (_camera == null || !_camera.IsWorking)
+        return;
+    Vector3D position = _camera.GetPosition();
+    double brake = Math.Max(BrakeAccel(_probeDirection), 0.1);
+    double stopDistance = _currentSpeed * _currentSpeed / (2 * brake);
+    double look = MathHelper.Clamp(stopDistance * 1.5 + _approachBuffer * 2, ProbeMinRange, _scanRange);
+    Vector3D lookTarget = position + _probeDirection * look;
+    if (!_camera.CanScan(lookTarget))
+        return;
+
+    MyDetectedEntityInfo hit = _camera.Raycast(lookTarget);
+    if (!hit.IsEmpty() && hit.HitPosition.HasValue)
+    {
+        RegisterObstacle(hit);
+        ApproachHit(hit);
+    }
+    else if (Vector3D.Dot(lookTarget - _clearUntil, _probeDirection) > 0)
+        _clearUntil = lookTarget;
 }
 
 // Charge of the scan camera relative to the configured scan range (0..1).
@@ -843,6 +915,7 @@ bool StartApproach(Vector3D surfacePoint, string name)
     }
     _approachTarget = surfacePoint - ray / distance * _approachBuffer;
     _targetName = name;
+    _probing = false;
     _enabled = true;
     _mode = Mode.Approach;
     return true;
@@ -874,38 +947,59 @@ IMyCameraBlock FindCamera()
     return facing;
 }
 
+// Deceleration the approach plans with when moving along a direction.
+double BrakeAccel(Vector3D direction)
+{
+    double brake = MaxAccelAlong(-direction) * _brakeSafety;
+    return _approachFullThrust ? brake : Math.Min(brake, _limit * _brakeSafety);
+}
+
 // Velocity that brings the ship to the approach target and still lets it
 // stop in time: v = sqrt(2 * a_brake * distance), capped at MaxSpeed.
 bool ApproachVelocity(Vector3D velocity, out Vector3D targetVelocity)
 {
     targetVelocity = Vector3D.Zero;
-    Vector3D toTarget = _approachTarget - ReferencePosition();
+    Vector3D position = ReferencePosition();
+    Vector3D toTarget = _approachTarget - position;
     _targetDistance = toTarget.Length();
 
     if (_targetDistance < ArrivalDistance && velocity.Length() < ArrivalSpeed)
     {
         _mode = Mode.Manual;
-        _message = "Arrived";
+        _message = _probing ? "Nothing found along the line of sight" : "Arrived";
+        _probing = false;
         return false;
     }
 
     Vector3D direction = toTarget / Math.Max(_targetDistance, 1e-3);
-    double brake = MaxAccelAlong(-direction) * _brakeSafety;
-    if (!_approachFullThrust)
-        brake = Math.Min(brake, _limit * _brakeSafety);
+    double brake = BrakeAccel(direction);
+    double distance = _targetDistance;
+    if (_probing)
+    {
+        // Only the scanned part of the line is known to be free.
+        double clear = Vector3D.Dot(_clearUntil - position, direction) - _approachBuffer;
+        distance = Math.Min(distance, Math.Max(clear, 0));
+    }
 
-    double speed = Math.Min(_maxSpeed, Math.Sqrt(2 * brake * _targetDistance));
+    double speed = Math.Min(_maxSpeed, Math.Sqrt(2 * brake * distance));
     // Close in: approach proportionally so the ship settles instead of oscillating.
-    speed = Math.Min(speed, _targetDistance * _velocityGain * 0.5);
+    speed = Math.Min(speed, distance * _velocityGain * 0.5);
     targetVelocity = direction * speed;
+
+    // For the display: stopping distance and flight phase.
+    double current = Vector3D.Dot(velocity, direction);
+    _stopDistance = current > 0 ? current * current / (2 * Math.Max(brake, 0.01)) : 0;
+    _approachPhase = speed < current - 1 ? "BRAKING" : speed > current + 1 ? "ACCELERATING" : "CRUISING";
     return true;
 }
 
 // ---- MapDisplay.cs ----
 const float RadarRadius = 220;      // units for the full zoom range
-const float PlaneTilt = 0.52f;      // vertical squash of the radar plane
+const float PlaneTilt = 0.5f;       // vertical squash of the radar plane
 const float HeightScale = 0.85f;    // height stems relative to plane scale
-const float RowHeight = 22;
+const float MaxStem = 95;           // longest height stem (units)
+const float ListRowHeight = 34;
+const int RadarLabels = 5;          // labelled deposits besides the selection
 const int CircleSegments = 48;
 
 static readonly Color BgColor = new Color(8, 18, 24);
@@ -959,7 +1053,7 @@ void DrawMapSurface(IMyTextSurface surface, MapView view)
             _u = Math.Min(width, height) / 512f;
             _origin = viewport.Position + new Vector2((width - 512 * _u) / 2, (height - 512 * _u) / 2);
             DrawRadar();
-            DrawButtons(RadarButtons, 462, active);
+            DrawButtons(RadarButtons, 452, active);
             if (active)
                 DrawDialog(512);
         }
@@ -969,11 +1063,26 @@ void DrawMapSurface(IMyTextSurface surface, MapView view)
             _origin = viewport.Position;
             float h = height / _u;
             DrawList(h);
-            DrawButtons(ListButtons, h - 46, active);
+            DrawButtons(ListButtons, h - 56, active);
             if (active)
                 DrawDialog(h);
         }
     }
+}
+
+void DrawHeader(float height, string right)
+{
+    Rect(0, 0, 512, height, PanelColor);
+    Text("ORE MAP", 12, height / 2 - 15, 0.95f, Cyan);
+    float x = 500;
+    if (_uiMode)
+    {
+        float w = MeasureText("UI MODE", 0.6f, "White") + 14;
+        Rect(x - w, height / 2 - 13, w, 26, Cyan);
+        Text("UI MODE", x - w / 2, height / 2 - 11, 0.6f, BgColor, TextAlignment.CENTER);
+        x -= w + 10;
+    }
+    Text(right, x, height / 2 - 10, 0.6f, DimColor, TextAlignment.RIGHT);
 }
 
 // -----------------------------------------------------------------
@@ -983,7 +1092,7 @@ void DrawMapSurface(IMyTextSurface surface, MapView view)
 void DrawRadar()
 {
     IMyShipController reference = _controller ?? _layoutController;
-    float cx = 256, cy = 198;
+    float cx = 256, cy = 180;
     float scale = RadarRadius / (float)MapRange;       // units per meter
     MatrixD ship = reference != null ? reference.WorldMatrix : Me.WorldMatrix;
     Vector3D shipPos = ReferencePosition();
@@ -1015,11 +1124,8 @@ void DrawRadar()
             toShip.Normalize();
             Vector2 edge = center + new Vector2(toShip.X * rx, toShip.Y * ry);
             if (Math.Abs(edge.X - cx) < RadarRadius && Math.Abs(edge.Y - cy) < RadarRadius * PlaneTilt + 20)
-            {
-                Text("GRAVITY WELL", edge.X, edge.Y + 4, 0.42f, GravityColor, TextAlignment.CENTER);
-                Text("Planet " + FormatDistance(Vector3D.Distance(o.Center, shipPos) - o.Radius), edge.X, edge.Y + 18,
-                    0.36f, GravityColor, TextAlignment.CENTER, "Monospace");
-            }
+                Text("GRAVITY " + FormatDistance(Vector3D.Distance(o.Center, shipPos) - o.GravityRadius),
+                    edge.X, edge.Y + 4, 0.55f, GravityColor, TextAlignment.CENTER);
         }
     }
 
@@ -1029,9 +1135,8 @@ void DrawRadar()
     EllipseOutline(cx, cy, RadarRadius / 4, RadarRadius / 4 * PlaneTilt, 1, GridFaint, false);
     Line(cx - RadarRadius, cy, cx + RadarRadius, cy, 1, GridFaint);
     Line(cx, cy - RadarRadius * PlaneTilt, cx, cy + RadarRadius * PlaneTilt, 1, GridFaint);
-    Text("FORWARD", cx, cy - RadarRadius * PlaneTilt - 16, 0.36f, DimColor, TextAlignment.CENTER, "Monospace");
-    Text(FormatDistance(MapRange), cx + RadarRadius * 0.72f, cy - RadarRadius * PlaneTilt * 0.72f - 14, 0.36f, DimColor, TextAlignment.LEFT, "Monospace");
-    Text(FormatDistance(MapRange / 2), cx + RadarRadius * 0.36f, cy - RadarRadius * PlaneTilt * 0.36f - 12, 0.32f, DimColor, TextAlignment.LEFT, "Monospace");
+    Text(FormatDistance(MapRange), cx + RadarRadius * 0.74f, cy - RadarRadius * PlaneTilt * 0.74f - 20, 0.5f, DimColor, TextAlignment.LEFT);
+    Text(FormatDistance(MapRange / 2), cx + RadarRadius * 0.37f, cy - RadarRadius * PlaneTilt * 0.37f - 18, 0.45f, DimColor, TextAlignment.LEFT);
 
     // Asteroids and deposits, far ones first
     _mapItems.Clear();
@@ -1046,8 +1151,8 @@ void DrawRadar()
     if (_mode == Mode.Approach)
     {
         Vector2 target = ProjectedPoint(ToLocal(_approachTarget, shipPos, ship), cx, cy, scale);
-        Dashed(cx, cy, target.X, target.Y, 2.5f, RouteColor);
-        DiamondOutline(target.X, target.Y, 6, RouteColor);
+        Dashed(cx, cy, target.X, target.Y, 3, RouteColor);
+        DiamondOutline(target.X, target.Y, 8, RouteColor);
     }
 
     foreach (MapItem item in _mapItems)
@@ -1059,19 +1164,13 @@ void DrawRadar()
     }
 
     // Ship
-    _frame.Add(new MySprite(SpriteType.TEXTURE, "Triangle", P(cx, cy), new Vector2(14, 18) * _u, Cyan));
+    _frame.Add(new MySprite(SpriteType.TEXTURE, "Triangle", P(cx, cy), new Vector2(16, 20) * _u, Cyan));
 
     // Header and info panel are drawn last so they cover anything that
     // sticks out of the radar area.
-    Rect(0, 0, 512, 32, PanelColor);
-    Text("ORE MAP", 12, 4, 0.75f, Cyan);
-    string header = "Range " + FormatDistance(MapRange) + "   Filter: " + (_filter ?? "all");
-    if (inGravity)
-        header = "IN GRAVITY   " + header;
-    Text(header, 500, 9, 0.42f, inGravity ? GravityColor : DimColor, TextAlignment.RIGHT, "Monospace");
-
-    Rect(0, 336, 512, 176, BgColor);
-    DrawSelectionPanel(8, 342, 496);
+    DrawHeader(44, (inGravity ? "IN GRAVITY  " : "") + FormatDistance(MapRange) + "  " + (_filter ?? "all"));
+    Rect(0, 294, 512, 218, BgColor);
+    DrawSelectionPanel(8, 298, 496, 146);
 }
 
 void DrawRock(MapItem item, float cx, float cy, float scale)
@@ -1104,76 +1203,94 @@ void DrawDeposit(MapItem item, float cx, float cy, float scale)
     Vector2 pos = ProjectedPoint(p, cx, cy, scale);
     if (outside)
     {
-        // Beyond the range: small marker on the edge, pointing outwards.
-        Diamond(foot.X, foot.Y, 4, color * 0.6f);
+        // Beyond the range: small marker on the edge.
+        Marker(foot.X, foot.Y, 5, d.Ore, color * 0.6f);
         if (!selected)
             return;
         pos = foot;
     }
     else
     {
-        Line(foot.X, foot.Y, pos.X, pos.Y, 1.5f, color * 0.85f);
-        Ellipse(foot.X, foot.Y, 2.5f, 1.3f, color * 0.8f, false);
-        Diamond(pos.X, pos.Y, 5, color);
+        Line(foot.X, foot.Y, pos.X, pos.Y, 2, color * 0.85f);
+        Ellipse(foot.X, foot.Y, 3, 1.6f, color * 0.8f, false);
+        Marker(pos.X, pos.Y, 7, d.Ore, color);
     }
 
+    // Labels only for the selection and the nearest deposits, so they stay readable.
+    if (!selected && _visibleDeposits.IndexOf(d) >= RadarLabels)
+        return;
     string name = ShortOre(d.Ore) + d.Number;
     string distance = FormatDistance(d.Distance);
-    float tx = pos.X + 8, ty = pos.Y - 11;
+    float tx = pos.X + 11, ty = pos.Y - 16;
     if (selected)
     {
-        float w = Math.Max(MeasureText(name, 0.42f, "White"), MeasureText(distance, 0.36f, "Monospace"));
-        Rect(tx - 3, ty - 2, w + 6, 25, new Color(40, 30, 10) * 0.9f);
-        Box(tx - 3, ty - 2, w + 6, 25, 1, RouteColor);
+        float w = Math.Max(MeasureText(name, 0.62f, "White"), MeasureText(distance, 0.52f, "White"));
+        Rect(tx - 4, ty - 2, w + 8, 38, new Color(40, 30, 10) * 0.9f);
+        Box(tx - 4, ty - 2, w + 8, 38, 1.5f, RouteColor);
     }
-    Text(name, tx, ty, 0.42f, selected ? RouteColor : color);
-    Text(distance, tx, ty + 11, 0.36f, selected ? RouteColor : DimColor, TextAlignment.LEFT, "Monospace");
+    Text(name, tx, ty, 0.62f, selected ? RouteColor : color);
+    Text(distance, tx, ty + 17, 0.52f, selected ? RouteColor : DimColor);
 }
 
 // Info about the selected deposit and the current flight.
-void DrawSelectionPanel(float x, float y, float width)
+void DrawSelectionPanel(float x, float y, float width, float height)
 {
-    Rect(x, y, width, 96, PanelColor);
-    Box(x, y, width, 96, 1, GridColor);
-    float left = x + 10, right = x + width - 10;
+    Rect(x, y, width, height, PanelColor);
+    Box(x, y, width, height, 1, GridColor);
+    float left = x + 12, right = x + width - 12;
 
-    if (_selected == null)
+    if (_mode == Mode.Approach)
     {
-        Text(_deposits.Count == 0 ? "No deposits mapped yet" : "No deposit matches the filter", left, y + 8, 0.5f, DimColor);
-        Text("MARK: aim at ore and scan", left, y + 32, 0.38f, DimColor, TextAlignment.LEFT, "Monospace");
+        Text("> " + _targetName, left, y + 6, 0.8f, RouteColor);
+        Text(_currentSpeed.ToString("0") + " m/s", right, y + 10, 0.7f, TextColor, TextAlignment.RIGHT);
+        DrawApproachGauge(left, y + 44, right - left);
+    }
+    else if (_selected == null)
+    {
+        Text(_deposits.Count == 0 ? "No deposits mapped yet" : "No deposit matches the filter", left, y + 8, 0.7f, DimColor);
+        Text("MARK: aim at the ore and scan", left, y + 42, 0.6f, DimColor);
     }
     else
     {
-        Text(_selected.Label, left, y + 6, 0.55f, RouteColor);
-        Text(FormatDistance(_selected.Distance), right, y + 8, 0.45f, TextColor, TextAlignment.RIGHT, "Monospace");
-        Text(DirectionText(_selected.Position) + "   " + (_selected.Mined ? "logged while mining" : "marked by scan"),
-            left, y + 30, 0.36f, DimColor, TextAlignment.LEFT, "Monospace");
+        Text(_selected.Label, left, y + 6, 0.8f, RouteColor);
+        Text(FormatDistance(_selected.Distance), right, y + 10, 0.7f, TextColor, TextAlignment.RIGHT);
+        Text(DirectionText(_selected.Position, false), left, y + 40, 0.6f, DimColor);
 
-        string flight;
-        Color flightColor = TextColor;
-        if (_mode == Mode.Approach)
-            flight = "Flying to " + _targetName + ": " + FormatDistance(_targetDistance) + "  " + _currentSpeed.ToString("0") + " m/s";
-        else
-        {
-            Obstacle blocking = FirstObstacleOnPath(ReferencePosition(), _selected.Position);
-            flight = blocking == null ? "Direct path clear" : "Direct path blocked by " + (blocking.Planet ? "planet" : "asteroid");
-            flightColor = blocking == null ? TextColor : WarnColor;
-        }
-        Text(flight, left, y + 48, 0.38f, flightColor, TextAlignment.LEFT, "Monospace");
+        Obstacle blocking = FirstObstacleOnPath(ReferencePosition(), _selected.Position);
+        Text(blocking == null ? "Direct path clear" : "Path blocked by " + (blocking.Planet ? "planet" : "asteroid"),
+            left, y + 64, 0.6f, blocking == null ? TextColor : WarnColor);
 
         double total = _deltaVHydrogen + _deltaVElectric;
         if (total > 0)
         {
-            Text("dv", left, y + 68, 0.4f, TextColor, TextAlignment.LEFT, "Monospace");
-            float barX = left + 24, barW = width - 200;
-            Box(barX, y + 71, barW, 12, 1, GridColor);
-            Rect(barX + 1, y + 72, (float)(barW - 2) * (float)Math.Min(TripDeltaV() / total, 1), 10, RouteColor);
-            Text(string.Format("{0:0} / {1:0} m/s", TripDeltaV(), total), right, y + 68, 0.38f, TextColor, TextAlignment.RIGHT, "Monospace");
+            float barW = width - 230;
+            Text("dv", left, y + 90, 0.6f, TextColor);
+            Box(left + 32, y + 94, barW, 14, 1, GridColor);
+            Rect(left + 33, y + 95, (barW - 2) * (float)Math.Min(TripDeltaV() / total, 1), 12, RouteColor);
+            Text(string.Format("{0:0} / {1:0} m/s", TripDeltaV(), total), right, y + 90, 0.55f, TextColor, TextAlignment.RIGHT);
         }
     }
 
     if (_message.Length > 0)
-        Text(_message, left, y + 100, 0.36f, DimColor, TextAlignment.LEFT, "Monospace");
+        Text(_message, left, y + height - 26, 0.52f, DimColor);
+}
+
+// Distance to the target with the stopping distance marked: braking
+// starts when the orange mark reaches the end of the bar.
+void DrawApproachGauge(float x, float y, float width)
+{
+    bool braking = _approachPhase == "BRAKING";
+    Text(_approachPhase, x, y, 0.6f, braking ? RouteColor : Cyan);
+    Text("stop " + FormatDistance(_stopDistance) + " / " + FormatDistance(_targetDistance),
+        x + width, y, 0.6f, TextColor, TextAlignment.RIGHT);
+    float by = y + 26, bh = 18;
+    double full = Math.Max(Math.Max(_targetDistance, _stopDistance), 1);
+    Box(x, by, width, bh, 1, GridColor);
+    Rect(x + 1, by + 1, (width - 2) * (float)(_targetDistance / full), bh - 2, Cyan * 0.6f);
+    float stop = x + (width - 2) * (float)Math.Min(_stopDistance / full, 1);
+    Rect(stop - 2, by - 4, 4, bh + 8, RouteColor);
+    if (_probing)
+        Text("searching ahead, nothing found yet", x, by + bh + 4, 0.5f, DimColor);
 }
 
 // -----------------------------------------------------------------
@@ -1182,18 +1299,10 @@ void DrawSelectionPanel(float x, float y, float width)
 
 void DrawList(float height)
 {
-    Rect(0, 0, 512, 30, PanelColor);
-    Text("ORE MAP", 10, 3, 0.72f, Cyan);
-    Text(_visibleDeposits.Count + " deposits   Filter: " + (_filter ?? "all"), 502, 8, 0.4f, DimColor, TextAlignment.RIGHT, "Monospace");
+    DrawHeader(40, _visibleDeposits.Count + " entries  " + (_filter ?? "all"));
 
-    float y = 36;
-    Text("ORE", 34, y, 0.38f, DimColor, TextAlignment.LEFT, "Monospace");
-    Text("#", 150, y, 0.38f, DimColor, TextAlignment.LEFT, "Monospace");
-    Text("DIST", 250, y, 0.38f, DimColor, TextAlignment.RIGHT, "Monospace");
-    Text("DIRECTION", 268, y, 0.38f, DimColor, TextAlignment.LEFT, "Monospace");
-    y += 20;
-
-    int rows = Math.Max(1, (int)((height - y - 86) / RowHeight));
+    float y = 46;
+    int rows = Math.Max(1, (int)((height - y - 108) / ListRowHeight));
     int selectedIndex = _selected != null ? _visibleDeposits.IndexOf(_selected) : 0;
     int first = Math.Max(0, Math.Min(selectedIndex - rows / 2, _visibleDeposits.Count - rows));
 
@@ -1208,44 +1317,51 @@ void DrawList(float height)
         Color color = OreColor(d.Ore);
         if (selected)
         {
-            Rect(6, y - 2, 500, RowHeight - 2, new Color(60, 45, 12));
-            Box(6, y - 2, 500, RowHeight - 2, 1, RouteColor);
-            Text(">", 12, y, 0.45f, RouteColor, TextAlignment.LEFT, "Monospace");
+            Rect(4, y, 504, ListRowHeight - 3, new Color(60, 45, 12));
+            Box(4, y, 504, ListRowHeight - 3, 1.5f, RouteColor);
         }
-        Diamond(26, y + 8, 4.5f, color);
-        Text(d.Ore, 34, y, 0.45f, selected ? RouteColor : TextColor);
-        Text(d.Number.ToString(), 150, y + 1, 0.42f, TextColor, TextAlignment.LEFT, "Monospace");
-        Text(FormatDistance(d.Distance), 250, y + 1, 0.42f, TextColor, TextAlignment.RIGHT, "Monospace");
+        float ty = y + 3;
+        Marker(20, y + 15, 6.5f, d.Ore, color);
+        Text(d.Label, 34, ty, 0.72f, selected ? RouteColor : TextColor);
+        Text(FormatDistance(d.Distance), 322, ty + 2, 0.66f, TextColor, TextAlignment.RIGHT);
 
-        // Direction indicator: where the deposit is relative to the nose.
+        // Direction indicator: where the entry is relative to the nose.
         Vector3D local = ToLocal(d.Position, shipPos, ship);
         double yaw = Math.Atan2(local.X, local.Z), pitch = Math.Atan2(local.Y, new Vector2D(local.X, local.Z).Length());
         bool behind = Math.Abs(yaw) > Math.PI / 2;
-        float ix = 276, iy = y + 8;
-        EllipseOutline(ix, iy, 7, 7, 1, GridColor, false);
-        float dx = (float)(Math.Sign(yaw) * Math.Min(Math.Abs(yaw), Math.PI / 2) / (Math.PI / 2) * 6);
-        float dy = (float)(-pitch / (Math.PI / 2) * 6);
-        Ellipse(ix + dx, iy + dy, 2, 2, behind ? WarnColor : color, false);
-        Text(DirectionText(d.Position), 290, y + 1, 0.42f, TextColor, TextAlignment.LEFT, "Monospace");
+        float ix = 342, iy = y + 15;
+        EllipseOutline(ix, iy, 10, 10, 1.5f, GridColor, false);
+        float dx = (float)(Math.Sign(yaw) * Math.Min(Math.Abs(yaw), Math.PI / 2) / (Math.PI / 2) * 8);
+        float dy = (float)(-pitch / (Math.PI / 2) * 8);
+        Ellipse(ix + dx, iy + dy, 3, 3, behind ? WarnColor : color, false);
+        Text(DirectionText(d.Position, true), 358, ty + 2, 0.6f, behind ? WarnColor : TextColor);
 
-        y += RowHeight;
+        y += ListRowHeight;
     }
 
     if (_visibleDeposits.Count == 0)
-        Text("No deposits yet. MARK: aim at ore and scan.", 34, y, 0.42f, DimColor, TextAlignment.LEFT, "Monospace");
-
-    // Summary of the selection
-    float fy = height - 80;
-    Line(6, fy, 506, fy, 1, GridColor);
-    if (_selected != null)
     {
-        Text(_selected.Label + "  " + FormatDistance(_selected.Distance), 10, fy + 6, 0.48f, RouteColor);
+        Text("No entries yet.", 20, y + 4, 0.7f, DimColor);
+        Text("MARK: aim at the ore and scan", 20, y + 34, 0.6f, DimColor);
+    }
+
+    // Selection or flight summary
+    float fy = height - 100;
+    Line(6, fy, 506, fy, 1, GridColor);
+    if (_mode == Mode.Approach)
+    {
+        Text(_approachPhase + "  " + FormatDistance(_targetDistance), 10, fy + 6, 0.66f, _approachPhase == "BRAKING" ? RouteColor : Cyan);
+        Text("stop " + FormatDistance(_stopDistance), 502, fy + 8, 0.6f, TextColor, TextAlignment.RIGHT);
+    }
+    else if (_selected != null)
+    {
+        Text(_selected.Label + "  " + FormatDistance(_selected.Distance), 10, fy + 6, 0.66f, RouteColor);
         double total = _deltaVHydrogen + _deltaVElectric;
         if (total > 0)
-            Text(string.Format("dv {0:0} / {1:0} m/s", TripDeltaV(), total), 502, fy + 8, 0.4f, TextColor, TextAlignment.RIGHT, "Monospace");
+            Text(string.Format("dv {0:0}/{1:0}", TripDeltaV(), total), 502, fy + 8, 0.6f, TextColor, TextAlignment.RIGHT);
     }
-    else if (_message.Length > 0)
-        Text(_message, 10, fy + 8, 0.38f, DimColor, TextAlignment.LEFT, "Monospace");
+    if (_message.Length > 0)
+        Text(_message, 10, fy + 30, 0.5f, DimColor);
 }
 
 // -----------------------------------------------------------------
@@ -1254,14 +1370,14 @@ void DrawList(float height)
 
 void DrawButtons(string[] buttons, float y, bool active)
 {
-    float gap = 5, width = (496 - gap * (buttons.Length - 1)) / buttons.Length;
+    float gap = 5, width = (504 - gap * (buttons.Length - 1)) / buttons.Length;
     for (int i = 0; i < buttons.Length; i++)
     {
-        float x = 8 + i * (width + gap);
+        float x = 4 + i * (width + gap);
         bool highlighted = active && i == _button && _dialog == Dialog.None;
-        Rect(x, y, width, 40, highlighted ? Cyan : PanelColor);
-        Box(x, y, width, 40, 1, active ? Cyan : GridColor);
-        Text(buttons[i], x + width / 2, y + 11, 0.5f, highlighted ? BgColor : active ? Cyan : DimColor, TextAlignment.CENTER);
+        Rect(x, y, width, 52, highlighted ? Cyan : PanelColor);
+        Box(x, y, width, 52, 1.5f, active ? Cyan : GridColor);
+        Text(buttons[i], x + width / 2, y + 12, 0.72f, highlighted ? BgColor : active ? Cyan : DimColor, TextAlignment.CENTER);
     }
 }
 
@@ -1269,37 +1385,37 @@ void DrawDialog(float height)
 {
     if (_dialog == Dialog.None)
         return;
-    float x = 96, w = 320, y = 44;
+    float x = 40, w = 432, y = 48;
     if (_dialog == Dialog.ConfirmDelete)
     {
-        float h = 90;
+        float h = 110;
         y = (height - h) / 2 - 20;
         Rect(x, y, w, h, PanelColor);
         Box(x, y, w, h, 2, WarnColor);
-        Text("Delete " + (_selected != null ? _selected.Label : "") + "?", x + w / 2, y + 12, 0.6f, WarnColor, TextAlignment.CENTER);
-        Text("OK = delete   BACK = cancel", x + w / 2, y + 52, 0.4f, TextColor, TextAlignment.CENTER, "Monospace");
+        Text("Delete " + (_selected != null ? _selected.Label : "") + "?", x + w / 2, y + 14, 0.85f, WarnColor, TextAlignment.CENTER);
+        Text("OK = delete    BACK = cancel", x + w / 2, y + 64, 0.6f, TextColor, TextAlignment.CENTER);
         return;
     }
 
     // Ore picker for MARK
-    int rows = Math.Max(3, Math.Min(_pickerOres.Count, (int)((height - y - 120) / RowHeight)));
-    float boxH = 60 + rows * RowHeight;
+    int rows = Math.Max(2, Math.Min(_pickerOres.Count, (int)((height - y - 150) / ListRowHeight)));
+    float boxH = 80 + rows * ListRowHeight;
     Rect(x, y, w, boxH, PanelColor);
     Box(x, y, w, boxH, 2, Cyan);
-    Text("MARK ORE", x + 10, y + 6, 0.55f, Cyan);
-    Text("aim at the ore, then OK", x + w - 10, y + 12, 0.34f, DimColor, TextAlignment.RIGHT, "Monospace");
+    Text("MARK", x + 12, y + 6, 0.85f, Cyan);
+    Text("aim at the ore first", x + w - 12, y + 12, 0.55f, DimColor, TextAlignment.RIGHT);
     int first = Math.Max(0, Math.Min(_pickerIndex - rows / 2, _pickerOres.Count - rows));
-    float ry = y + 34;
+    float ry = y + 42;
     for (int i = first; i < _pickerOres.Count && i < first + rows; i++)
     {
         bool selected = i == _pickerIndex;
         if (selected)
-            Rect(x + 6, ry - 2, w - 12, RowHeight - 2, Cyan);
-        Diamond(x + 20, ry + 8, 4.5f, OreColor(_pickerOres[i]));
-        Text(_pickerOres[i], x + 32, ry, 0.45f, selected ? BgColor : TextColor);
-        ry += RowHeight;
+            Rect(x + 6, ry, w - 12, ListRowHeight - 3, Cyan);
+        Marker(x + 24, ry + 15, 6.5f, _pickerOres[i], OreColor(_pickerOres[i]));
+        Text(_pickerOres[i], x + 40, ry + 3, 0.72f, selected ? BgColor : TextColor);
+        ry += ListRowHeight;
     }
-    Text("UP/DOWN select   OK scan   BACK cancel", x + w / 2, y + boxH - 22, 0.34f, DimColor, TextAlignment.CENTER, "Monospace");
+    Text("OK = scan    BACK = cancel", x + w / 2, y + boxH - 30, 0.55f, DimColor, TextAlignment.CENTER);
 }
 
 // -----------------------------------------------------------------
@@ -1320,21 +1436,23 @@ static Vector2 PlanePoint(Vector3D local, float cx, float cy, float scale)
 
 static Vector2 ProjectedPoint(Vector3D local, float cx, float cy, float scale)
 {
-    float height = MathHelper.Clamp((float)local.Y * scale * HeightScale, -140, 140);
+    float height = MathHelper.Clamp((float)local.Y * scale * HeightScale, -MaxStem, MaxStem);
     Vector2 plane = PlanePoint(local, cx, cy, scale);
     return new Vector2(plane.X, plane.Y - height);
 }
 
-// "27° R  13° U" (+ "behind") relative to the ship's nose.
-string DirectionText(Vector3D world)
+// "27° R  13° U" (+ "behind") relative to the ship's nose; compact: "27°R 13°U".
+string DirectionText(Vector3D world, bool compact)
 {
     IMyShipController reference = _controller ?? _layoutController;
     MatrixD ship = reference != null ? reference.WorldMatrix : Me.WorldMatrix;
     Vector3D local = ToLocal(world, ReferencePosition(), ship);
     double yaw = Math.Atan2(local.X, local.Z) * 180 / Math.PI;
     double pitch = Math.Atan2(local.Y, new Vector2D(local.X, local.Z).Length()) * 180 / Math.PI;
-    return string.Format("{0,3:0}° {1} {2,2:0}° {3}{4}", Math.Abs(yaw), yaw >= 0 ? "R" : "L",
-        Math.Abs(pitch), pitch >= 0 ? "U" : "D", Math.Abs(yaw) > 90 ? " behind" : "");
+    if (compact)
+        return string.Format("{0:0}°{1} {2:0}°{3}", Math.Abs(yaw), yaw >= 0 ? "R" : "L", Math.Abs(pitch), pitch >= 0 ? "U" : "D");
+    return string.Format("{0:0}° {1}   {2:0}° {3}{4}", Math.Abs(yaw), yaw >= 0 ? "right" : "left",
+        Math.Abs(pitch), pitch >= 0 ? "up" : "down", Math.Abs(yaw) > 90 ? "   behind" : "");
 }
 
 static Color OreColor(string ore)
@@ -1352,6 +1470,7 @@ static Color OreColor(string ore)
         case "Uranium": return new Color(160, 255, 60);
         case "Ice": return new Color(150, 230, 255);
         case "Stone": return new Color(150, 150, 150);
+        case BaseName: return Cyan;
     }
     int hash = ore.GetHashCode();
     return new Color(128 + (hash & 127), 128 + ((hash >> 8) & 127), 128 + ((hash >> 16) & 127));
@@ -1445,6 +1564,18 @@ void Diamond(float x, float y, float r, Color color)
         null, TextAlignment.CENTER, MathHelper.PiOver4));
 }
 
+// Deposit marker: a diamond, the base a square.
+void Marker(float x, float y, float r, string ore, Color color)
+{
+    if (ore == BaseName)
+    {
+        Rect(x - r, y - r, r * 2, r * 2, color);
+        Rect(x - r * 0.45f, y - r * 0.45f, r * 0.9f, r * 0.9f, BgColor);
+    }
+    else
+        Diamond(x, y, r, color);
+}
+
 void DiamondOutline(float x, float y, float r, Color color)
 {
     Line(x, y - r, x + r, y, 1.5f, color);
@@ -1482,6 +1613,9 @@ Dialog _dialog = Dialog.None;
 int _button;
 int _pickerIndex;
 int _zoomIndex = 4;
+bool _uiMode;
+string _uiKey;              // key held in UI mode
+int _uiHoldTicks;
 
 string[] CurrentButtons { get { return _view == MapView.Radar ? RadarButtons : ListButtons; } }
 double MapRange { get { return ZoomLevels[_zoomIndex]; } }
@@ -1491,6 +1625,16 @@ void HandleUiCommand(string value)
     string[] buttons = CurrentButtons;
     switch (value)
     {
+        case null:
+        case "toggle":
+            SetUiMode(!_uiMode);
+            break;
+        case "on":
+            SetUiMode(true);
+            break;
+        case "off":
+            SetUiMode(false);
+            break;
         case "left":
             if (_dialog == Dialog.None)
                 _button = (_button + buttons.Length - 1) % buttons.Length;
@@ -1514,9 +1658,43 @@ void HandleUiCommand(string value)
             _dialog = Dialog.None;
             break;
         default:
-            _message = "Usage: ui left|right|up|down|ok|back";
+            _message = "Usage: ui [on|off] or ui left|right|up|down|ok|back";
             break;
     }
+}
+
+void SetUiMode(bool on)
+{
+    _uiMode = on;
+    _uiKey = null;
+    _message = on ? "UI mode: W/S/A/D select, Space OK, C back" : "UI mode off";
+}
+
+// Reads the movement keys as menu keys (called every tick in UI mode).
+void UpdateUiInput(Vector3 move)
+{
+    string key = move.Z < -0.5f ? "up" : move.Z > 0.5f ? "down"
+        : move.X < -0.5f ? "left" : move.X > 0.5f ? "right"
+        : move.Y > 0.5f ? "ok" : move.Y < -0.5f ? "back" : null;
+    if (key != _uiKey)
+    {
+        _uiKey = key;
+        _uiHoldTicks = 0;
+        if (key != null)
+            UiKey(key);
+        return;
+    }
+    // Held arrow keys repeat after 0.4 s, 10 times per second.
+    if (key != null && key != "ok" && key != "back" && ++_uiHoldTicks >= 24 && _uiHoldTicks % 6 == 0)
+        UiKey(key);
+}
+
+void UiKey(string key)
+{
+    if (key == "back" && _dialog == Dialog.None)
+        SetUiMode(false);
+    else
+        HandleUiCommand(key);
 }
 
 void Confirm()
@@ -1580,6 +1758,7 @@ void SwitchView(MapView view)
 void OpenOrePicker()
 {
     _pickerOres.Clear();
+    _pickerOres.Add(BaseName);
     _pickerOres.AddRange(StandardOres);
     foreach (string ore in _oreAmounts.Keys)
         if (!_pickerOres.Contains(ore))
@@ -1604,6 +1783,9 @@ const double AsteroidRadiusFactor = 0.75;   // asteroid voxel boxes are larger t
 const double GravityCutoff = 0.05 * 9.81;   // m/s^2 - roughly where planet gravity ends
 const double MinLoggedOre = 1.0;            // kg of new ore needed to log a deposit
 const string MapSection = "Map";
+const string BaseName = "Base";
+const int SurveyTicks = 10;                 // one survey scan attempt every 1/6 s
+const int SurveyPattern = 97;               // directions per sweep of the camera cone
 
 static readonly string[] StandardOres = { "Iron", "Nickel", "Cobalt", "Magnesium", "Silicon",
     "Silver", "Gold", "Platinum", "Uranium", "Ice", "Stone" };
@@ -1639,6 +1821,8 @@ string _filter;                 // null = all ores
 string _pendingMarkOre = "";
 bool _mapChanged = true;        // GPS export pending
 bool _oreBaseline;              // _previousOre holds a reading to compare with
+int _surveyCamera;
+int _surveyStep;
 
 // -----------------------------------------------------------------
 //  Commands
@@ -1800,14 +1984,49 @@ void GoToSelected()
 }
 
 // -----------------------------------------------------------------
+//  Background survey
+// -----------------------------------------------------------------
+
+// Cameras take turns scanning their field of view in a spiral pattern,
+// so asteroids the ship passes get onto the map without marking them.
+// The approach camera is left alone while it is needed.
+void UpdateSurvey()
+{
+    if (!_survey || _cameras.Count == 0)
+        return;
+    for (int i = 0; i < _cameras.Count; i++)
+    {
+        IMyCameraBlock camera = _cameras[(_surveyCamera + i) % _cameras.Count];
+        bool busy = camera == _camera && (_scanPending || (_mode == Mode.Approach && _probing));
+        if (busy || !camera.IsWorking)
+            continue;
+        camera.EnableRaycast = true;
+        if (!camera.CanScan(_surveyRange))
+            continue;
+
+        // Sunflower spiral: evenly spread directions within the cone.
+        int step = _surveyStep++ % SurveyPattern;
+        double radius = Math.Sqrt((step + 0.5) / SurveyPattern) * Math.Min(camera.RaycastConeLimit, 45);
+        double angle = step * 2.39996;
+        MyDetectedEntityInfo hit = camera.Raycast(_surveyRange, (float)(radius * Math.Sin(angle)), (float)(radius * Math.Cos(angle)));
+        if (!hit.IsEmpty() && RegisterObstacle(hit))
+            _message = "Found " + (hit.Type == MyDetectedEntityType.Planet ? "planet" : "asteroid")
+                + " at " + FormatDistance(Vector3D.Distance(hit.Position, ReferencePosition()));
+        _surveyCamera = (_surveyCamera + i + 1) % _cameras.Count;
+        return;
+    }
+}
+
+// -----------------------------------------------------------------
 //  Obstacles and gravity wells
 // -----------------------------------------------------------------
 
-void RegisterObstacle(MyDetectedEntityInfo hit)
+// Returns true if the obstacle was not known before.
+bool RegisterObstacle(MyDetectedEntityInfo hit)
 {
     bool planet = hit.Type == MyDetectedEntityType.Planet;
     if (!planet && hit.Type != MyDetectedEntityType.Asteroid)
-        return;
+        return false;
 
     BoundingBoxD box = hit.BoundingBox;
     Vector3D size = box.Max - box.Min;
@@ -1817,16 +2036,19 @@ void RegisterObstacle(MyDetectedEntityInfo hit)
     foreach (Obstacle o in _obstacles)
         if (o.EntityId == hit.EntityId)
             obstacle = o;
-    if (obstacle == null)
+    bool added = obstacle == null;
+    if (added)
     {
         obstacle = new Obstacle { EntityId = hit.EntityId, Planet = planet };
         _obstacles.Add(obstacle);
+        _mapChanged = true;
     }
 
     obstacle.Center = planet ? hit.Position : box.Center;
     obstacle.Radius = planet ? halfSize : halfSize * AsteroidRadiusFactor;
     if (planet && obstacle.GravityRadius <= 0)
         obstacle.GravityRadius = obstacle.Radius * _gravityWellFactor;
+    return added;
 }
 
 // In gravity, measure the planet's position and gravity well directly.
@@ -2270,7 +2492,9 @@ double _forwardSpeed;
 void ControlThrust()
 {
     _controller = FindActiveController();
-    if (!_enabled || _controller == null)
+    if (_controller == null)
+        _uiMode = false;
+    if ((!_enabled && !_uiMode) || _controller == null)
     {
         ReleaseAll();
         return;
@@ -2288,6 +2512,12 @@ void ControlThrust()
     double mass = _controller.CalculateShipMass().PhysicalMass;
     Vector3 move = _controller.MoveIndicator;
     bool dampeners = _controller.DampenersOverride;
+    if (_uiMode)
+    {
+        // The movement keys operate the menu; the ship must not react to them.
+        UpdateUiInput(move);
+        move = Vector3.Zero;
+    }
     _currentSpeed = velocity.Length();
     _forwardSpeed = Vector3D.Dot(velocity, matrix.Forward);
 
@@ -2295,6 +2525,13 @@ void ControlThrust()
     Vector3D targetVelocity;
     double assistAccel;
     bool hasTarget = UpdateDriveAssist(matrix, velocity, move, out targetVelocity, out assistAccel);
+    if (_uiMode && !hasTarget)
+    {
+        // Hold the ship (or keep drifting with dampeners off), since the
+        // game would otherwise fire the thrusters for the pressed keys.
+        hasTarget = true;
+        targetVelocity = dampeners ? Vector3D.Zero : velocity;
+    }
 
     Vector3D[] axes = { matrix.Right, matrix.Up, matrix.Backward };
     for (int axis = 0; axis < 3; axis++)

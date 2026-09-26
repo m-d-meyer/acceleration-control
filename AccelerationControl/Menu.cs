@@ -20,7 +20,13 @@ using VRageMath;
 
 namespace IngameScript
 {
-    // Button menu of the map screens, operated from the toolbar:
+    // Button menu of the map screens.
+    //
+    // UI mode ('ui' toggles it) uses the movement keys while the ship holds
+    // its position: W/S = up/down, A/D = left/right, Space = OK, C = back
+    // (C outside a dialog leaves UI mode). Keys repeat when held.
+    //
+    // The same actions are available as commands for toolbar slots:
     //   ui left / ui right   highlight the previous / next button
     //   ui up / ui down      select the previous / next deposit (or list entry)
     //   ui ok                press the highlighted button
@@ -41,6 +47,9 @@ namespace IngameScript
         int _button;
         int _pickerIndex;
         int _zoomIndex = 4;
+        bool _uiMode;
+        string _uiKey;              // key held in UI mode
+        int _uiHoldTicks;
 
         string[] CurrentButtons { get { return _view == MapView.Radar ? RadarButtons : ListButtons; } }
         double MapRange { get { return ZoomLevels[_zoomIndex]; } }
@@ -50,6 +59,16 @@ namespace IngameScript
             string[] buttons = CurrentButtons;
             switch (value)
             {
+                case null:
+                case "toggle":
+                    SetUiMode(!_uiMode);
+                    break;
+                case "on":
+                    SetUiMode(true);
+                    break;
+                case "off":
+                    SetUiMode(false);
+                    break;
                 case "left":
                     if (_dialog == Dialog.None)
                         _button = (_button + buttons.Length - 1) % buttons.Length;
@@ -73,9 +92,43 @@ namespace IngameScript
                     _dialog = Dialog.None;
                     break;
                 default:
-                    _message = "Usage: ui left|right|up|down|ok|back";
+                    _message = "Usage: ui [on|off] or ui left|right|up|down|ok|back";
                     break;
             }
+        }
+
+        void SetUiMode(bool on)
+        {
+            _uiMode = on;
+            _uiKey = null;
+            _message = on ? "UI mode: W/S/A/D select, Space OK, C back" : "UI mode off";
+        }
+
+        // Reads the movement keys as menu keys (called every tick in UI mode).
+        void UpdateUiInput(Vector3 move)
+        {
+            string key = move.Z < -0.5f ? "up" : move.Z > 0.5f ? "down"
+                : move.X < -0.5f ? "left" : move.X > 0.5f ? "right"
+                : move.Y > 0.5f ? "ok" : move.Y < -0.5f ? "back" : null;
+            if (key != _uiKey)
+            {
+                _uiKey = key;
+                _uiHoldTicks = 0;
+                if (key != null)
+                    UiKey(key);
+                return;
+            }
+            // Held arrow keys repeat after 0.4 s, 10 times per second.
+            if (key != null && key != "ok" && key != "back" && ++_uiHoldTicks >= 24 && _uiHoldTicks % 6 == 0)
+                UiKey(key);
+        }
+
+        void UiKey(string key)
+        {
+            if (key == "back" && _dialog == Dialog.None)
+                SetUiMode(false);
+            else
+                HandleUiCommand(key);
         }
 
         void Confirm()
@@ -139,6 +192,7 @@ namespace IngameScript
         void OpenOrePicker()
         {
             _pickerOres.Clear();
+            _pickerOres.Add(BaseName);
             _pickerOres.AddRange(StandardOres);
             foreach (string ore in _oreAmounts.Keys)
                 if (!_pickerOres.Contains(ore))
