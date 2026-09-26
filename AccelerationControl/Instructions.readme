@@ -1,0 +1,6 @@
+Acceleration Control - Space Engineers programmable block script
+https://github.com/m-d-meyer/acceleration-control
+
+Limits the acceleration of the movement keys, adds drive assists
+(cruise, approach) and shows cargo, fuel and delta-v status.
+See README.md in the repository for setup and commands.

@@ -23,21 +23,27 @@ acceleration instead — in m/s², independent of cargo mass.
 - **Approach** (drive assist): aim at an asteroid, scan it with a camera, and the ship
   flies there at full speed and brakes in time to stop a set distance (default 75 m)
   before the surface
+- **Ship status**: cargo fill level with ore breakdown, battery, uranium and hydrogen
+  with remaining time, jump drive charge, and the remaining **delta-v** with the
+  number of trips it allows
 - Settings survive saving/reloading the world
 
 ## Setup
 
 1. Build a programmable block on the ship.
 2. Open it, click **Edit**, paste the full content of
-   [`AccelerationControl.cs`](AccelerationControl.cs) and click **Check code**, then **OK**.
+   [`dist/AccelerationControl.cs`](dist/AccelerationControl.cs) and click **Check code**, then **OK**.
 3. Put the programmable block on your cockpit toolbar twice, using the **Run**
    action with these arguments:
    - slot 1: `up`   → increase the limit
    - slot 2: `down` → decrease the limit
 4. For **Approach**, build a camera facing forward (same direction as the cockpit).
    If you have several, add `[Accel]` to the name of the one to use.
-5. Optional: add `[Accel]` to the name of an LCD panel to show the status there, or
-   set `CockpitSurface` in the Custom Data to show it on a cockpit screen.
+5. Optional displays:
+   - `[Accel]` in an LCD panel's name shows the flight control page,
+     `[Accel Status]` shows the ship status page.
+   - `CockpitSurface` / `StatusCockpitSurface` in the Custom Data show the pages on
+     a cockpit screen (screen index, counted from 0).
 
 > **Why not the mouse wheel?** The programmable block API does not expose the
 > mouse wheel (in a cockpit it only cycles toolbar slots). Scripts can read the
@@ -62,6 +68,7 @@ Run the programmable block with one of these arguments:
 | `cruise on` / `cruise off` | Start / stop cruise                               |
 | `approach`          | Scan straight ahead with the camera and fly to the target |
 | `stop`              | Cancel cruise or approach                                |
+| `calibrate reset`   | Forget the measured fuel efficiency (see Ship status)    |
 | `reload`            | Re-read Custom Data and rescan blocks                    |
 
 ## Configuration
@@ -77,8 +84,10 @@ first run. Edit them there and run `reload`.
 | `MaxAcceleration`    | `50`      | Highest allowed limit (m/s²)                                   |
 | `LimitDampeners`     | `false`   | Start with limited dampeners enabled                           |
 | `DampenerGain`       | `1.5`     | How hard limited dampeners brake relative to speed (1/s)       |
-| `LcdTag`             | `[Accel]` | LCD panels with this text in their name show the status        |
-| `CockpitSurface`     | `-1`      | Cockpit screen index for the status display, `-1` = off        |
+| `LcdTag`             | `[Accel]` | LCD panels with this text in their name show the control page  |
+| `StatusTag`          | `[Accel Status]` | LCD panels with this text in their name show the status page |
+| `CockpitSurface`     | `-1`      | Cockpit screen index for the control page, `-1` = off          |
+| `StatusCockpitSurface` | `-1`    | Cockpit screen index for the status page, `-1` = off           |
 | `CruiseSpeed`        | `0.75`    | Cruise speed on first start (m/s)                              |
 | `CruiseStep`         | `0.25`    | Change per `cruise up` / `cruise down` (m/s)                   |
 | `VelocityGain`       | `2`       | How firmly cruise/approach correct speed errors (1/s)          |
@@ -88,6 +97,9 @@ first run. Edit them there and run `reload`.
 | `ApproachFullThrust` | `true`    | Approach uses 100 % thrust; `false` = respect the limit        |
 | `MaxSpeed`           | `100`     | Top speed used by approach (the game's speed limit)            |
 | `BrakeSafety`        | `0.8`     | Fraction of the braking thrust that approach plans with        |
+| `HydrogenThrustPerLiter` | `1400` | Start value for hydrogen efficiency (N·s per liter), calibrated in flight |
+| `UraniumMWhPerKg`    | `1`       | Start value for reactor fuel energy (MWh per kg), calibrated in flight |
+| `ElectricThrustPerMW`| `120000`  | Fallback for electric thrusters if their power use cannot be read |
 
 ## Drive assists
 
@@ -118,6 +130,35 @@ acceleration, up to `MaxSpeed`, then braking so it stops at that point.
 - The braking plan is made for space. In strong gravity, braking downwards can be
   weaker than planned; lower `BrakeSafety` if you use it there.
 
+## Ship status
+
+The status page (`[Accel Status]`) shows:
+
+- **Cargo**: fill level of cargo containers, connectors and drills, total mass and the
+  ores on board, largest first.
+- **Battery**: charge, remaining time at the current drain, or the charging power.
+- **Uranium**: reactor fuel and remaining time at the average consumption.
+- **Hydrogen**: tank fill level, amount and remaining time at the average consumption.
+- **Jump**: jump drive charge.
+- **Delta-v**: how much speed change the fuel on board still allows, separately for
+  hydrogen and electric thrusters, and the number of trips that makes.
+
+In space there is no drag, so a trip costs about the same delta-v no matter how far
+it goes: accelerate to `MaxSpeed` and brake again, i.e. `2 × MaxSpeed`. Gravity is
+extra: lifting off a planet costs much more.
+
+Delta-v is an estimate. It assumes all fuel goes into thrust:
+
+- Hydrogen: liters on board × thrust per liter ÷ ship mass. The thrust per liter
+  starts at `HydrogenThrustPerLiter` and is measured while hydrogen thrusters fire,
+  so modded thrusters are handled too.
+- Electric: stored energy (batteries plus uranium × `UraniumMWhPerKg`) × thrust per MW
+  ÷ ship mass. The thrust per MW is read from the thrusters' info; the uranium energy
+  is measured while the reactors run.
+
+Values marked `*` are not calibrated yet. Run `calibrate reset` after changing the
+thruster or reactor setup significantly.
+
 ## How it works
 
 Every tick the script reads the movement input of the controlled cockpit. For
@@ -143,3 +184,29 @@ at the limit until the ship is almost stopped.
 - The script overrides the thrusters on its own construct (including thrusters
   on rotor/piston subgrids that are aligned with the cockpit). Do not combine it
   with other scripts that also set thruster overrides.
+
+## Development
+
+The script is an [MDK2](https://github.com/malforge/mdk2) project in
+[`AccelerationControl/`](AccelerationControl), split into several files:
+
+| File               | Content                                         |
+|--------------------|-------------------------------------------------|
+| `Program.cs`       | Entry point, block discovery, commands          |
+| `ThrustControl.cs` | Acceleration limit via thruster overrides       |
+| `DriveAssists.cs`  | Cruise and approach                             |
+| `ShipStatus.cs`    | Cargo, fuel and delta-v monitoring              |
+| `Displays.cs`      | LCD and cockpit screen output                   |
+| `Config.cs`        | Custom Data configuration and saved state       |
+
+With Space Engineers installed, the project can be opened in Visual Studio or Rider
+with MDK2 for full compiler checks and IntelliSense.
+
+Without the game, `python3 tools/build.py` merges the files into the paste-ready
+[`dist/AccelerationControl.cs`](dist/AccelerationControl.cs). If the result exceeds the
+programmable block's limit of 100,000 characters, comments and indentation are
+stripped automatically. `python3 tools/build.py --check` also runs a C# 6 syntax
+check (needs the .NET SDK). It cannot check the Space Engineers API itself; use
+**Check code** in the game for that.
+
+Always rebuild `dist/` after changing the source files.
