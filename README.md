@@ -82,7 +82,9 @@ Run the programmable block with one of these arguments:
 | `mark base here`    | Store the current position as the base (e.g. while docked) |
 | `select next` / `select prev` | Select the next / previous deposit             |
 | `route`             | Plan a route to the selected entry and show it on the map |
-| `goto`              | Fly to the selected entry along a planned route (stops `ApproachBuffer` before it) |
+| `goto`              | Fly to the selected entry along a planned route (stops `ApproachBuffer` before it); long distances start with a jump |
+| `dock`              | Fly to the base and dock (after docking there once by hand) |
+| `undock`            | Disconnect and back off from the base                    |
 | `delete`            | Delete the selected deposit                              |
 | `filter [<ore>/all]`| Show only one ore; without argument: next ore            |
 | `zoom in` / `zoom out` | Change the radar range (1 km to 200 km)               |
@@ -138,6 +140,11 @@ first run. Edit them there and run `reload`.
 | `CollisionGuard`     | `true`    | Scan the path ahead during flights and react to obstacles      |
 | `AvoidGravityWells`  | `true`    | Routes go around planet gravity wells (unless the target is inside) |
 | `ImportTag`          | `[Accel Import]` | Blocks with this text in their name are read by `map import` |
+| `UseJumpDrive`       | `true`    | GO and dock use the jump drive for long distances              |
+| `JumpMinDistance`    | `20000`   | Jump only if the target is at least this far away (m)          |
+| `JumpArrival`        | `3000`    | The jump ends this far before the target; the rest is flown (m) |
+| `JumpClearance`      | `1000`    | Minimum distance of the jump destination from known obstacles (m) |
+| `DockApproach`       | `30`      | Distance in front of the base connector where docking starts (m, plus ship radius) |
 
 ## Drive assists
 
@@ -178,7 +185,9 @@ mark reaches the end of the distance bar.
 
 ## Ship status
 
-The status page (`[Accel Status]`) shows:
+The status page (`[Accel Status]` or `StatusCockpitSurface`) is drawn graphically:
+a cargo card and a power & fuel card, side by side on wide screens and stacked on
+square ones. It shows:
 
 - **Cargo**: fill level of cargo containers, connectors and drills, total mass and the
   ores on board, largest first.
@@ -293,6 +302,31 @@ length, delta-v and flight time. **GO** plans and flies it.
   done (usually within the first second of the first turn), it turns slowly.
   `calibrate reset` repeats this.
 
+## Jump drive
+
+For targets further away than `JumpMinDistance` (and outside gravity), GO first
+jumps: the ship stops, turns its nose to the target, waits until a jump drive is
+ready, sets the jump distance and jumps ("blind jump" along the nose). The jump ends
+`JumpArrival` meters before the target, at a point at least `JumpClearance` away
+from known asteroids and gravity wells (the distance is shortened if needed). After
+the jump the rest is planned and flown as usual.
+
+The game itself may refuse or shorten a jump, e.g. near gravity or obstacles the
+script does not know. If nothing happens within 30 seconds, the flight stops.
+
+## Docking
+
+1. Dock at the base by hand once. The script notices the connection and stores the
+   dock pose: where the connector was and how the ship was oriented. The base
+   entry on the map is set to that position.
+2. From then on, **GO** on the base (or `dock`) flies there, jumping if far,
+   stops `DockApproach` meters (plus the ship's radius) in front of the connector,
+   turns the ship into the stored orientation, moves in slowly along the connector
+   axis while correcting sideways drift, and connects.
+3. `undock` disconnects and backs off along the connector axis.
+
+This works for bases that do not move. Movement keys cancel docking at any time.
+
 ## Sharing the map
 
 - The Custom Data of every map screen contains the map: `GPS:` lines for deposits
@@ -350,6 +384,9 @@ The script is an [MDK2](https://github.com/malforge/mdk2) project in
 | `MapDisplay.cs`    | Sprite rendering of radar and list              |
 | `Menu.cs`          | Toolbar-driven buttons and dialogs              |
 | `Navigation.cs`    | Route planning, gyroscopes, collision guard     |
+| `Jumping.cs`       | Jump drive                                      |
+| `Docking.cs`       | Automatic docking at the base                   |
+| `StatusDisplay.cs` | Graphical ship status page                      |
 | `Config.cs`        | Custom Data configuration and saved state       |
 
 With Space Engineers installed, the project can be opened in Visual Studio or Rider
@@ -358,7 +395,9 @@ with MDK2 for full compiler checks and IntelliSense.
 Without the game, `python3 tools/build.py` merges the files into the paste-ready
 [`dist/AccelerationControl.cs`](dist/AccelerationControl.cs). If the result exceeds the
 programmable block's limit of 100,000 characters, comments and indentation are
-stripped automatically. `python3 tools/build.py --check` also checks the result
+stripped automatically. If that is still too long, the script's own names are
+shortened with the compiler (`tools/SyntaxCheck/Minifier.cs`, like MDK's full
+minifier). The readable source is always in `AccelerationControl/`. `python3 tools/build.py --check` also checks the result
 with the C# compiler (needs the .NET SDK):
 
 - Always a C# 6 syntax check, the language version of the programmable block.

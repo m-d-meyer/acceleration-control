@@ -194,9 +194,12 @@ namespace IngameScript
             _previewName = _selected.Label;
             _message = ok ? string.Format("Route: {0} legs, {1}", _previewRoute.Count, FormatDistance(_routeLength))
                 : "No complete route found, check the map";
+            if (ok && _useJump && _jumpDrives.Count > 0 && _routeLength > _jumpThreshold)
+                _message += " (GO will jump first)";
         }
 
-        // GO: plan and fly to the selected entry.
+        // GO: plan and fly to the selected entry. The base is docked at if the
+        // dock position is known; long distances start with a jump.
         void GoToSelected()
         {
             if (_selected == null)
@@ -204,7 +207,16 @@ namespace IngameScript
                 _message = "No entry selected";
                 return;
             }
+            if (_selected.Ore == BaseName && _dockKnown && Vector3D.Distance(_selected.Position, _dockPosition) < _mergeDistance * 2)
+            {
+                StartDocking();
+                return;
+            }
+            _dockAfterRoute = false;
+            _temporaryObstacles.Clear();
             Vector3D from = ReferencePosition();
+            if (TryStartJump(from, StopPoint(from, _selected.Position), _selected.Label))
+                return;
             if (!PlanRoute(from, StopPoint(from, _selected.Position), _route))
             {
                 _message = "No complete route found";
@@ -324,6 +336,8 @@ namespace IngameScript
 
         void HandleGuardHit(MyDetectedEntityInfo hit, Vector3D position, Vector3D direction, double remaining)
         {
+            if (_dockAfterRoute && hit.EntityId == _dockGridId)
+                return;     // flying to the base: the base itself is expected ahead
             double along = Vector3D.Dot(hit.HitPosition.Value - position, direction);
             if (along > remaining + _approachBuffer)
                 return;     // beyond the stop point plus buffer: no problem
@@ -390,7 +404,7 @@ namespace IngameScript
         // the measured rotation and corrected if needed.
         void UpdateGyros(IMyShipController controller, Vector3D velocity)
         {
-            bool wanted = _alignShip && _mode == Mode.Approach && _gyros.Count > 0;
+            bool wanted = _gyros.Count > 0 && (_mode == Mode.Jump || _mode == Mode.Dock || (_alignShip && _mode == Mode.Approach));
             // The player turning the ship takes over the gyroscopes.
             if (controller.RotationIndicator.LengthSquared() > 0.01f || Math.Abs(controller.RollIndicator) > 0.01f)
                 wanted = false;
@@ -401,13 +415,31 @@ namespace IngameScript
             }
 
             MatrixD matrix = controller.WorldMatrix;
-            Vector3D toTarget = _approachTarget - ReferencePosition();
-            Vector3D desired = toTarget.Length() > AlignDistance || !OnLastLeg ? Vector3D.Normalize(toTarget) : matrix.Forward;
+            Vector3D desired, desiredUp = Vector3D.Zero;
+            if (_mode == Mode.Jump)
+                desired = _jumpDirection;
+            else if (_mode == Mode.Dock)
+            {
+                desired = _dockForward;
+                desiredUp = _dockUp;
+            }
+            else
+            {
+                Vector3D toTarget = _approachTarget - ReferencePosition();
+                desired = toTarget.Length() > AlignDistance || !OnLastLeg ? Vector3D.Normalize(toTarget) : matrix.Forward;
+            }
             Vector3D axis = Vector3D.Cross(matrix.Forward, desired);
             double sin = axis.Length(), cos = Vector3D.Dot(matrix.Forward, desired);
-            double angle = Math.Atan2(sin, cos);
-            Vector3D rate = sin > 1e-6 ? axis / sin * angle * GyroGain
+            _alignError = Math.Atan2(sin, cos);
+            Vector3D rate = sin > 1e-6 ? axis / sin * _alignError * GyroGain
                 : cos < 0 ? matrix.Up * Math.PI * GyroGain : Vector3D.Zero;
+            if (desiredUp != Vector3D.Zero && cos > 0)
+            {
+                // Roll: bring the ship's up direction to the desired one as well.
+                Vector3D rollAxis = Vector3D.Cross(matrix.Up, desiredUp);
+                rate += rollAxis * GyroGain;
+                _alignError = Math.Max(_alignError, Math.Acos(MathHelper.Clamp(Vector3D.Dot(matrix.Up, desiredUp), -1, 1)));
+            }
 
             bool calibrated = _gyroCalibrated[0] && _gyroCalibrated[1] && _gyroCalibrated[2];
             double maxRate = calibrated ? GyroMaxRate : GyroCalibrationRate;
@@ -428,6 +460,7 @@ namespace IngameScript
         }
 
         Vector3D _commandedRate;
+        double _alignError;             // rad, remaining heading error of the gyroscope target
 
         // Compares the commanded rotation (right-hand rule, per gyro axis) with
         // the ship's measured rotation; a consistently opposite axis is flipped.

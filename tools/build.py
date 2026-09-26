@@ -6,8 +6,12 @@ takes the body of every `partial class Program` file in the project, joins them
 and writes dist/<Project>.cs. If the result exceeds the programmable block's
 character limit, comments and indentation are stripped.
 
-Usage: python3 tools/build.py [--check]
-  --check  also run the C# syntax check (needs the .NET SDK)
+If it is still too long, the script's own names are shortened as well (needs the
+.NET SDK, see full_minify).
+
+Usage: python3 tools/build.py [--check] [--full]
+  --check  also check the result with the C# compiler (needs the .NET SDK)
+  --full   always use the full minification (for testing)
 """
 import os
 import re
@@ -68,6 +72,23 @@ def strip_comments_and_indent(source):
     return "\n".join(l for l in lines if l) + "\n"
 
 
+def full_minify(body):
+    """Rename the script's own symbols to short names (tools/SyntaxCheck/Minifier.cs).
+
+    Needs the .NET SDK and the API stubs from tools/gen_stubs.py.
+    """
+    check = os.path.join(ROOT, "tools", "SyntaxCheck")
+    if not os.path.exists(os.path.join(check, "obj", "Stubs.cs")):
+        subprocess.check_call([sys.executable, os.path.join(ROOT, "tools", "gen_stubs.py")])
+    source = os.path.join(check, "obj", "script-full.cs")
+    target = os.path.join(check, "obj", "script-min.cs")
+    with open(source, "w", encoding="utf-8") as f:
+        f.write(body)
+    subprocess.check_call(["dotnet", "run", "--project", check, "-v", "q", "--", source, "--minify", target],
+                          stdout=subprocess.DEVNULL)
+    return open(target, encoding="utf-8").read() + "\n"
+
+
 def main():
     files = sorted(f for f in os.listdir(PROJECT_DIR) if f.endswith(".cs"))
     files.sort(key=lambda f: f != "Program.cs")
@@ -84,8 +105,10 @@ def main():
             parts.append("\n".join(["// ---- " + f + " ----"] + body).strip("\n"))
     source = "\n".join(header) + "\n\n" + "\n\n".join(parts) + "\n"
 
-    if len(source) > CHAR_LIMIT:
+    if len(source) > CHAR_LIMIT or "--full" in sys.argv:
         source = "\n".join(header) + "\n" + strip_comments_and_indent("\n\n".join(parts))
+    if len(source) > CHAR_LIMIT or "--full" in sys.argv:
+        source = "\n".join(header) + "\n" + full_minify("\n\n".join(parts))
 
     os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
     with open(OUTPUT, "w", encoding="utf-8", newline="\n") as out:

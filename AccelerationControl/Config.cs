@@ -55,6 +55,11 @@ namespace IngameScript
         bool _guard = true;
         bool _avoidGravity = true;
         string _importTag = "[Accel Import]";
+        bool _useJump = true;
+        double _jumpThreshold = 20000;
+        double _jumpArrival = 3000;
+        double _jumpClearance = 1000;
+        double _dockApproach = 30;
         double _defaultCruiseSpeed = 0.75;
         double _cruiseStep = 0.25;
         double _velocityGain = 2.0;
@@ -112,6 +117,11 @@ namespace IngameScript
             _guard = _ini.Get(IniSection, "CollisionGuard").ToBoolean(_guard);
             _avoidGravity = _ini.Get(IniSection, "AvoidGravityWells").ToBoolean(_avoidGravity);
             _importTag = _ini.Get(IniSection, "ImportTag").ToString(_importTag);
+            _useJump = _ini.Get(IniSection, "UseJumpDrive").ToBoolean(_useJump);
+            _jumpThreshold = _ini.Get(IniSection, "JumpMinDistance").ToDouble(_jumpThreshold);
+            _jumpArrival = _ini.Get(IniSection, "JumpArrival").ToDouble(_jumpArrival);
+            _jumpClearance = _ini.Get(IniSection, "JumpClearance").ToDouble(_jumpClearance);
+            _dockApproach = _ini.Get(IniSection, "DockApproach").ToDouble(_dockApproach);
             _defaultCruiseSpeed = _ini.Get(IniSection, "CruiseSpeed").ToDouble(_defaultCruiseSpeed);
             _cruiseStep = _ini.Get(IniSection, "CruiseStep").ToDouble(_cruiseStep);
             _velocityGain = _ini.Get(IniSection, "VelocityGain").ToDouble(_velocityGain);
@@ -151,6 +161,11 @@ namespace IngameScript
             _ini.Set(IniSection, "CollisionGuard", _guard);
             _ini.Set(IniSection, "AvoidGravityWells", _avoidGravity);
             _ini.Set(IniSection, "ImportTag", _importTag);
+            _ini.Set(IniSection, "UseJumpDrive", _useJump);
+            _ini.Set(IniSection, "JumpMinDistance", _jumpThreshold);
+            _ini.Set(IniSection, "JumpArrival", _jumpArrival);
+            _ini.Set(IniSection, "JumpClearance", _jumpClearance);
+            _ini.Set(IniSection, "DockApproach", _dockApproach);
             _ini.Set(IniSection, "CruiseSpeed", _defaultCruiseSpeed);
             _ini.Set(IniSection, "CruiseStep", _cruiseStep);
             _ini.Set(IniSection, "VelocityGain", _velocityGain);
@@ -208,6 +223,9 @@ namespace IngameScript
             state.Set(StateSection, "Zoom", _zoomIndex);
             state.Set(StateSection, "GyroSign", string.Join(";", Num(_gyroSign.X), Num(_gyroSign.Y), Num(_gyroSign.Z),
                 _gyroCalibrated[0] ? "1" : "0", _gyroCalibrated[1] ? "1" : "0", _gyroCalibrated[2] ? "1" : "0"));
+            if (_dockKnown)
+                state.Set(StateSection, "Dock", string.Join(";", Vec(_dockPosition), Vec(_dockAxis), Vec(_dockForward), Vec(_dockUp),
+                    _dockConnectorId.ToString(), _dockGridId.ToString()));
             SaveMap(state);
             Storage = state.ToString();
         }
@@ -240,7 +258,30 @@ namespace IngameScript
                 for (int i = 0; i < 3; i++)
                     _gyroCalibrated[i] = gyro[3 + i] == "1";
             }
+            string[] dock = state.Get(StateSection, "Dock").ToString("").Split(';');
+            if (dock.Length == 14)
+            {
+                _dockPosition = ParseVec(dock, 0);
+                _dockAxis = ParseVec(dock, 3);
+                _dockForward = ParseVec(dock, 6);
+                _dockUp = ParseVec(dock, 9);
+                _dockKnown = long.TryParse(dock[12], out _dockConnectorId) && long.TryParse(dock[13], out _dockGridId);
+            }
             LoadMap(state);
+        }
+
+        static string Vec(Vector3D v)
+        {
+            return Num(v.X) + ";" + Num(v.Y) + ";" + Num(v.Z);
+        }
+
+        Vector3D ParseVec(string[] parts, int index)
+        {
+            double x, y, z;
+            TryParseNumber(parts[index], out x);
+            TryParseNumber(parts[index + 1], out y);
+            TryParseNumber(parts[index + 2], out z);
+            return new Vector3D(x, y, z);
         }
 
         // State format of the first versions: "limit;enabled;limitDampeners[;cruiseSpeed]".

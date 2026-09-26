@@ -39,6 +39,18 @@ if (semantic && diagnostics.All(d => d.Severity != DiagnosticSeverity.Error))
 }
 
 var errors = diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+
+// --minify <output>: write a renamed and compacted version (needs the stubs)
+int minifyArg = Array.IndexOf(args, "--minify");
+if (minifyArg > 0 && semantic && errors.Count == 0)
+{
+    var stubs = CSharpSyntaxTree.ParseText(File.ReadAllText(stubsPath), new CSharpParseOptions(LanguageVersion.CSharp6));
+    var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")).Split(Path.PathSeparator)
+        .Select(p => MetadataReference.CreateFromFile(p));
+    var compilation = CSharpCompilation.Create("Script", new[] { stubs, script }, references,
+        new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    File.WriteAllText(args[minifyArg + 1], Minifier.Minify(compilation, script, source.IndexOf('\n') + 1));
+}
 foreach (var d in errors)
 {
     var line = d.Location.GetLineSpan().StartLinePosition.Line; // 0-based + wrapper line = merged file line

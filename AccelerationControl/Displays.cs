@@ -57,7 +57,8 @@ namespace IngameScript
             foreach (IMyTextPanel p in _controlPanels)
                 WriteSurface(p, control);
             foreach (IMyTextPanel p in _statusPanels)
-                WriteSurface(p, status);
+                if (WithinDrawBudget())
+                    DrawStatusSurface(p);
 
             UpdateVisibleDeposits();
             _frameToggle = !_frameToggle;
@@ -72,7 +73,8 @@ namespace IngameScript
             if (provider != null)
             {
                 WriteCockpitSurface(provider, _cockpitSurface, control);
-                WriteCockpitSurface(provider, _statusCockpitSurface, status);
+                if (_statusCockpitSurface >= 0 && _statusCockpitSurface < provider.SurfaceCount && WithinDrawBudget())
+                    DrawStatusSurface(provider.GetSurface(_statusCockpitSurface));
                 if (_mapCockpitSurface >= 0 && _mapCockpitSurface < provider.SurfaceCount && WithinDrawBudget())
                     DrawMapSurface(provider.GetSurface(_mapCockpitSurface), _view);
                 if (_listCockpitSurface >= 0 && _listCockpitSurface < provider.SurfaceCount && WithinDrawBudget())
@@ -137,6 +139,12 @@ namespace IngameScript
             {
                 case Mode.Cruise:
                     _text.AppendFormat("Cruise: {0:0.00} m/s (now {1:0.00})\n", _cruiseSpeed, _forwardSpeed);
+                    break;
+                case Mode.Jump:
+                    _text.AppendFormat("Jump {0}: {1}\n", FormatDistance(_jumpDistance), _jumpState);
+                    break;
+                case Mode.Dock:
+                    _text.AppendLine(_dockFinal ? "Docking: " + FormatDistance(_targetDistance) : "Docking: aligning");
                     break;
                 case Mode.Approach:
                     _text.AppendFormat("Approach {0}: {1}, {2:0} m/s\n", _targetName, FormatDistance(_targetDistance), _currentSpeed);

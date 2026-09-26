@@ -198,7 +198,7 @@ def main():
         if kind == "Delegate":
             namespaces[namespace].append(declaration + ";")
             continue
-        declaration = declaration.replace("sealed ", "").replace("static class", "class")
+        declaration = declaration.replace("abstract sealed class", "static class").replace("sealed ", "")
         if kind in ("Struct", "Class", "Interface"):
             declaration = re.sub(r"\b(struct|class|interface)\b", r"partial \1", declaration, count=1)
         simple = re.sub(r"<.*", "", name)

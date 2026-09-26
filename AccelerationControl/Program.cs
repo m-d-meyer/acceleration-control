@@ -100,6 +100,7 @@ namespace IngameScript
             GridTerminalSystem.GetBlocksOfType(_allThrusters, t => t.IsSameConstructAs(Me));
             GridTerminalSystem.GetBlocksOfType(_cameras, c => c.IsSameConstructAs(Me));
             GridTerminalSystem.GetBlocksOfType(_gyros, g => g.IsSameConstructAs(Me));
+            GridTerminalSystem.GetBlocksOfType(_connectors, c => c.IsSameConstructAs(Me));
             FindDisplays();
             FindStatusBlocks();
 
@@ -190,6 +191,12 @@ namespace IngameScript
                     break;
                 case "route":
                     PreviewRoute();
+                    break;
+                case "dock":
+                    StartDocking();
+                    break;
+                case "undock":
+                    Undock();
                     break;
                 case "select":
                     MoveSelection(value == "prev" ? -1 : 1);

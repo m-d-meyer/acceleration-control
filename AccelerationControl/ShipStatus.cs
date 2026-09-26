@@ -132,6 +132,7 @@ namespace IngameScript
             ReadPower();
             AutoLogMining();
             UpdatePlanet();
+            CheckDocking();
 
             double hydrogenUsed = _previousHydrogen >= 0 ? _previousHydrogen - _hydrogen : -1;
             double uraniumUsed = _previousUranium >= 0 ? _previousUranium - _uranium : -1;

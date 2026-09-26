@@ -63,12 +63,7 @@ namespace IngameScript
 
         void DrawMapSurface(IMyTextSurface surface, MapView view)
         {
-            surface.ContentType = ContentType.SCRIPT;
-            surface.Script = "";
-            surface.ScriptBackgroundColor = BgColor;
-
-            RectangleF viewport = new RectangleF((surface.TextureSize - surface.SurfaceSize) / 2f, surface.SurfaceSize);
-            _surface = surface;
+            RectangleF viewport = BeginSprites(surface);
             using (MySpriteDrawFrame frame = surface.DrawFrame())
             {
                 _frame = frame;
@@ -276,7 +271,15 @@ namespace IngameScript
             Box(x, y, width, height, 1, GridColor);
             float left = x + 12, right = x + width - 12;
 
-            if (_mode == Mode.Approach)
+            if (_mode == Mode.Jump || _mode == Mode.Dock)
+            {
+                bool jump = _mode == Mode.Jump;
+                Text(jump ? "JUMP  " + FormatDistance(_jumpDistance) : "DOCKING", left, y + 6, 0.8f, jump ? JumpColor : Cyan);
+                Text(jump ? _jumpState : _dockFinal ? FormatDistance(_targetDistance) + " to the connector" : "turning into position",
+                    left, y + 40, 0.65f, TextColor);
+                Text(string.Format("heading error {0:0.0}°", MathHelper.ToDegrees((float)_alignError)), left, y + 68, 0.55f, DimColor);
+            }
+            else if (_mode == Mode.Approach)
             {
                 string leg = _route.Count > 1 && !_probing ? "  " + (_routeIndex + 1) + "/" + _route.Count : "";
                 Text("> " + _targetName + leg, left, y + 6, 0.8f, RouteColor);
@@ -394,7 +397,11 @@ namespace IngameScript
             // Selection or flight summary
             float fy = height - 100;
             Line(6, fy, 506, fy, 1, GridColor);
-            if (_mode == Mode.Approach)
+            if (_mode == Mode.Jump)
+                Text("JUMP " + FormatDistance(_jumpDistance) + "  " + _jumpState, 10, fy + 6, 0.66f, JumpColor);
+            else if (_mode == Mode.Dock)
+                Text(_dockFinal ? "DOCKING  " + FormatDistance(_targetDistance) : "DOCKING  turning", 10, fy + 6, 0.66f, Cyan);
+            else if (_mode == Mode.Approach)
             {
                 Text(_approachPhase + "  " + FormatDistance(_targetDistance), 10, fy + 6, 0.66f, _approachPhase == "BRAKING" ? RouteColor : Cyan);
                 Text("stop " + FormatDistance(_stopDistance), 502, fy + 8, 0.6f, TextColor, TextAlignment.RIGHT);

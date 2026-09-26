@@ -28,7 +28,7 @@ namespace IngameScript
         const double ArrivalDistance = 2.0;         // m - approach is finished within this distance...
         const double ArrivalSpeed = 0.3;            // m/s - ...and below this speed
 
-        enum Mode { Manual, Cruise, Approach }
+        enum Mode { Manual, Cruise, Approach, Jump, Dock }
         enum ScanPurpose { Approach, Mark }
 
         readonly List<IMyCameraBlock> _cameras = new List<IMyCameraBlock>();
@@ -68,14 +68,28 @@ namespace IngameScript
                 return true;
             }
 
+            if (_mode != Mode.Manual && _mode != Mode.Cruise && move.LengthSquared() > InputDeadzone * InputDeadzone)
+            {
+                _message = _mode == Mode.Jump ? "Jump cancelled" : _mode == Mode.Dock ? "Docking cancelled" : "Approach cancelled";
+                _mode = Mode.Manual;
+                _dockAfterRoute = false;
+                return false;
+            }
+
+            if (_mode == Mode.Jump)
+            {
+                UpdateJump();       // the ship holds still (target velocity zero) while it turns and jumps
+                return _mode == Mode.Jump || _mode == Mode.Approach;
+            }
+
+            if (_mode == Mode.Dock)
+            {
+                maxAccel = Math.Min(_limit, 2);
+                return DockVelocity(out targetVelocity);
+            }
+
             if (_mode == Mode.Approach)
             {
-                if (move.LengthSquared() > InputDeadzone * InputDeadzone)
-                {
-                    _mode = Mode.Manual;
-                    _message = "Approach cancelled";
-                    return false;
-                }
                 if (_approachFullThrust)
                     maxAccel = double.MaxValue;
                 return ApproachVelocity(velocity, out targetVelocity);
@@ -250,6 +264,7 @@ namespace IngameScript
             _route.Clear();
             _route.Add(surfacePoint - ray / distance * _approachBuffer);
             _temporaryObstacles.Clear();
+            _dockAfterRoute = false;
             StartRoute(name);
             return true;
         }
@@ -308,6 +323,11 @@ namespace IngameScript
 
             if ((_probing || OnLastLeg) && _targetDistance < ArrivalDistance && velocity.Length() < ArrivalSpeed)
             {
+                if (_dockAfterRoute)
+                {
+                    StartDockAlign();
+                    return false;
+                }
                 _mode = Mode.Manual;
                 _message = _probing ? "Nothing found along the line of sight" : "Arrived";
                 _probing = false;
