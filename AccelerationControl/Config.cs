@@ -51,6 +51,10 @@ namespace IngameScript
         bool _survey = true;
         double _surveyRange = 6000;
         double _probeRange = 50000;
+        bool _alignShip = true;
+        bool _guard = true;
+        bool _avoidGravity = true;
+        string _importTag = "[Accel Import]";
         double _defaultCruiseSpeed = 0.75;
         double _cruiseStep = 0.25;
         double _velocityGain = 2.0;
@@ -104,6 +108,10 @@ namespace IngameScript
             _survey = _ini.Get(IniSection, "Survey").ToBoolean(_survey);
             _surveyRange = _ini.Get(IniSection, "SurveyRange").ToDouble(_surveyRange);
             _probeRange = _ini.Get(IniSection, "SearchRange").ToDouble(_probeRange);
+            _alignShip = _ini.Get(IniSection, "AlignShip").ToBoolean(_alignShip);
+            _guard = _ini.Get(IniSection, "CollisionGuard").ToBoolean(_guard);
+            _avoidGravity = _ini.Get(IniSection, "AvoidGravityWells").ToBoolean(_avoidGravity);
+            _importTag = _ini.Get(IniSection, "ImportTag").ToString(_importTag);
             _defaultCruiseSpeed = _ini.Get(IniSection, "CruiseSpeed").ToDouble(_defaultCruiseSpeed);
             _cruiseStep = _ini.Get(IniSection, "CruiseStep").ToDouble(_cruiseStep);
             _velocityGain = _ini.Get(IniSection, "VelocityGain").ToDouble(_velocityGain);
@@ -139,6 +147,10 @@ namespace IngameScript
             _ini.Set(IniSection, "Survey", _survey);
             _ini.Set(IniSection, "SurveyRange", _surveyRange);
             _ini.Set(IniSection, "SearchRange", _probeRange);
+            _ini.Set(IniSection, "AlignShip", _alignShip);
+            _ini.Set(IniSection, "CollisionGuard", _guard);
+            _ini.Set(IniSection, "AvoidGravityWells", _avoidGravity);
+            _ini.Set(IniSection, "ImportTag", _importTag);
             _ini.Set(IniSection, "CruiseSpeed", _defaultCruiseSpeed);
             _ini.Set(IniSection, "CruiseStep", _cruiseStep);
             _ini.Set(IniSection, "VelocityGain", _velocityGain);
@@ -177,6 +189,9 @@ namespace IngameScript
             _uraniumMWhPerKg = _defaultUraniumMWhPerKg;
             _hydrogenImpulseTotal = _hydrogenUsedTotal = 0;
             _uraniumEnergyTotal = _uraniumUsedTotal = 0;
+            _gyroSign = Vector3D.One;
+            _gyroCalibrated = new bool[3];
+            _gyroEvidence = Vector3D.Zero;
         }
 
         void SaveState()
@@ -191,6 +206,8 @@ namespace IngameScript
             state.Set(StateSection, "UraniumCalibrated", _uraniumCalibrated);
             state.Set(StateSection, "UraniumMWhPerKg", _uraniumMWhPerKg);
             state.Set(StateSection, "Zoom", _zoomIndex);
+            state.Set(StateSection, "GyroSign", string.Join(";", Num(_gyroSign.X), Num(_gyroSign.Y), Num(_gyroSign.Z),
+                _gyroCalibrated[0] ? "1" : "0", _gyroCalibrated[1] ? "1" : "0", _gyroCalibrated[2] ? "1" : "0"));
             SaveMap(state);
             Storage = state.ToString();
         }
@@ -215,6 +232,14 @@ namespace IngameScript
             if (_uraniumCalibrated)
                 _uraniumMWhPerKg = state.Get(StateSection, "UraniumMWhPerKg").ToDouble(_uraniumMWhPerKg);
             _zoomIndex = MathHelper.Clamp(state.Get(StateSection, "Zoom").ToInt32(_zoomIndex), 0, ZoomLevels.Length - 1);
+            string[] gyro = state.Get(StateSection, "GyroSign").ToString("").Split(';');
+            double x, y, z;
+            if (gyro.Length == 6 && TryParseNumber(gyro[0], out x) && TryParseNumber(gyro[1], out y) && TryParseNumber(gyro[2], out z))
+            {
+                _gyroSign = new Vector3D(x, y, z);
+                for (int i = 0; i < 3; i++)
+                    _gyroCalibrated[i] = gyro[3 + i] == "1";
+            }
             LoadMap(state);
         }
 

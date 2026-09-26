@@ -77,10 +77,14 @@ namespace IngameScript
 
             UpdateScan();
             ControlThrust();
+            if (_ticks % 2 == 0)
+                UpdateGuard();
             if (_ticks % SurveyTicks == 0)
                 UpdateSurvey();
 
             SampleFuelUse(1 / TicksPerSecond);
+            if (_ticks % StatusTicks == 30)
+                ReceiveMaps();
             if (_ticks % StatusTicks == 0)
                 UpdateShipStatus(StatusTicks / TicksPerSecond);
 
@@ -95,6 +99,7 @@ namespace IngameScript
             GridTerminalSystem.GetBlocksOfType(_controllers, c => c.IsSameConstructAs(Me) && c.CanControlShip);
             GridTerminalSystem.GetBlocksOfType(_allThrusters, t => t.IsSameConstructAs(Me));
             GridTerminalSystem.GetBlocksOfType(_cameras, c => c.IsSameConstructAs(Me));
+            GridTerminalSystem.GetBlocksOfType(_gyros, g => g.IsSameConstructAs(Me));
             FindDisplays();
             FindStatusBlocks();
 
@@ -182,6 +187,9 @@ namespace IngameScript
                     break;
                 case "goto":
                     GoToSelected();
+                    break;
+                case "route":
+                    PreviewRoute();
                     break;
                 case "select":
                     MoveSelection(value == "prev" ? -1 : 1);

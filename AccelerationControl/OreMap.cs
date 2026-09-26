@@ -99,10 +99,14 @@ namespace IngameScript
                 _message = "Scanning for " + ore + "...";
         }
 
-        // map clear confirm | map gps
+        // map import | map send | map clear confirm
         void HandleMapCommand(string value, string extra)
         {
-            if (value == "clear" && extra == "confirm")
+            if (value == "import")
+                ImportFromBlocks();
+            else if (value == "send")
+                SendMap();
+            else if (value == "clear" && extra == "confirm")
             {
                 _deposits.Clear();
                 _obstacles.Clear();
@@ -113,7 +117,7 @@ namespace IngameScript
             else if (value == "clear")
                 _message = "Run 'map clear confirm' to delete all entries";
             else
-                _message = "Usage: map clear confirm";
+                _message = "Usage: map import | map send | map clear confirm";
         }
 
         string NormalizeOre(string name)
@@ -212,24 +216,6 @@ namespace IngameScript
             return count > 0 ? sum / count : ReferencePosition();
         }
 
-        void GoToSelected()
-        {
-            if (_selected == null)
-            {
-                _message = "No deposit selected";
-                return;
-            }
-            Vector3D from = ReferencePosition();
-            Obstacle blocking = FirstObstacleOnPath(from, _selected.Position);
-            if (blocking != null)
-            {
-                _message = "Direct path blocked by " + (blocking.Planet ? "a planet" : "an asteroid");
-                return;
-            }
-            if (StartApproach(_selected.Position, _selected.Label))
-                _message = "Flying to " + _selected.Label;
-        }
-
         // -----------------------------------------------------------------
         //  Background survey
         // -----------------------------------------------------------------
@@ -295,6 +281,8 @@ namespace IngameScript
             obstacle.Radius = planet ? halfSize : halfSize * AsteroidRadiusFactor;
             if (planet && obstacle.GravityRadius <= 0)
                 obstacle.GravityRadius = obstacle.Radius * _gravityWellFactor;
+            if (added)
+                CheckRouteAfterNewObstacle();
             return added;
         }
 
@@ -329,29 +317,6 @@ namespace IngameScript
             planet.Center = center;
             planet.Radius = radius;
             planet.GravityRadius = wellRadius;
-        }
-
-        // First asteroid or planet the straight line from -> to passes through.
-        // The body the target itself belongs to is ignored.
-        Obstacle FirstObstacleOnPath(Vector3D from, Vector3D to)
-        {
-            Obstacle first = null;
-            double firstDistance = double.MaxValue;
-            foreach (Obstacle o in _obstacles)
-            {
-                double clearance = o.Radius + _approachBuffer;
-                if (Vector3D.Distance(o.Center, to) < o.Radius + 2 * _approachBuffer)
-                    continue;
-                if (DistanceToSegment(o.Center, from, to) >= clearance)
-                    continue;
-                double d = Vector3D.Distance(from, o.Center);
-                if (d < firstDistance)
-                {
-                    first = o;
-                    firstDistance = d;
-                }
-            }
-            return first;
         }
 
         static double DistanceToSegment(Vector3D point, Vector3D a, Vector3D b)
@@ -452,19 +417,101 @@ namespace IngameScript
             _mapChanged = true;
         }
 
-        // GPS lines ("GPS:name:x:y:z:#color:") that can be copied into the
-        // game's GPS list with "Paste from clipboard".
-        string BuildGpsList()
+        // Export for the Custom Data of the map screens:
+        //   GPS:name:x:y:z:#color:   deposits and base; the game's GPS menu can
+        //                            paste these ("Paste from clipboard")
+        //   MAP:A|P:id:x:y:z:r:g:    known asteroids / planets, for 'map import'
+        string BuildExport()
         {
             var sb = new StringBuilder();
+            var culture = System.Globalization.CultureInfo.InvariantCulture;
             foreach (Deposit d in _deposits)
             {
                 Color c = OreColor(d.Ore);
-                sb.AppendFormat(System.Globalization.CultureInfo.InvariantCulture,
-                    "GPS:{0}:{1:0.0}:{2:0.0}:{3:0.0}:#{4:X2}{5:X2}{6:X2}:\n", d.Label,
+                sb.AppendFormat(culture, "GPS:{0}:{1:0.0}:{2:0.0}:{3:0.0}:#{4:X2}{5:X2}{6:X2}:\n", d.Label,
                     d.Position.X, d.Position.Y, d.Position.Z, c.R, c.G, c.B);
             }
+            foreach (Obstacle o in _obstacles)
+                sb.AppendFormat(culture, "MAP:{0}:{1}:{2:0.0}:{3:0.0}:{4:0.0}:{5:0.0}:{6:0.0}:\n", o.Planet ? "P" : "A",
+                    o.EntityId, o.Center.X, o.Center.Y, o.Center.Z, o.Radius, o.GravityRadius);
             return sb.ToString();
+        }
+
+        // Merges GPS and MAP lines into the map. Returns the number of new entries.
+        int ImportMap(string text)
+        {
+            int added = 0;
+            foreach (string raw in text.Split('\n'))
+            {
+                string[] p = raw.Trim().Split(':');
+                double x, y, z, r, g;
+                if (p.Length >= 5 && p[0] == "GPS" && TryParseNumber(p[2], out x) && TryParseNumber(p[3], out y) && TryParseNumber(p[4], out z))
+                {
+                    // "Iron #2" -> Iron; other names are kept as they are
+                    int hash = p[1].LastIndexOf(" #");
+                    string ore = hash > 0 ? p[1].Substring(0, hash) : p[1];
+                    int before = _deposits.Count;
+                    AddDeposit(ore, new Vector3D(x, y, z), false);
+                    added += _deposits.Count - before;
+                }
+                else if (p.Length >= 8 && p[0] == "MAP" && TryParseNumber(p[3], out x) && TryParseNumber(p[4], out y)
+                    && TryParseNumber(p[5], out z) && TryParseNumber(p[6], out r) && TryParseNumber(p[7], out g))
+                {
+                    long id;
+                    long.TryParse(p[2], out id);
+                    Vector3D center = new Vector3D(x, y, z);
+                    bool known = false;
+                    foreach (Obstacle o in _obstacles)
+                        if ((id != 0 && o.EntityId == id) || Vector3D.DistanceSquared(o.Center, center) < 1)
+                            known = true;
+                    if (!known)
+                    {
+                        _obstacles.Add(new Obstacle { Planet = p[1] == "P", EntityId = id, Center = center, Radius = r, GravityRadius = g });
+                        added++;
+                    }
+                }
+            }
+            if (added > 0)
+                _mapChanged = true;
+            return added;
+        }
+
+        // map import: Custom Data of blocks tagged [Accel Import], and of the map
+        // screens of docked ships (other constructs on the same grid network).
+        void ImportFromBlocks()
+        {
+            var blocks = new List<IMyTerminalBlock>();
+            GridTerminalSystem.GetBlocksOfType(blocks, b => b.CustomName.Contains(_importTag)
+                || (!b.IsSameConstructAs(Me) && (b.CustomName.Contains(_mapTag) || b.CustomName.Contains(_listTag))));
+            int added = 0;
+            foreach (IMyTerminalBlock b in blocks)
+                added += ImportMap(b.CustomData);
+            _message = blocks.Count == 0 ? "Nothing to import: tag a block " + _importTag + " or dock to a ship with a map"
+                : "Imported " + added + " new entries";
+        }
+
+        // Map exchange over antennas (IGC): 'map send' broadcasts the map,
+        // every ship or station running this script merges it automatically.
+        const string MapChannel = "AccelerationControl.Map";
+        IMyBroadcastListener _mapListener;
+
+        void ReceiveMaps()
+        {
+            if (_mapListener == null)
+                _mapListener = IGC.RegisterBroadcastListener(MapChannel);
+            while (_mapListener.HasPendingMessage)
+            {
+                MyIGCMessage message = _mapListener.AcceptMessage();
+                string text = message.Data as string;
+                if (text != null)
+                    _message = "Received map: " + ImportMap(text) + " new entries";
+            }
+        }
+
+        void SendMap()
+        {
+            IGC.SendBroadcastMessage(MapChannel, BuildExport());
+            _message = "Map sent (" + _deposits.Count + " entries, " + _obstacles.Count + " obstacles)";
         }
     }
 }

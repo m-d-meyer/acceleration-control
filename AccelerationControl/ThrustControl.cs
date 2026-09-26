@@ -50,6 +50,7 @@ namespace IngameScript
             if ((!_enabled && !_uiMode) || _controller == null)
             {
                 ReleaseAll();
+                ReleaseGyros();
                 return;
             }
 
@@ -123,6 +124,8 @@ namespace IngameScript
                 double force = mass * (targetAccel - Vector3D.Dot(gravity, dir));
                 ApplyAxisForce(axis, force);
             }
+
+            UpdateGyros(_controller, velocity);
         }
 
         void ApplyAxisForce(int axis, double force)

@@ -177,12 +177,19 @@ namespace IngameScript
                 _mapItems.Add(new MapItem { Deposit = d, Local = ToLocal(d.Position, shipPos, ship) });
             _mapItems.Sort((a, b) => b.Local.Z.CompareTo(a.Local.Z));
 
-            // Current approach as a dashed line
-            if (_mode == Mode.Approach)
+            // Active route (or the previewed one) as a dashed line with waypoints
+            bool flying = _mode == Mode.Approach;
+            List<Vector3D> route = flying ? _route : _previewRoute;
+            float px = cx, py = cy;
+            for (int i = flying ? _routeIndex : 0; i < route.Count; i++)
             {
-                Vector2 target = ProjectedPoint(ToLocal(_approachTarget, shipPos, ship), cx, cy, scale);
-                Dashed(cx, cy, target.X, target.Y, 3, RouteColor);
-                DiamondOutline(target.X, target.Y, 8, RouteColor);
+                Vector2 point = ProjectedPoint(ToLocal(route[i], shipPos, ship), cx, cy, scale);
+                Dashed(px, py, point.X, point.Y, 3, flying ? RouteColor : RouteColor * 0.7f);
+                DiamondOutline(point.X, point.Y, 8, RouteColor);
+                if (i < route.Count - 1)
+                    Text("W" + (i + 1), point.X - 12, point.Y - 8, 0.55f, RouteColor, TextAlignment.RIGHT);
+                px = point.X;
+                py = point.Y;
             }
 
             foreach (MapItem item in _mapItems)
@@ -271,7 +278,8 @@ namespace IngameScript
 
             if (_mode == Mode.Approach)
             {
-                Text("> " + _targetName, left, y + 6, 0.8f, RouteColor);
+                string leg = _route.Count > 1 && !_probing ? "  " + (_routeIndex + 1) + "/" + _route.Count : "";
+                Text("> " + _targetName + leg, left, y + 6, 0.8f, RouteColor);
                 Text(_currentSpeed.ToString("0") + " m/s", right, y + 10, 0.7f, TextColor, TextAlignment.RIGHT);
                 DrawApproachGauge(left, y + 44, right - left);
             }
@@ -286,9 +294,16 @@ namespace IngameScript
                 Text(FormatDistance(_selected.Distance), right, y + 10, 0.7f, TextColor, TextAlignment.RIGHT);
                 Text(DirectionText(_selected.Position, false), left, y + 40, 0.6f, DimColor);
 
-                Obstacle blocking = FirstObstacleOnPath(ReferencePosition(), _selected.Position);
-                Text(blocking == null ? "Direct path clear" : "Path blocked by " + (blocking.Planet ? "planet" : "asteroid"),
-                    left, y + 64, 0.6f, blocking == null ? TextColor : WarnColor);
+                if (_previewRoute.Count > 0 && _previewName == _selected.Label)
+                    Text(string.Format("Route {0} legs  {1}  {2:0} m/s  {3}", _previewRoute.Count, FormatDistance(_routeLength),
+                        _routeDeltaV, FormatTime(_routeTime)), left, y + 64, 0.6f, RouteColor);
+                else
+                {
+                    Vector3D from = ReferencePosition();
+                    Obstacle blocking = BlockingObstacle(from, StopPoint(from, _selected.Position));
+                    Text(blocking == null ? "Direct path clear" : "Route goes around " + (blocking.Planet ? "a planet" : "an asteroid"),
+                        left, y + 64, 0.6f, blocking == null ? TextColor : RouteColor);
+                }
 
                 double total = _deltaVHydrogen + _deltaVElectric;
                 if (total > 0)
@@ -296,8 +311,9 @@ namespace IngameScript
                     float barW = width - 230;
                     Text("dv", left, y + 90, 0.6f, TextColor);
                     Box(left + 32, y + 94, barW, 14, 1, GridColor);
-                    Rect(left + 33, y + 95, (barW - 2) * (float)Math.Min(TripDeltaV() / total, 1), 12, RouteColor);
-                    Text(string.Format("{0:0} / {1:0} m/s", TripDeltaV(), total), right, y + 90, 0.55f, TextColor, TextAlignment.RIGHT);
+                    double needed = _previewRoute.Count > 0 && _previewName == _selected.Label ? _routeDeltaV : TripDeltaV();
+                    Rect(left + 33, y + 95, (barW - 2) * (float)Math.Min(needed / total, 1), 12, needed > total ? WarnColor : RouteColor);
+                    Text(string.Format("{0:0} / {1:0} m/s", needed, total), right, y + 90, 0.55f, TextColor, TextAlignment.RIGHT);
                 }
             }
 

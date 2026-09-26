@@ -200,13 +200,12 @@ namespace IngameScript
         // within the part of the line that has been scanned clear.
         void StartProbe(Vector3D origin, Vector3D direction, double clearRange)
         {
-            _probing = true;
             _probeDirection = direction;
             _clearUntil = origin + direction * clearRange;
-            _approachTarget = origin + direction * _probeRange;
-            _targetName = "line of sight";
-            _enabled = true;
-            _mode = Mode.Approach;
+            _route.Clear();
+            _route.Add(origin + direction * _probeRange);
+            StartRoute("line of sight");
+            _probing = true;
             _message = "Nothing within " + FormatDistance(clearRange) + ", searching ahead";
         }
 
@@ -248,11 +247,10 @@ namespace IngameScript
                 _message = "Target is closer than " + FormatDistance(_approachBuffer);
                 return false;
             }
-            _approachTarget = surfacePoint - ray / distance * _approachBuffer;
-            _targetName = name;
-            _probing = false;
-            _enabled = true;
-            _mode = Mode.Approach;
+            _route.Clear();
+            _route.Add(surfacePoint - ray / distance * _approachBuffer);
+            _temporaryObstacles.Clear();
+            StartRoute(name);
             return true;
         }
 
@@ -298,7 +296,17 @@ namespace IngameScript
             Vector3D toTarget = _approachTarget - position;
             _targetDistance = toTarget.Length();
 
-            if (_targetDistance < ArrivalDistance && velocity.Length() < ArrivalSpeed)
+            // Intermediate waypoints are passed, not stopped at.
+            double endSpeed = _probing ? 0 : CornerSpeed();
+            if (!_probing && !OnLastLeg && _targetDistance < Math.Max(50, _currentSpeed))
+            {
+                NextWaypoint();
+                toTarget = _approachTarget - position;
+                _targetDistance = toTarget.Length();
+                endSpeed = CornerSpeed();
+            }
+
+            if ((_probing || OnLastLeg) && _targetDistance < ArrivalDistance && velocity.Length() < ArrivalSpeed)
             {
                 _mode = Mode.Manual;
                 _message = _probing ? "Nothing found along the line of sight" : "Arrived";
@@ -316,9 +324,10 @@ namespace IngameScript
                 distance = Math.Min(distance, Math.Max(clear, 0));
             }
 
-            double speed = Math.Min(_maxSpeed, Math.Sqrt(2 * brake * distance));
+            double speed = Math.Min(_maxSpeed, Math.Sqrt(endSpeed * endSpeed + 2 * brake * distance));
             // Close in: approach proportionally so the ship settles instead of oscillating.
-            speed = Math.Min(speed, distance * _velocityGain * 0.5);
+            if (endSpeed <= 0)
+                speed = Math.Min(speed, distance * _velocityGain * 0.5);
             targetVelocity = direction * speed;
 
             // For the display: stopping distance and flight phase.

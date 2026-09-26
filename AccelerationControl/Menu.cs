@@ -162,7 +162,7 @@ namespace IngameScript
                     OpenOrePicker();
                     break;
                 case "ROUTE":
-                    _message = "Route planning follows in the next update";
+                    PreviewRoute();
                     break;
                 case "GO":
                     GoToSelected();

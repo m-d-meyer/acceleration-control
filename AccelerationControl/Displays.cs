@@ -82,7 +82,7 @@ namespace IngameScript
             // Map screens carry the deposits as GPS lines in their Custom Data.
             if (_mapChanged)
             {
-                string gps = BuildGpsList();
+                string gps = BuildExport();
                 foreach (IMyTextPanel p in _mapPanels)
                     p.CustomData = gps;
                 foreach (IMyTextPanel p in _listPanels)

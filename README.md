@@ -81,13 +81,16 @@ Run the programmable block with one of these arguments:
 | `mark <ore> here`   | Map the current position (drills, or the ship)           |
 | `mark base here`    | Store the current position as the base (e.g. while docked) |
 | `select next` / `select prev` | Select the next / previous deposit             |
-| `goto`              | Fly to the selected deposit (stops `ApproachBuffer` before it) |
+| `route`             | Plan a route to the selected entry and show it on the map |
+| `goto`              | Fly to the selected entry along a planned route (stops `ApproachBuffer` before it) |
 | `delete`            | Delete the selected deposit                              |
 | `filter [<ore>/all]`| Show only one ore; without argument: next ore            |
 | `zoom in` / `zoom out` | Change the radar range (1 km to 200 km)               |
 | `view radar` / `view list` | Switch the `[Accel Map]` screen                   |
 | `ui`                | Toggle the UI mode (movement keys operate the map menu)  |
 | `ui left/right/up/down/ok/back` | Operate the map buttons directly (see Ore map) |
+| `map import`        | Merge GPS / MAP lines from blocks tagged `[Accel Import]` and from map screens of docked ships |
+| `map send`          | Broadcast the map over antennas; other ships and stations running this script merge it |
 | `map clear confirm` | Delete all deposits and known obstacles                  |
 | `reload`            | Re-read Custom Data and rescan blocks                    |
 
@@ -131,6 +134,10 @@ first run. Edit them there and run `reload`.
 | `Survey`             | `true`    | Cameras scan the surroundings in the background for asteroids   |
 | `SurveyRange`        | `6000`    | Range of the background scans (m)                              |
 | `SearchRange`        | `50000`   | How far an approach searches along the line of sight (m)       |
+| `AlignShip`          | `true`    | Turn the ship along its route with the gyroscopes              |
+| `CollisionGuard`     | `true`    | Scan the path ahead during flights and react to obstacles      |
+| `AvoidGravityWells`  | `true`    | Routes go around planet gravity wells (unless the target is inside) |
+| `ImportTag`          | `[Accel Import]` | Blocks with this text in their name are read by `map import` |
 
 ## Drive assists
 
@@ -253,11 +260,53 @@ movement keys. The actions are also available as commands (`ui left`, `ui right`
 |--------|--------|
 | LIST / MAP | Switch between list and radar view |
 | MARK   | Pick an ore (or *Base*), then scan straight ahead and map the hit point |
-| ROUTE  | Route planning around obstacles (coming in the next update) |
-| GO     | Fly to the selected deposit |
+| ROUTE  | Plan a route to the selected entry and show it on the map |
+| GO     | Fly to the selected entry along the route |
 | ZOOM   | Next radar range |
 | FILTER | Show only one ore, cycling through the mapped ores |
 | DELETE | Delete the selected deposit (asks for confirmation) |
+
+## Navigation
+
+**ROUTE** plans a route to the selected entry and draws it on the radar, with its
+length, delta-v and flight time. **GO** plans and flies it.
+
+- **Planning**: if a known asteroid (or a planet's gravity well) is in the way, the
+  route gets a waypoint beside it, keeping the ship's radius plus `ApproachBuffer`
+  of distance. Several obstacles give several waypoints. If no complete route is
+  found (very dense fields), GO refuses instead of flying a risky path.
+- **Flying**: full thrust up to `MaxSpeed`. Waypoints are passed without stopping,
+  slower for sharper turns. The gyroscopes turn the ship's nose along the route,
+  so the forward camera looks where the ship goes. Turning the ship yourself
+  takes over the gyroscopes; any movement key cancels the flight.
+- **Collision guard**: during the flight the cameras scan the path ahead, with a
+  center ray and a ring of rays at the ship's radius, as far as the stopping
+  distance. If the target rock sticks out further than scanned (a protrusion
+  beside the scanned point), the stop point moves closer. An unknown asteroid or a
+  grid on the path makes the route go around it; if the ship is already too close
+  for that, it stops before the obstacle.
+- **Live replanning**: an asteroid found later (by the guard or the background
+  survey) that lies on the rest of the route triggers a new plan from the current
+  position.
+- **Gyroscope directions**: the script checks the direction of the gyroscope
+  overrides against the measured rotation and corrects it by itself. Until that is
+  done (usually within the first second of the first turn), it turns slowly.
+  `calibrate reset` repeats this.
+
+## Sharing the map
+
+- The Custom Data of every map screen contains the map: `GPS:` lines for deposits
+  and the base (paste them into the game's GPS list with "Paste from clipboard")
+  and `MAP:` lines for known asteroids and planets.
+- **Between ships by copy & paste**: put the text into the Custom Data of any block
+  tagged `[Accel Import]` on the other ship and run `map import`.
+- **Docked**: `map import` also reads the map screens of ships connected via
+  connector.
+- **Over antennas**: `map send` broadcasts the map. Every ship or station running
+  this script within antenna range merges it automatically.
+
+Entries that are already known (same ore within `MergeDistance`, same asteroid) are
+not added twice.
 
 ## How it works
 
@@ -300,6 +349,7 @@ The script is an [MDK2](https://github.com/malforge/mdk2) project in
 | `OreMap.cs`        | Deposits, obstacles, gravity wells, GPS export  |
 | `MapDisplay.cs`    | Sprite rendering of radar and list              |
 | `Menu.cs`          | Toolbar-driven buttons and dialogs              |
+| `Navigation.cs`    | Route planning, gyroscopes, collision guard     |
 | `Config.cs`        | Custom Data configuration and saved state       |
 
 With Space Engineers installed, the project can be opened in Visual Studio or Rider
