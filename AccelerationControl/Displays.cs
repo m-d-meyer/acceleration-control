@@ -144,7 +144,7 @@ namespace IngameScript
                     _text.AppendFormat("Jump {0}: {1}\n", FormatDistance(_jumpDistance), _jumpState);
                     break;
                 case Mode.Dock:
-                    _text.AppendLine(_dockFinal ? "Docking: " + FormatDistance(_targetDistance) : "Docking: aligning");
+                    _text.AppendLine("Docking: " + DockPhaseText());
                     break;
                 case Mode.Approach:
                     _text.AppendFormat("Approach {0}: {1}, {2:0} m/s\n", _targetName, FormatDistance(_targetDistance), _currentSpeed);

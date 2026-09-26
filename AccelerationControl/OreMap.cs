@@ -44,7 +44,8 @@ namespace IngameScript
             public Vector3D Position;
             public bool Mined;          // logged while drilling (otherwise marked by scan)
             public double Distance;     // from the ship, updated for display
-            public string Label { get { return Ore + " #" + Number; } }
+            // Number 0: a waypoint with its own name (e.g. imported GPS "Asteroid 12")
+            public string Label { get { return Number > 0 ? Ore + " #" + Number : Ore; } }
         }
 
         class Obstacle
@@ -135,7 +136,7 @@ namespace IngameScript
         //  Deposits
         // -----------------------------------------------------------------
 
-        Deposit AddDeposit(string ore, Vector3D position, bool mined)
+        Deposit AddDeposit(string ore, Vector3D position, bool mined, bool waypoint = false)
         {
             int number = 0;
             foreach (Deposit d in _deposits)
@@ -151,7 +152,7 @@ namespace IngameScript
                 number = Math.Max(number, d.Number);
             }
 
-            var deposit = new Deposit { Ore = ore, Number = number + 1, Position = position, Mined = mined };
+            var deposit = new Deposit { Ore = ore, Number = waypoint ? 0 : number + 1, Position = position, Mined = mined };
             _deposits.Add(deposit);
             if (!mined)
                 _selected = deposit;   // logging while mining must not move the menu selection
@@ -447,11 +448,12 @@ namespace IngameScript
                 double x, y, z, r, g;
                 if (p.Length >= 5 && p[0] == "GPS" && TryParseNumber(p[2], out x) && TryParseNumber(p[3], out y) && TryParseNumber(p[4], out z))
                 {
-                    // "Iron #2" -> Iron; other names are kept as they are
+                    // "Iron #2" -> Iron; other names become waypoints with that name
                     int hash = p[1].LastIndexOf(" #");
                     string ore = hash > 0 ? p[1].Substring(0, hash) : p[1];
+                    bool known = ore == BaseName || Array.IndexOf(StandardOres, ore) >= 0 || _oreAmounts.ContainsKey(ore);
                     int before = _deposits.Count;
-                    AddDeposit(ore, new Vector3D(x, y, z), false);
+                    AddDeposit(known ? ore : p[1], new Vector3D(x, y, z), false, !known);
                     added += _deposits.Count - before;
                 }
                 else if (p.Length >= 8 && p[0] == "MAP" && TryParseNumber(p[3], out x) && TryParseNumber(p[4], out y)

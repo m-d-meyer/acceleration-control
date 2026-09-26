@@ -212,18 +212,40 @@ namespace IngameScript
                 StartDocking();
                 return;
             }
+            GoToPoint(_selected.Position, _selected.Label);
+        }
+
+        // Flies to a point and stops ApproachBuffer before it. If the point lies
+        // inside a rock (e.g. GPS of an asteroid's center), the collision guard
+        // stops the ship in front of the surface instead.
+        void GoToPoint(Vector3D target, string name)
+        {
             _dockAfterRoute = false;
             _temporaryObstacles.Clear();
             Vector3D from = ReferencePosition();
-            if (TryStartJump(from, StopPoint(from, _selected.Position), _selected.Label))
+            if (TryStartJump(from, StopPoint(from, target), name))
                 return;
-            if (!PlanRoute(from, StopPoint(from, _selected.Position), _route))
+            if (!PlanRoute(from, StopPoint(from, target), _route))
             {
                 _message = "No complete route found";
                 return;
             }
-            StartRoute(_selected.Label);
-            _message = string.Format("Flying to {0}: {1} legs, {2}", _selected.Label, _route.Count, FormatDistance(_routeLength));
+            StartRoute(name);
+            _message = string.Format("Flying to {0}: {1} legs, {2}", name, _route.Count, FormatDistance(_routeLength));
+        }
+
+        // goto GPS:name:x:y:z:...  (as copied from the game's GPS list)
+        void GoToGps(string text)
+        {
+            int start = text.IndexOf("GPS:", StringComparison.OrdinalIgnoreCase);
+            string[] p = start >= 0 ? text.Substring(start).Split(':') : new string[0];
+            double x, y, z;
+            if (p.Length < 5 || !TryParseNumber(p[2], out x) || !TryParseNumber(p[3], out y) || !TryParseNumber(p[4], out z))
+            {
+                _message = "Usage: goto GPS:name:x:y:z:";
+                return;
+            }
+            GoToPoint(new Vector3D(x, y, z), p[1]);
         }
 
         // The point ApproachBuffer meters before a target, seen from the ship.
@@ -336,7 +358,7 @@ namespace IngameScript
 
         void HandleGuardHit(MyDetectedEntityInfo hit, Vector3D position, Vector3D direction, double remaining)
         {
-            if (_dockAfterRoute && hit.EntityId == _dockGridId)
+            if (_dockAfterRoute && IsBaseGrid(hit.EntityId))
                 return;     // flying to the base: the base itself is expected ahead
             double along = Vector3D.Dot(hit.HitPosition.Value - position, direction);
             if (along > remaining + _approachBuffer)

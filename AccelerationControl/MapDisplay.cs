@@ -251,7 +251,7 @@ namespace IngameScript
             // Labels only for the selection and the nearest deposits, so they stay readable.
             if (!selected && _visibleDeposits.IndexOf(d) >= RadarLabels)
                 return;
-            string name = ShortOre(d.Ore) + d.Number;
+            string name = d.Number > 0 ? ShortOre(d.Ore) + d.Number : d.Ore.Length > 10 ? d.Ore.Substring(0, 10) : d.Ore;
             string distance = FormatDistance(d.Distance);
             float tx = pos.X + 11, ty = pos.Y - 16;
             if (selected)
@@ -275,7 +275,7 @@ namespace IngameScript
             {
                 bool jump = _mode == Mode.Jump;
                 Text(jump ? "JUMP  " + FormatDistance(_jumpDistance) : "DOCKING", left, y + 6, 0.8f, jump ? JumpColor : Cyan);
-                Text(jump ? _jumpState : _dockFinal ? FormatDistance(_targetDistance) + " to the connector" : "turning into position",
+                Text(jump ? _jumpState : DockPhaseText(),
                     left, y + 40, 0.65f, TextColor);
                 Text(string.Format("heading error {0:0.0}°", MathHelper.ToDegrees((float)_alignError)), left, y + 68, 0.55f, DimColor);
             }
@@ -400,7 +400,7 @@ namespace IngameScript
             if (_mode == Mode.Jump)
                 Text("JUMP " + FormatDistance(_jumpDistance) + "  " + _jumpState, 10, fy + 6, 0.66f, JumpColor);
             else if (_mode == Mode.Dock)
-                Text(_dockFinal ? "DOCKING  " + FormatDistance(_targetDistance) : "DOCKING  turning", 10, fy + 6, 0.66f, Cyan);
+                Text("DOCKING  " + DockPhaseText(), 10, fy + 6, 0.66f, Cyan);
             else if (_mode == Mode.Approach)
             {
                 Text(_approachPhase + "  " + FormatDistance(_targetDistance), 10, fy + 6, 0.66f, _approachPhase == "BRAKING" ? RouteColor : Cyan);

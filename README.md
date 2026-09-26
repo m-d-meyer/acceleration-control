@@ -83,6 +83,7 @@ Run the programmable block with one of these arguments:
 | `select next` / `select prev` | Select the next / previous deposit             |
 | `route`             | Plan a route to the selected entry and show it on the map |
 | `goto`              | Fly to the selected entry along a planned route (stops `ApproachBuffer` before it); long distances start with a jump |
+| `goto GPS:name:x:y:z:` | Fly to GPS coordinates (paste a GPS from the game's GPS list); stops in front of the surface if the point is inside a rock |
 | `dock`              | Fly to the base and dock (after docking there once by hand) |
 | `undock`            | Disconnect and back off from the base                    |
 | `delete`            | Delete the selected deposit                              |
@@ -317,15 +318,44 @@ script does not know. If nothing happens within 30 seconds, the flight stops.
 ## Docking
 
 1. Dock at the base by hand once. The script notices the connection and stores the
-   dock pose: where the connector was and how the ship was oriented. The base
-   entry on the map is set to that position.
-2. From then on, **GO** on the base (or `dock`) flies there, jumping if far,
-   stops `DockApproach` meters (plus the ship's radius) in front of the connector,
-   turns the ship into the stored orientation, moves in slowly along the connector
-   axis while correcting sideways drift, and connects.
-3. `undock` disconnects and backs off along the connector axis.
+   dock pose: where the connector was and how the ship was oriented, plus all grids
+   belonging to the base (including rotor and piston parts). The base entry on the
+   map is set to that position.
+2. From then on, **GO** on the base (or `dock`) flies there, jumping if far, and
+   stops at an approach point in front of the connector (twice the ship's radius
+   plus `DockApproach`), far enough out to turn without touching the base.
+3. **Space to turn**: the cameras check the space around the ship for other ships
+   before it turns. If something is there, the ship waits.
+4. The ship turns into the stored orientation.
+5. **Way in**: the cameras check the corridor from the approach point to the
+   connector, with a ring of rays at the ship's radius. If something is there, the
+   ship waits.
+6. The ship moves in slowly along the connector axis, correcting sideways drift,
+   and keeps scanning the rest of the way; if something shows up, it stops and
+   waits. When the connector is ready, it connects.
+7. `undock` disconnects and backs off along the connector axis.
+
+Waiting ends when the way is clear; after 2 minutes docking is cancelled. The
+checks use all cameras that can see the respective points; cameras pointing
+towards the connector side of the ship make them more complete. Sensors with
+`[Accel]` in their name are also used during the final approach (set their range
+yourself). Parts of the base never count as obstacles.
 
 This works for bases that do not move. Movement keys cancel docking at any time.
+
+## GPS coordinates and waypoints
+
+- `goto GPS:name:x:y:z:` flies to a GPS copied from the game (the text after `goto`
+  can be pasted as it is, e.g. as a toolbar argument).
+- To keep many coordinates on the map, paste them into the Custom Data of a block
+  tagged `[Accel Import]` and run `map import`. GPS whose name is an ore or `Base`
+  become deposits; any other name (e.g. `Asteroid 12`) becomes a **waypoint** that
+  keeps its name. All of them can be selected and flown to with GO.
+- If a point lies inside an asteroid (e.g. its center), the collision guard stops
+  the ship `ApproachBuffer` in front of the surface.
+- **Deleting an entry** (DELETE) only removes that deposit or waypoint. Known
+  asteroids are stored separately and stay on the map as obstacles. Automatic
+  logging adds an entry again only if new ore arrives while drilling there.
 
 ## Sharing the map
 

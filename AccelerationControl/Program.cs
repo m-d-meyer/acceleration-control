@@ -101,6 +101,7 @@ namespace IngameScript
             GridTerminalSystem.GetBlocksOfType(_cameras, c => c.IsSameConstructAs(Me));
             GridTerminalSystem.GetBlocksOfType(_gyros, g => g.IsSameConstructAs(Me));
             GridTerminalSystem.GetBlocksOfType(_connectors, c => c.IsSameConstructAs(Me));
+            GridTerminalSystem.GetBlocksOfType(_sensors, s => s.IsSameConstructAs(Me));
             FindDisplays();
             FindStatusBlocks();
 
@@ -187,7 +188,10 @@ namespace IngameScript
                     HandleMarkCommand(parts);
                     break;
                 case "goto":
-                    GoToSelected();
+                    if (parts.Length > 1)
+                        GoToGps(argument.Substring(argument.IndexOf(' ') + 1));
+                    else
+                        GoToSelected();
                     break;
                 case "route":
                     PreviewRoute();

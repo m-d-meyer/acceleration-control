@@ -224,8 +224,11 @@ namespace IngameScript
             state.Set(StateSection, "GyroSign", string.Join(";", Num(_gyroSign.X), Num(_gyroSign.Y), Num(_gyroSign.Z),
                 _gyroCalibrated[0] ? "1" : "0", _gyroCalibrated[1] ? "1" : "0", _gyroCalibrated[2] ? "1" : "0"));
             if (_dockKnown)
+            {
                 state.Set(StateSection, "Dock", string.Join(";", Vec(_dockPosition), Vec(_dockAxis), Vec(_dockForward), Vec(_dockUp),
                     _dockConnectorId.ToString(), _dockGridId.ToString()));
+                state.Set(StateSection, "BaseGrids", string.Join(";", _baseGrids));
+            }
             SaveMap(state);
             Storage = state.ToString();
         }
@@ -266,6 +269,12 @@ namespace IngameScript
                 _dockForward = ParseVec(dock, 6);
                 _dockUp = ParseVec(dock, 9);
                 _dockKnown = long.TryParse(dock[12], out _dockConnectorId) && long.TryParse(dock[13], out _dockGridId);
+            }
+            foreach (string id in state.Get(StateSection, "BaseGrids").ToString("").Split(';'))
+            {
+                long grid;
+                if (long.TryParse(id, out grid))
+                    _baseGrids.Add(grid);
             }
             LoadMap(state);
         }
