@@ -26,6 +26,8 @@ acceleration instead — in m/s², independent of cargo mass.
 - **Ship status**: cargo fill level with ore breakdown, battery, uranium and hydrogen
   with remaining time, jump drive charge, and the remaining **delta-v** with the
   number of trips it allows
+- **Ore map**: deposits marked with a camera scan or logged automatically while mining,
+  shown as a 3D radar and as a list, with GPS export and toolbar-driven buttons
 - Settings survive saving/reloading the world
 
 ## Setup
@@ -39,11 +41,15 @@ acceleration instead — in m/s², independent of cargo mass.
    - slot 2: `down` → decrease the limit
 4. For **Approach**, build a camera facing forward (same direction as the cockpit).
    If you have several, add `[Accel]` to the name of the one to use.
-5. Optional displays:
-   - `[Accel]` in an LCD panel's name shows the flight control page,
-     `[Accel Status]` shows the ship status page.
-   - `CockpitSurface` / `StatusCockpitSurface` in the Custom Data show the pages on
-     a cockpit screen (screen index, counted from 0).
+5. Optional displays, by adding a tag to an LCD panel's name:
+   - `[Accel]` flight control page, `[Accel Status]` ship status page
+   - `[Accel Map]` ore map with buttons (radar or list view), `[Accel List]` ore list
+   - To use a cockpit screen instead, set `CockpitSurface`, `StatusCockpitSurface`,
+     `MapCockpitSurface` or `ListCockpitSurface` in the Custom Data to the screen
+     index (counted from 0).
+6. For the map buttons, add six more toolbar slots with **Run** and the arguments
+   `ui left`, `ui right`, `ui up`, `ui down`, `ui ok` and `ui back`
+   (a second toolbar page works well for this).
 
 > **Why not the mouse wheel?** The programmable block API does not expose the
 > mouse wheel (in a cockpit it only cycles toolbar slots). Scripts can read the
@@ -69,6 +75,16 @@ Run the programmable block with one of these arguments:
 | `approach`          | Scan straight ahead with the camera and fly to the target |
 | `stop`              | Cancel cruise or approach                                |
 | `calibrate reset`   | Forget the measured fuel efficiency (see Ship status)    |
+| `mark <ore>`        | Scan straight ahead and map the hit point as a deposit, e.g. `mark iron` |
+| `mark <ore> here`   | Map the current position (drills, or the ship)           |
+| `select next` / `select prev` | Select the next / previous deposit             |
+| `goto`              | Fly to the selected deposit (stops `ApproachBuffer` before it) |
+| `delete`            | Delete the selected deposit                              |
+| `filter [<ore>/all]`| Show only one ore; without argument: next ore            |
+| `zoom in` / `zoom out` | Change the radar range (1 km to 200 km)               |
+| `view radar` / `view list` | Switch the `[Accel Map]` screen                   |
+| `ui left/right/up/down/ok/back` | Operate the map buttons (see Ore map)        |
+| `map clear confirm` | Delete all deposits and known obstacles                  |
 | `reload`            | Re-read Custom Data and rescan blocks                    |
 
 ## Configuration
@@ -100,6 +116,14 @@ first run. Edit them there and run `reload`.
 | `HydrogenThrustPerLiter` | `1400` | Start value for hydrogen efficiency (N·s per liter), calibrated in flight |
 | `UraniumMWhPerKg`    | `1`       | Start value for reactor fuel energy (MWh per kg), calibrated in flight |
 | `ElectricThrustPerMW`| `120000`  | Fallback for electric thrusters if their power use cannot be read |
+| `MapTag`             | `[Accel Map]` | LCD panels with this text show the ore map with buttons    |
+| `ListTag`            | `[Accel List]` | LCD panels with this text show the ore list               |
+| `MapCockpitSurface`  | `-1`      | Cockpit screen index for the ore map, `-1` = off               |
+| `ListCockpitSurface` | `-1`      | Cockpit screen index for the ore list, `-1` = off              |
+| `AutoLogMining`      | `true`    | Log deposits automatically when new ore arrives while drilling |
+| `LogStone`           | `false`   | Also log stone                                                 |
+| `MergeDistance`      | `150`     | Entries of the same ore closer than this are treated as one (m) |
+| `GravityWellFactor`  | `1.7`     | Gravity well size relative to a scanned planet's radius        |
 
 ## Drive assists
 
@@ -159,6 +183,51 @@ Delta-v is an estimate. It assumes all fuel goes into thrust:
 Values marked `*` are not calibrated yet. Run `calibrate reset` after changing the
 thruster or reactor setup significantly.
 
+## Ore map
+
+Scripts cannot read the ore detector, so deposits get onto the map in two ways:
+
+- **Mark**: point the ship's nose at an ore marker of the ore detector and press
+  **MARK** (or run `mark <ore>`). The camera scans in that direction and stores the
+  point where it hits the asteroid, i.e. the surface above the ore.
+- **Automatic while mining**: when the drills are running and a new ore arrives in
+  the cargo, the drill position is logged. Entries of the same ore within
+  `MergeDistance` are merged, so one deposit is not logged over and over.
+
+Every scan also stores the asteroid or planet it hit. Planets are measured
+directly when the ship is in their gravity. The map shows them as obstacles and
+gravity wells, and **GO** refuses to fly straight through a known asteroid.
+
+### Screens
+
+- **Radar** (`[Accel Map]`): a plane through the ship that turns with it, forward is up.
+  Deposits sit on stems that show how far above or below the ship they are. Grey
+  spheres are known asteroids, violet areas are gravity wells. Deposits beyond the
+  range appear as small markers on the edge.
+- **List** (`[Accel List]`, or the `[Accel Map]` screen after pressing LIST): deposits
+  sorted by distance, with the direction relative to the ship's nose (degrees
+  left/right and up/down, plus a small indicator).
+- Both show the selected deposit, whether the direct path is clear and the delta-v
+  of the trip.
+- The Custom Data of every map screen contains all deposits as GPS lines. Copy them
+  and use **Paste from clipboard** in the game's GPS menu to get HUD markers.
+
+### Buttons
+
+The map screens have a button row operated from the toolbar: `ui left` / `ui right`
+move the highlight, `ui ok` presses the button, `ui up` / `ui down` select the
+deposit, `ui back` closes a dialog.
+
+| Button | Action |
+|--------|--------|
+| LIST / MAP | Switch between list and radar view |
+| MARK   | Pick an ore, then scan straight ahead and map the hit point |
+| ROUTE  | Route planning around obstacles (coming in the next update) |
+| GO     | Fly to the selected deposit |
+| ZOOM   | Next radar range |
+| FILTER | Show only one ore, cycling through the mapped ores |
+| DELETE | Delete the selected deposit (asks for confirmation) |
+
 ## How it works
 
 Every tick the script reads the movement input of the controlled cockpit. For
@@ -197,6 +266,9 @@ The script is an [MDK2](https://github.com/malforge/mdk2) project in
 | `DriveAssists.cs`  | Cruise and approach                             |
 | `ShipStatus.cs`    | Cargo, fuel and delta-v monitoring              |
 | `Displays.cs`      | LCD and cockpit screen output                   |
+| `OreMap.cs`        | Deposits, obstacles, gravity wells, GPS export  |
+| `MapDisplay.cs`    | Sprite rendering of radar and list              |
+| `Menu.cs`          | Toolbar-driven buttons and dialogs              |
 | `Config.cs`        | Custom Data configuration and saved state       |
 
 With Space Engineers installed, the project can be opened in Visual Studio or Rider
@@ -205,8 +277,16 @@ with MDK2 for full compiler checks and IntelliSense.
 Without the game, `python3 tools/build.py` merges the files into the paste-ready
 [`dist/AccelerationControl.cs`](dist/AccelerationControl.cs). If the result exceeds the
 programmable block's limit of 100,000 characters, comments and indentation are
-stripped automatically. `python3 tools/build.py --check` also runs a C# 6 syntax
-check (needs the .NET SDK). It cannot check the Space Engineers API itself; use
-**Check code** in the game for that.
+stripped automatically. `python3 tools/build.py --check` also checks the result
+with the C# compiler (needs the .NET SDK):
+
+- Always a C# 6 syntax check, the language version of the programmable block.
+- After `python3 tools/gen_stubs.py`, a full compile against stubs of the game API.
+  The stubs are generated from the API documentation in the
+  [MDK-SE wiki](https://github.com/malware-dev/MDK-SE/wiki), so unknown members and
+  type errors are found without the game. That documentation is from around 2022;
+  API added later would be reported as an error.
+
+**Check code** in the game remains the final check.
 
 Always rebuild `dist/` after changing the source files.

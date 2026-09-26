@@ -28,11 +28,14 @@ namespace IngameScript
         const double ArrivalDistance = 2.0;         // m - approach is finished within this distance...
         const double ArrivalSpeed = 0.3;            // m/s - ...and below this speed
 
-        enum Mode { Manual, Cruise, Scanning, Approach }
+        enum Mode { Manual, Cruise, Approach }
+        enum ScanPurpose { Approach, Mark }
 
         readonly List<IMyCameraBlock> _cameras = new List<IMyCameraBlock>();
         IMyCameraBlock _camera;
         Mode _mode = Mode.Manual;
+        bool _scanPending;
+        ScanPurpose _scanPurpose;
         Vector3D _approachTarget;
         string _targetName = "";
         double _targetDistance;
@@ -44,9 +47,6 @@ namespace IngameScript
         {
             targetVelocity = Vector3D.Zero;
             maxAccel = _limit;
-
-            if (_mode == Mode.Scanning)
-                UpdateScan();
 
             if (_mode == Mode.Cruise)
             {
@@ -121,7 +121,7 @@ namespace IngameScript
         //  Approach
         // -----------------------------------------------------------------
 
-        void StartScan()
+        void StartScan(ScanPurpose purpose)
         {
             _camera = FindCamera();
             if (_camera == null)
@@ -130,48 +130,78 @@ namespace IngameScript
                 return;
             }
             _camera.EnableRaycast = true;
-            _enabled = true;
-            _mode = Mode.Scanning;
+            _scanPending = true;
+            _scanPurpose = purpose;
         }
 
-        // Called every tick while scanning: fires the raycast as soon as the
-        // camera has charged enough range.
+        // Called every tick while a scan is pending: fires the raycast as soon
+        // as the camera has charged enough range.
         void UpdateScan()
         {
+            if (!_scanPending)
+                return;
             if (_camera == null || !_camera.IsWorking)
             {
                 _message = "Camera not working";
-                _mode = Mode.Manual;
+                _scanPending = false;
                 return;
             }
             if (!_camera.CanScan(_scanRange))
                 return;
 
+            _scanPending = false;
             MyDetectedEntityInfo hit = _camera.Raycast(_scanRange);
             if (hit.IsEmpty() || !hit.HitPosition.HasValue)
             {
                 _message = "Nothing found within " + FormatDistance(_scanRange);
-                _mode = Mode.Manual;
                 return;
             }
 
-            Vector3D origin = _camera.GetPosition();
+            RegisterObstacle(hit);
             Vector3D hitPos = hit.HitPosition.Value;
-            Vector3D ray = hitPos - origin;
-            double surfaceDistance = ray.Length();
-            if (surfaceDistance <= _approachBuffer)
+            if (_scanPurpose == ScanPurpose.Mark)
             {
-                _message = "Target is closer than " + FormatDistance(_approachBuffer);
-                _mode = Mode.Manual;
+                AddDeposit(_pendingMarkOre, hitPos, false);
                 return;
             }
 
-            _approachTarget = hitPos - ray / surfaceDistance * _approachBuffer;
-            _targetName = hit.Type == MyDetectedEntityType.Asteroid ? "Asteroid"
+            string name = hit.Type == MyDetectedEntityType.Asteroid ? "Asteroid"
                 : hit.Type == MyDetectedEntityType.Planet ? "Planet"
                 : hit.Name;
-            _message = _targetName + " at " + FormatDistance(surfaceDistance);
+            if (StartApproach(hitPos, name))
+                _message = name + " at " + FormatDistance(Vector3D.Distance(hitPos, ReferencePosition()));
+        }
+
+        // Charge of the scan camera relative to the configured scan range (0..1).
+        double ScanCharge()
+        {
+            return _camera != null ? Math.Min(_camera.AvailableScanRange / _scanRange, 1) : 0;
+        }
+
+        // Flies to a point ApproachBuffer meters before the given surface point.
+        bool StartApproach(Vector3D surfacePoint, string name)
+        {
+            Vector3D ray = surfacePoint - ReferencePosition();
+            double distance = ray.Length();
+            if (distance <= _approachBuffer)
+            {
+                _message = "Target is closer than " + FormatDistance(_approachBuffer);
+                return false;
+            }
+            _approachTarget = surfacePoint - ray / distance * _approachBuffer;
+            _targetName = name;
+            _enabled = true;
             _mode = Mode.Approach;
+            return true;
+        }
+
+        // Point of the ship used for distances: the scan camera, else the cockpit.
+        Vector3D ReferencePosition()
+        {
+            if (_camera != null && _camera.IsFunctional)
+                return _camera.GetPosition();
+            IMyShipController reference = _controller ?? _layoutController;
+            return reference != null ? reference.GetPosition() : Me.GetPosition();
         }
 
         IMyCameraBlock FindCamera()
@@ -196,8 +226,7 @@ namespace IngameScript
         bool ApproachVelocity(Vector3D velocity, out Vector3D targetVelocity)
         {
             targetVelocity = Vector3D.Zero;
-            Vector3D position = _camera != null && _camera.IsFunctional ? _camera.GetPosition() : _controller.GetPosition();
-            Vector3D toTarget = _approachTarget - position;
+            Vector3D toTarget = _approachTarget - ReferencePosition();
             _targetDistance = toTarget.Length();
 
             if (_targetDistance < ArrivalDistance && velocity.Length() < ArrivalSpeed)

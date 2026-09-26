@@ -72,6 +72,7 @@ namespace IngameScript
             GridTerminalSystem.GetBlocksOfType(_hydrogenTanks, b => b.IsSameConstructAs(Me)
                 && b.BlockDefinition.SubtypeId.Contains("Hydrogen"));
             GridTerminalSystem.GetBlocksOfType(_jumpDrives, b => b.IsSameConstructAs(Me));
+            GridTerminalSystem.GetBlocksOfType(_drills, b => b.IsSameConstructAs(Me));
 
             _hydrogenThrusters.Clear();
             _electricThrusters.Clear();
@@ -129,6 +130,8 @@ namespace IngameScript
         {
             ReadCargo();
             ReadPower();
+            AutoLogMining();
+            UpdatePlanet();
 
             double hydrogenUsed = _previousHydrogen >= 0 ? _previousHydrogen - _hydrogen : -1;
             double uraniumUsed = _previousUranium >= 0 ? _previousUranium - _uranium : -1;

@@ -40,6 +40,14 @@ namespace IngameScript
         string _statusTag = "[Accel Status]";
         int _cockpitSurface = -1;
         int _statusCockpitSurface = -1;
+        string _mapTag = "[Accel Map]";
+        string _listTag = "[Accel List]";
+        int _mapCockpitSurface = -1;
+        int _listCockpitSurface = -1;
+        bool _autoLog = true;
+        bool _logStone = false;
+        double _mergeDistance = 150;
+        double _gravityWellFactor = 1.7;
         double _defaultCruiseSpeed = 0.75;
         double _cruiseStep = 0.25;
         double _velocityGain = 2.0;
@@ -82,6 +90,14 @@ namespace IngameScript
             _statusTag = _ini.Get(IniSection, "StatusTag").ToString(_statusTag);
             _cockpitSurface = _ini.Get(IniSection, "CockpitSurface").ToInt32(_cockpitSurface);
             _statusCockpitSurface = _ini.Get(IniSection, "StatusCockpitSurface").ToInt32(_statusCockpitSurface);
+            _mapTag = _ini.Get(IniSection, "MapTag").ToString(_mapTag);
+            _listTag = _ini.Get(IniSection, "ListTag").ToString(_listTag);
+            _mapCockpitSurface = _ini.Get(IniSection, "MapCockpitSurface").ToInt32(_mapCockpitSurface);
+            _listCockpitSurface = _ini.Get(IniSection, "ListCockpitSurface").ToInt32(_listCockpitSurface);
+            _autoLog = _ini.Get(IniSection, "AutoLogMining").ToBoolean(_autoLog);
+            _logStone = _ini.Get(IniSection, "LogStone").ToBoolean(_logStone);
+            _mergeDistance = _ini.Get(IniSection, "MergeDistance").ToDouble(_mergeDistance);
+            _gravityWellFactor = _ini.Get(IniSection, "GravityWellFactor").ToDouble(_gravityWellFactor);
             _defaultCruiseSpeed = _ini.Get(IniSection, "CruiseSpeed").ToDouble(_defaultCruiseSpeed);
             _cruiseStep = _ini.Get(IniSection, "CruiseStep").ToDouble(_cruiseStep);
             _velocityGain = _ini.Get(IniSection, "VelocityGain").ToDouble(_velocityGain);
@@ -106,6 +122,14 @@ namespace IngameScript
             _ini.Set(IniSection, "StatusTag", _statusTag);
             _ini.Set(IniSection, "CockpitSurface", _cockpitSurface);
             _ini.Set(IniSection, "StatusCockpitSurface", _statusCockpitSurface);
+            _ini.Set(IniSection, "MapTag", _mapTag);
+            _ini.Set(IniSection, "ListTag", _listTag);
+            _ini.Set(IniSection, "MapCockpitSurface", _mapCockpitSurface);
+            _ini.Set(IniSection, "ListCockpitSurface", _listCockpitSurface);
+            _ini.Set(IniSection, "AutoLogMining", _autoLog);
+            _ini.Set(IniSection, "LogStone", _logStone);
+            _ini.Set(IniSection, "MergeDistance", _mergeDistance);
+            _ini.Set(IniSection, "GravityWellFactor", _gravityWellFactor);
             _ini.Set(IniSection, "CruiseSpeed", _defaultCruiseSpeed);
             _ini.Set(IniSection, "CruiseStep", _cruiseStep);
             _ini.Set(IniSection, "VelocityGain", _velocityGain);
@@ -120,7 +144,7 @@ namespace IngameScript
             _ini.Set(IniSection, "ElectricThrustPerMW", _defaultElectricThrustPerMW);
             _ini.SetSectionComment(IniSection,
                 " Accelerations in m/s² (1 g = 9.81 m/s²), speeds in m/s, distances in m.\n" +
-                " CockpitSurface / StatusCockpitSurface: cockpit screen index, -1 = off.\n" +
+                " *CockpitSurface: cockpit screen index for that page, -1 = off.\n" +
                 " HydrogenThrustPerLiter, UraniumMWhPerKg: start values, calibrated in flight.\n" +
                 " Run the PB with 'reload' after editing.");
             Me.CustomData = _ini.ToString();
@@ -157,6 +181,8 @@ namespace IngameScript
             state.Set(StateSection, "HydrogenThrustPerLiter", _hydrogenThrustPerLiter);
             state.Set(StateSection, "UraniumCalibrated", _uraniumCalibrated);
             state.Set(StateSection, "UraniumMWhPerKg", _uraniumMWhPerKg);
+            state.Set(StateSection, "Zoom", _zoomIndex);
+            SaveMap(state);
             Storage = state.ToString();
         }
 
@@ -179,6 +205,8 @@ namespace IngameScript
             _uraniumCalibrated = state.Get(StateSection, "UraniumCalibrated").ToBoolean(false);
             if (_uraniumCalibrated)
                 _uraniumMWhPerKg = state.Get(StateSection, "UraniumMWhPerKg").ToDouble(_uraniumMWhPerKg);
+            _zoomIndex = MathHelper.Clamp(state.Get(StateSection, "Zoom").ToInt32(_zoomIndex), 0, ZoomLevels.Length - 1);
+            LoadMap(state);
         }
 
         // State format of the first versions: "limit;enabled;limitDampeners[;cruiseSpeed]".

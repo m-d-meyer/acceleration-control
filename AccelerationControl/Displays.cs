@@ -20,14 +20,20 @@ using VRageMath;
 
 namespace IngameScript
 {
-    // Text output: the control page ([Accel]) and the status page ([Accel Status])
-    // on LCD panels and cockpit screens, plus the programmable block's own info.
+    // Screen output on LCD panels and cockpit screens:
+    //   [Accel]         control page (text)
+    //   [Accel Status]  ship status page (text)
+    //   [Accel Map]     ore map with buttons, radar or list view (sprites)
+    //   [Accel List]    ore map, always the list view (sprites)
+    // plus the programmable block's own info.
     partial class Program
     {
         const int MaxOreLines = 6;
 
         readonly List<IMyTextPanel> _controlPanels = new List<IMyTextPanel>();
         readonly List<IMyTextPanel> _statusPanels = new List<IMyTextPanel>();
+        readonly List<IMyTextPanel> _mapPanels = new List<IMyTextPanel>();
+        readonly List<IMyTextPanel> _listPanels = new List<IMyTextPanel>();
         readonly StringBuilder _text = new StringBuilder();
         readonly List<KeyValuePair<string, double>> _oreSorted = new List<KeyValuePair<string, double>>();
 
@@ -35,6 +41,9 @@ namespace IngameScript
         {
             GridTerminalSystem.GetBlocksOfType(_controlPanels, p => p.IsSameConstructAs(Me) && p.CustomName.Contains(_lcdTag));
             GridTerminalSystem.GetBlocksOfType(_statusPanels, p => p.IsSameConstructAs(Me) && p.CustomName.Contains(_statusTag));
+            GridTerminalSystem.GetBlocksOfType(_mapPanels, p => p.IsSameConstructAs(Me) && p.CustomName.Contains(_mapTag));
+            GridTerminalSystem.GetBlocksOfType(_listPanels, p => p.IsSameConstructAs(Me) && p.CustomName.Contains(_listTag));
+            _mapChanged = true;
         }
 
         void UpdateDisplays()
@@ -50,12 +59,43 @@ namespace IngameScript
             foreach (IMyTextPanel p in _statusPanels)
                 WriteSurface(p, status);
 
+            UpdateVisibleDeposits();
+            _frameToggle = !_frameToggle;
+            foreach (IMyTextPanel p in _mapPanels)
+                if (WithinDrawBudget())
+                    DrawMapSurface(p, _view);
+            foreach (IMyTextPanel p in _listPanels)
+                if (WithinDrawBudget())
+                    DrawMapSurface(p, MapView.List);
+
             var provider = info as IMyTextSurfaceProvider;
             if (provider != null)
             {
                 WriteCockpitSurface(provider, _cockpitSurface, control);
                 WriteCockpitSurface(provider, _statusCockpitSurface, status);
+                if (_mapCockpitSurface >= 0 && _mapCockpitSurface < provider.SurfaceCount && WithinDrawBudget())
+                    DrawMapSurface(provider.GetSurface(_mapCockpitSurface), _view);
+                if (_listCockpitSurface >= 0 && _listCockpitSurface < provider.SurfaceCount && WithinDrawBudget())
+                    DrawMapSurface(provider.GetSurface(_listCockpitSurface), MapView.List);
             }
+
+            // Map screens carry the deposits as GPS lines in their Custom Data.
+            if (_mapChanged)
+            {
+                string gps = BuildGpsList();
+                foreach (IMyTextPanel p in _mapPanels)
+                    p.CustomData = gps;
+                foreach (IMyTextPanel p in _listPanels)
+                    p.CustomData = gps;
+                _mapChanged = false;
+            }
+        }
+
+        // Map screens are skipped for one round when the tick is already busy,
+        // instead of risking the programmable block's instruction limit.
+        bool WithinDrawBudget()
+        {
+            return Runtime.CurrentInstructionCount < Runtime.MaxInstructionCount * DrawBudget;
         }
 
         string BuildControlText(IMyShipController info)
@@ -88,14 +128,12 @@ namespace IngameScript
 
         void AppendModeStatus()
         {
+            if (_scanPending)
+                _text.AppendFormat("Scanning... camera {0:0}%\n", ScanCharge() * 100);
             switch (_mode)
             {
                 case Mode.Cruise:
                     _text.AppendFormat("Cruise: {0:0.00} m/s (now {1:0.00})\n", _cruiseSpeed, _forwardSpeed);
-                    break;
-                case Mode.Scanning:
-                    double charge = _camera != null ? _camera.AvailableScanRange / _scanRange * 100 : 0;
-                    _text.AppendFormat("Scanning... camera {0:0}%\n", Math.Min(charge, 100));
                     break;
                 case Mode.Approach:
                     _text.AppendFormat("Approach {0}: {1}, {2:0} m/s\n", _targetName, FormatDistance(_targetDistance), _currentSpeed);

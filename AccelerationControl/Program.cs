@@ -31,6 +31,8 @@ namespace IngameScript
     {
         const int BlockRefreshTicks = 600;          // rescan blocks every 10 s
         const int DisplayTicks = 10;
+        const int DisplayTickOffset = 5;            // keeps display updates off the status update tick
+        const double DrawBudget = 0.6;              // share of the instruction limit screens may use
         const double TicksPerSecond = 60.0;
 
         int _ticks;
@@ -73,13 +75,14 @@ namespace IngameScript
             if (_ticks % BlockRefreshTicks == 0)
                 RefreshBlocks();
 
+            UpdateScan();
             ControlThrust();
 
             SampleFuelUse(1 / TicksPerSecond);
             if (_ticks % StatusTicks == 0)
                 UpdateShipStatus(StatusTicks / TicksPerSecond);
 
-            if (_ticks % DisplayTicks == 0)
+            if (_ticks % DisplayTicks == DisplayTickOffset)
                 UpdateDisplays();
         }
 
@@ -103,7 +106,7 @@ namespace IngameScript
                 SortThrusters(layout);
 
             // Keep the approach camera charging so a scan is ready when needed.
-            if (_mode != Mode.Scanning && _mode != Mode.Approach)
+            if (!_scanPending && _mode != Mode.Approach)
                 _camera = FindCamera();
             if (_camera != null)
                 _camera.EnableRaycast = true;
@@ -118,6 +121,7 @@ namespace IngameScript
             string[] parts = argument.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             string cmd = parts[0].ToLowerInvariant();
             string value = parts.Length > 1 ? parts[1].ToLowerInvariant() : null;
+            string extra = parts.Length > 2 ? parts[2].ToLowerInvariant() : null;
             double parsed;
             _message = "";
 
@@ -165,10 +169,44 @@ namespace IngameScript
                     HandleCruiseCommand(value);
                     break;
                 case "approach":
-                    StartScan();
+                    StartScan(ScanPurpose.Approach);
                     break;
                 case "stop":
                     _mode = Mode.Manual;
+                    _scanPending = false;
+                    break;
+                case "mark":
+                    HandleMarkCommand(parts);
+                    break;
+                case "goto":
+                    GoToSelected();
+                    break;
+                case "select":
+                    MoveSelection(value == "prev" ? -1 : 1);
+                    break;
+                case "delete":
+                    DeleteSelected();
+                    break;
+                case "filter":
+                    if (value == null)
+                        CycleFilter();
+                    else
+                    {
+                        _filter = value == "all" ? null : NormalizeOre(value);
+                        _selected = null;
+                    }
+                    break;
+                case "zoom":
+                    HandleZoomCommand(value);
+                    break;
+                case "view":
+                    SwitchView(value == "list" ? MapView.List : MapView.Radar);
+                    break;
+                case "ui":
+                    HandleUiCommand(value);
+                    break;
+                case "map":
+                    HandleMapCommand(value, extra);
                     break;
                 case "calibrate":
                     if (value == "reset")
@@ -220,6 +258,11 @@ namespace IngameScript
         {
             return double.TryParse(text.Replace(',', '.'), System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out result);
+        }
+
+        static string Num(double value)
+        {
+            return value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
         }
 
         void SetLimit(double value)
