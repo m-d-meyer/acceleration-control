@@ -124,42 +124,145 @@ def accel():
     img.save(os.path.join(OUT, "accel.png"))
 
 
+# 2D copy of the script's planner (Navigation.cs: PlanSegment, BlockingObstacle,
+# DetourPoint): a leg that cuts an obstacle's clearance is split at a point
+# DetourFactor x clearance beside the obstacle, and both halves are checked again.
+DETOUR_FACTOR = 1.3
+
+
+def seg_distance(c, a, b):
+    ax, ay = b[0] - a[0], b[1] - a[1]
+    t = max(0.0, min(1.0, ((c[0] - a[0]) * ax + (c[1] - a[1]) * ay) / (ax * ax + ay * ay)))
+    return math.dist(c, (a[0] + ax * t, a[1] + ay * t)), t
+
+
+def blocking(obstacles, a, b, skip_a, skip_b):
+    first, best = None, 1e18
+    for c, clearance in obstacles:
+        if skip_a and math.dist(a, c) < clearance or skip_b and math.dist(b, c) < clearance:
+            continue
+        if seg_distance(c, a, b)[0] >= clearance:
+            continue
+        if math.dist(a, c) < best:
+            first, best = (c, clearance), math.dist(a, c)
+    return first
+
+
+def detour_point(obstacles, o, a, b):
+    c, clearance = o
+    _, t = seg_distance(c, a, b)
+    px, py = a[0] + (b[0] - a[0]) * t - c[0], a[1] + (b[1] - a[1]) * t - c[1]
+    n = math.hypot(px, py) or 1
+    ox, oy = px / n, py / n
+    scale = DETOUR_FACTOR
+    while scale < DETOUR_FACTOR * 3:
+        for sx in (1, -1):         # in 2D: the side the path passes, then the other
+            q = (c[0] + sx * ox * clearance * scale, c[1] + sx * oy * clearance * scale)
+            if all(math.dist(q, c2) >= r2 for c2, r2 in obstacles):
+                return q
+        scale *= 1.6
+    return (c[0] + ox * clearance * DETOUR_FACTOR, c[1] + oy * clearance * DETOUR_FACTOR)
+
+
+def plan(obstacles, a, b, route, depth=0, at_start=True, at_target=True):
+    o = blocking(obstacles, a, b, at_start, at_target)
+    if o is None or depth >= 6:
+        return
+    q = detour_point(obstacles, o, a, b)
+    plan(obstacles, a, q, route, depth + 1, at_start, False)
+    route.append(q)
+    plan(obstacles, q, b, route, depth + 1, False, at_target)
+
+
+def fly(points, vmax=8.0, accel=0.35):
+    """Rough point-mass flight. Corner speeds are planned backwards from the end
+    (like PlanCornerSpeeds, turn factor cos^2); a waypoint counts as reached
+    within 25 px or after crossing the bisector plane (like WaypointReached)."""
+    n = len(points)
+    corner = [0.0] * n
+    for k in range(n - 2, 0, -1):
+        a, w, b = points[k - 1], points[k], points[k + 1]
+        u = (w[0] - a[0], w[1] - a[1])
+        v = (b[0] - w[0], b[1] - w[1])
+        cos = (u[0] * v[0] + u[1] * v[1]) / (math.hypot(*u) * math.hypot(*v))
+        corner[k] = min(vmax * max(0.1, cos) ** 2, math.sqrt(corner[k + 1] ** 2 + 2 * accel * math.dist(w, b)))
+    pos, vel, i, track = list(points[0]), [0.0, 0.0], 1, []
+    for _ in range(40000):
+        track.append(tuple(pos))
+        target = points[i]
+        if i < n - 1:
+            a, b = points[i - 1], points[i + 1]
+            ux, uy = target[0] - a[0], target[1] - a[1]
+            vx, vy = b[0] - target[0], b[1] - target[1]
+            nu, nv = math.hypot(ux, uy), math.hypot(vx, vy)
+            bis = (ux / nu + vx / nv, uy / nu + vy / nv)
+            if math.dist(pos, target) < 25 or (pos[0] - target[0]) * bis[0] + (pos[1] - target[1]) * bis[1] > 0:
+                i += 1
+                continue
+        dist = math.dist(pos, target)
+        if i == n - 1 and dist < 1 and math.hypot(*vel) < 0.2:
+            break
+        speed = min(vmax, math.sqrt(corner[i] ** 2 + 2 * accel * 0.8 * dist))
+        dn = dist or 1
+        want = ((target[0] - pos[0]) / dn * speed, (target[1] - pos[1]) / dn * speed)
+        ex, ey = want[0] - vel[0], want[1] - vel[1]
+        en = math.hypot(ex, ey)
+        if en > accel:
+            ex, ey = ex / en * accel, ey / en * accel
+        vel = [vel[0] + ex, vel[1] + ey]
+        pos = [pos[0] + vel[0], pos[1] + vel[1]]
+    return track
+
+
 def route():
     img, d = canvas("NAVIGATION", "Routes around known asteroids, gyros turn the ship, cameras guard the way ahead")
-    rocks = [((620, 420), 120, 1), ((980, 640), 90, 2), ((1150, 330), 70, 3), ((420, 700), 60, 4)]
+    rocks = [((620, 420), 120, 1), ((1000, 650), 90, 2), ((1120, 300), 70, 3), ((400, 690), 60, 4)]
+    obstacles = []
     for (cx, cy), r, s in rocks:
-        margin = r + 60
-        d.ellipse([cx - margin, cy - margin, cx + margin, cy + margin], outline=FAINT, width=2)
+        clearance = r + 60
+        obstacles.append(((cx, cy), clearance))
+        d.ellipse([cx - clearance, cy - clearance, cx + clearance, cy + clearance], outline=FAINT, width=2)
         rock(d, cx, cy, r, s)
     # target asteroid with deposit
-    tx, ty, tr = 1400, 690, 95
+    tx, ty, tr = 1420, 640, 95
     rock(d, tx, ty, tr, 5)
     d.polygon([(tx - 40, ty - 106), (tx - 26, ty - 92), (tx - 40, ty - 78), (tx - 54, ty - 92)], fill=(235, 235, 245))
     label(d, tx - 20, ty - 150, "Platinum #1", ROUTE, 24, True)
-    start = (170, 300)
-    w1 = (620, 230)
-    w2 = (1110, 520)
-    stop = (1318, 610)
-    pts = [start, w1, w2, stop]
+    start = (170, 330)
+    stop = (1318, 575)
+    obstacles.append(((tx, ty), tr + 60))
+    waypoints = []
+    plan(obstacles, start, stop, waypoints)
+    pts = [start] + waypoints + [stop]
     for a, b in zip(pts, pts[1:]):
         dashed(d, a, b, ROUTE, 5, 18, 10)
-    for i, (wx, wy) in enumerate((w1, w2)):
+    track = fly(pts)
+    d.line(track, fill=CYAN, width=3)
+    for i, (wx, wy) in enumerate(waypoints):
         d.polygon([(wx, wy - 13), (wx + 13, wy), (wx, wy + 13), (wx - 13, wy)], outline=ROUTE, width=3)
-        label(d, wx + 20, wy - 34, "W%d" % (i + 1), ROUTE, 22, True)
+        label(d, wx - 20, wy - 34, "W%d" % (i + 1), ROUTE, 22, True, "ra")
     d.ellipse([stop[0] - 9, stop[1] - 9, stop[0] + 9, stop[1] + 9], fill=ROUTE)
-    label(d, stop[0] - 16, stop[1] - 46, "stops before the surface", DIM, 18, anchor="ra")
-    ang = math.atan2(w1[1] - start[1], w1[0] - start[0])
+    ang = math.atan2(pts[1][1] - start[1], pts[1][0] - start[0])
     # guard rays
     for k in (-0.12, -0.05, 0.02, 0.09):
         a2 = ang + k
         arrow(d, start, (start[0] + 320 * math.cos(a2), start[1] + 320 * math.sin(a2)), (40, 110, 130), 2, 10)
     ship(d, start[0], start[1], ang, 30)
-    label(d, 60, 360, "collision guard: camera rays", DIM, 20)
-    label(d, 60, 388, "ahead, replans or stops", DIM, 20)
-    label(d, 470, 560, "clearance around each rock", DIM, 18)
+    lx, ly = 1120, 470
+    for i, (col, dash, text) in enumerate(((ROUTE, True, "planned route"), (CYAN, False, "flown (simulated, approx.)"))):
+        yy = 150 + i * 32
+        if dash:
+            dashed(d, (60, yy), (110, yy), col, 5, 14, 8)
+        else:
+            d.line([(60, yy), (110, yy)], fill=col, width=3)
+        label(d, 124, yy - 12, text, TEXT, 20)
+    d.ellipse([60, 204, 110, 254], outline=FAINT, width=2)
+    label(d, 124, 218, "clearance: rock + ship + buffer", TEXT, 20)
+    label(d, 60, 500, "collision guard: camera rays", DIM, 20)
+    label(d, 60, 528, "ahead, replans or stops", DIM, 20)
     box = [60, 760, 1540, 860]
     d.rectangle(box, fill=PANEL, outline=GRID, width=2)
-    label(d, 84, 776, "Braking is planned backwards from the end: corner speeds, flip-and-burn, gravity.", TEXT, 22)
+    label(d, 84, 776, "Corner speeds are planned backwards from the end; waypoints move outwards if a turn would drift too far.", TEXT, 20)
     label(d, 84, 812, "Long legs start with a jump (the pilot may have to press Jump). ETA and delta-v on the screens.", DIM, 20)
     img.save(os.path.join(OUT, "route.png"))
 
