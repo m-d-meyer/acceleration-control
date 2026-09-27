@@ -180,7 +180,7 @@ namespace IngameScript
                     break;
                 case Mode.Approach:
                     _text.AppendFormat("Approach {0}: {1}, {2:0} m/s\n", _targetName, FormatDistance(_remainingDistance), _currentSpeed);
-                    _text.AppendFormat("{0}, stopping distance {1}\n", _approachPhase, FormatDistance(_stopDistance));
+                    _text.AppendFormat("{0}, stopping distance {1}, {2}\n", _approachPhase, FormatDistance(_stopDistance), EtaText());
                     break;
                 default:
                     _text.AppendFormat("Cruise speed: {0:0.00} m/s (off)\n", _cruiseSpeed);

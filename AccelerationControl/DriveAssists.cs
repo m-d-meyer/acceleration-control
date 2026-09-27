@@ -329,6 +329,41 @@ namespace IngameScript
             return top / accel + coast + top / brake + Math.Max(distance - used, 0) / Math.Max(top, 0.01);
         }
 
+        // Estimated time to the end of the route: accelerate from the current speed,
+        // cruise at MaxSpeed (AtmosphereSpeed in air), brake as planned; plus the
+        // turn of a planned flip. -1 when not flying.
+        double EtaSeconds()
+        {
+            IMyShipController c = _controller ?? _layoutController;
+            double d = _remainingDistance;
+            if (_mode != Mode.Approach || c == null || d <= 0)
+                return -1;
+            double mass = c.CalculateShipMass().PhysicalMass, reverse;
+            Vector3D direction;
+            double a = Math.Max(_useBestThrust && _gyros.Count > 0 && !LevelFlight
+                ? BestThrust(c.WorldMatrix, mass, out direction, out reverse) : MaxAccel(2, 1, mass), 0.1);
+            double b = Math.Max(PlanningBrake(), 0.1);
+            double top = InAtmosphere && _atmosphereSpeed > 0 ? Math.Min(_maxSpeed, _atmosphereSpeed) : _maxSpeed;
+            double v = Math.Min(_currentSpeed, top);
+            double peak = Math.Sqrt((v * v / (2 * a) + d) / (1 / (2 * a) + 1 / (2 * b)));
+            double t;
+            if (peak <= v)
+                t = 2 * d / Math.Max(v, 0.1);       // already braking
+            else
+            {
+                peak = Math.Min(peak, top);
+                double along = (peak * peak - v * v) / (2 * a) + peak * peak / (2 * b);
+                t = (peak - v) / a + peak / b + Math.Max(d - along, 0) / peak;
+            }
+            return _flipPlanned && !_flipBraking ? t + _flipTime : t;
+        }
+
+        string EtaText()
+        {
+            double eta = EtaSeconds();
+            return eta < 0 ? "" : "ETA " + FormatTime(eta);
+        }
+
         // Deceleration the approach plans with when moving along a direction.
         // Gravity pulling along the direction (descending) takes its share.
         double BrakeAccel(Vector3D direction)

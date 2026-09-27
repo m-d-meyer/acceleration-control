@@ -98,11 +98,16 @@ namespace IngameScript
         {
             get
             {
-                if (!InGravity)
-                    return false;
-                bool air = _air > AirDetected
+                return InGravity && (InAtmosphere || _gravity.Length() > _weakestAccel * LevelGravityShare);
+            }
+        }
+
+        bool InAtmosphere
+        {
+            get
+            {
+                return _air > AirDetected
                     || (_planet != null && Vector3D.Distance(ReferencePosition(), _planet.Center) < AtmosphereTop(_planet));
-                return air || _gravity.Length() > _weakestAccel * LevelGravityShare;
             }
         }
 

@@ -272,7 +272,11 @@ The **base** is marked like an ore: choose *Base* in the MARK list, or run
   sorted by distance, with the direction relative to the ship's nose (degrees
   left/right and up/down, plus a small indicator).
 - Both show the selected deposit, whether the direct path is clear and the delta-v
-  of the trip.
+  of the trip; during a flight the remaining distance, stopping distance and an ETA
+  (acceleration from the current speed, `MaxSpeed` or `AtmosphereSpeed` in air,
+  planned braking and the turn of a flip; turns at waypoints are not counted).
+- The status screen shows the current acceleration limit (`up`/`down`) in the title
+  line of the power card.
 - The Custom Data of every map screen contains all deposits as GPS lines. Copy them
   and use **Paste from clipboard** in the game's GPS menu to get HUD markers.
 

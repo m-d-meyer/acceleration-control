@@ -414,7 +414,7 @@ namespace IngameScript
             else if (_mode == Mode.Approach)
             {
                 title = "> " + _targetName;
-                detail = _approachPhase + "  " + FormatDistance(_remainingDistance) + "  " + _currentSpeed.ToString("0") + " m/s";
+                detail = FormatDistance(_remainingDistance) + "  " + EtaText() + "  " + _currentSpeed.ToString("0") + " m/s";
             }
             else if (_selected != null)
             {
@@ -462,6 +462,8 @@ namespace IngameScript
             Rect(stop - 2, by - 4, 4, bh + 8, RouteColor);
             if (_probing)
                 Text("searching ahead, nothing found yet", x, by + bh + 4, 0.5f, DimColor);
+            else
+                Text(EtaText(), x, by + bh + 4, scale, TextColor);
         }
 
         // -----------------------------------------------------------------
