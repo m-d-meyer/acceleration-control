@@ -508,6 +508,10 @@ This works for bases that do not move. Movement keys cancel docking at any time.
 Entries that are already known (same ore within `MergeDistance`, same asteroid) are
 not added twice.
 
+With planet zones in use (Real Solar Systems) the export starts with a `ZONE:` line,
+so the receiving ship files the entries under the right zone even if it is somewhere
+else. GPS lines without it count as the current zone.
+
 ## How it works
 
 Every tick the script reads the movement input of the controlled cockpit. For

@@ -144,12 +144,13 @@ namespace IngameScript
         //  Deposits
         // -----------------------------------------------------------------
 
-        Deposit AddDeposit(string ore, Vector3D position, bool mined, bool waypoint = false)
+        Deposit AddDeposit(string ore, Vector3D position, bool mined, bool waypoint = false, string zone = null)
         {
+            zone = zone ?? _zone;
             int number = 0;
             foreach (Deposit d in _deposits)
             {
-                if (d.Ore != ore || d.Zone != _zone)
+                if (d.Ore != ore || d.Zone != zone)
                     continue;
                 if (Vector3D.DistanceSquared(d.Position, position) < _mergeDistance * _mergeDistance)
                 {
@@ -160,7 +161,7 @@ namespace IngameScript
                 number = Math.Max(number, d.Number);
             }
 
-            var deposit = new Deposit { Ore = ore, Number = waypoint ? 0 : number + 1, Position = position, Mined = mined, Zone = _zone };
+            var deposit = new Deposit { Ore = ore, Number = waypoint ? 0 : number + 1, Position = position, Mined = mined, Zone = zone };
             _deposits.Add(deposit);
             if (!mined)
                 _selected = deposit;   // logging while mining must not move the menu selection
@@ -500,6 +501,8 @@ namespace IngameScript
         {
             var sb = new StringBuilder();
             var culture = System.Globalization.CultureInfo.InvariantCulture;
+            if (PlanetZones)
+                sb.Append("ZONE:" + _zone + "\n");     // the zone the coordinates below belong to
             foreach (Deposit d in _deposits)
             {
                 if (d.Zone != _zone)
@@ -518,18 +521,21 @@ namespace IngameScript
         int ImportMap(string text)
         {
             int added = 0;
+            string zone = _zone;
             foreach (string raw in text.Split('\n'))
             {
                 string[] p = raw.Trim().Split(':');
                 double x, y, z, r, g;
-                if (p.Length >= 5 && p[0] == "GPS" && TryParseNumber(p[2], out x) && TryParseNumber(p[3], out y) && TryParseNumber(p[4], out z))
+                if (p.Length == 2 && p[0] == "ZONE")
+                    zone = p[1];
+                else if (p.Length >= 5 && p[0] == "GPS" && TryParseNumber(p[2], out x) && TryParseNumber(p[3], out y) && TryParseNumber(p[4], out z))
                 {
                     // "Iron #2" -> Iron; other names become waypoints with that name
                     int hash = p[1].LastIndexOf(" #");
                     string ore = hash > 0 ? p[1].Substring(0, hash) : p[1];
                     bool known = ore == BaseName || Array.IndexOf(StandardOres, ore) >= 0 || _oreAmounts.ContainsKey(ore);
                     int before = _deposits.Count;
-                    AddDeposit(known ? ore : p[1], new Vector3D(x, y, z), false, !known);
+                    AddDeposit(known ? ore : p[1], new Vector3D(x, y, z), false, !known, zone);
                     added += _deposits.Count - before;
                 }
                 else if (p.Length >= 8 && p[0] == "MAP" && TryParseNumber(p[3], out x) && TryParseNumber(p[4], out y)
@@ -539,12 +545,13 @@ namespace IngameScript
                     long.TryParse(p[2], out id);
                     Vector3D center = new Vector3D(x, y, z);
                     bool known = false;
-                    foreach (Obstacle o in _obstacles)
-                        if ((id != 0 && o.EntityId == id) || Vector3D.DistanceSquared(o.Center, center) < 1)
+                    List<Obstacle> list = zone == _zone ? _obstacles : _otherObstacles;
+                    foreach (Obstacle o in list)
+                        if (o.Zone == zone && ((id != 0 && o.EntityId == id) || Vector3D.DistanceSquared(o.Center, center) < 1))
                             known = true;
                     if (!known)
                     {
-                        _obstacles.Add(new Obstacle { Planet = p[1] == "P", EntityId = id, Center = center, Radius = r, GravityRadius = g, Zone = _zone });
+                        list.Add(new Obstacle { Planet = p[1] == "P", EntityId = id, Center = center, Radius = r, GravityRadius = g, Zone = zone });
                         added++;
                     }
                 }
