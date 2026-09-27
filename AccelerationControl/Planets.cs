@@ -454,7 +454,8 @@ namespace IngameScript
         // ship, the target and any terrain the guard saw on this flight.
         double CruiseRadius(Obstacle planet, Vector3D from, Vector3D to)
         {
-            double ground = planet.Radius, elevation;
+            // Never below the water surface (water mod), given relative to sea level.
+            double ground = planet.Radius + Math.Max(_waterLevel, 0), elevation;
             IMyShipController c = _controller ?? _layoutController;
             if (c != null && Vector3D.Distance(from, ReferencePosition()) < 100
                 && c.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevation))

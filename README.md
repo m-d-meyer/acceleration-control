@@ -160,6 +160,7 @@ first run. Edit them there and run `reload`.
 | `AtmosphereSpeed`    | `100`     | Speed limit inside an atmosphere (m/s); the ship brakes to it before entering, `0` = off |
 | `GravityFalloff`     | `7`       | Gravity falloff exponent until measured (vanilla planets: 7; mods may use less) |
 | `CompensateWind`     | `true`    | Measure wind, drag and lift and compensate them during flights |
+| `WaterLevel`         | `0`       | Water surface above sea level (water mod); planet routes cruise at least 200 m above it (m) |
 | `ZoneEntrySpeed`     | `100`     | Speed relative to a followed planet when entering its zone (m/s) |
 | `ZoneRadiusGuess`    | `200000`  | Assumed zone radius around a followed planet's GPS until the first entry has measured it (m); better too large than too small |
 
@@ -380,6 +381,11 @@ use the up/down thrusters; flip-and-burn and turning the strongest thrusters alo
 the flight are not used. Braking on a descent is planned with the upward thrust
 minus gravity. If the collision guard sees terrain ahead, the route is planned again
 higher. Leaving a mine on a planet starts with a straight climb.
+
+Water (water mod): raycasts do not see water, so the script keeps above it by
+planning: the cruise height is at least 200 m above the ground at the start and the
+target (both above water) and above `WaterLevel` over sea level. Final descents end
+above the target.
 
 Flights in gravity only start if the ship's upward thrusters give at least 1.1 times
 the local gravity. Locked landing gear is unlocked while a flight is under way, so
