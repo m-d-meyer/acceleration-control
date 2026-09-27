@@ -108,6 +108,7 @@ namespace IngameScript
             _dockGridUp = grid.Up;
             _dockConnectorId = connector.EntityId;
             _dockGridId = connector.OtherConnector.CubeGrid.EntityId;
+            _dockBaseConnectorId = connector.OtherConnector.EntityId;
             _dockKnown = true;
             _dockZone = _zone;
             _dockProvisional = _zoneProvisional;
@@ -166,6 +167,7 @@ namespace IngameScript
                 // The recorded way in: to its start, then along it into the dock.
                 LoadDockPath(false);
                 StartPathGoal(_path, BaseName, true);
+                Gate("open");      // early, so the gate opens during the flight
                 return;
             }
             StartGoal(DockApproachPoint, BaseName, true);
@@ -209,6 +211,7 @@ namespace IngameScript
             connector.Disconnect();
             if (HasDockPath)
             {
+                Gate("open");
                 // Out the way the ship came in, backwards along the recorded poses.
                 LoadDockPath(true);
                 _pathDock = false;

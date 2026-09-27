@@ -189,13 +189,7 @@ namespace IngameScript
             _screenTextScale = (float)MathHelper.Clamp(Option("ScreenTextScale", _screenTextScale), 0.5, 2);
             _zoneRadiusGuess = Option("ZoneRadiusGuess", _zoneRadiusGuess);
 
-            _ini.SetSectionComment(IniSection,
-                " Accelerations in m/s² (1 g = 9.81 m/s²), speeds in m/s, distances in m.\n" +
-                " *CockpitSurface: cockpit screen index for that page, -1 = off.\n" +
-                " HydrogenThrustPerLiter, UraniumMWhPerKg: start values, calibrated in flight.\n" +
-                " PlanetZones: true for Real Solar Systems (switches on by itself at the first teleport).\n" +
-                " AtmosphereHeight: above sea level, used until the ship has measured the atmosphere.\n" +
-                " Run the PB with 'reload' after editing.");
+            _ini.SetSectionComment(IniSection, " Units: m/s², m/s, m. Options: see README. Run 'reload' after editing.");
             Me.CustomData = _ini.ToString();
 
             if (_minLimit > _maxLimit)
@@ -252,6 +246,7 @@ namespace IngameScript
                         local.Append(Vec(v)).Append(';');
                     state.Set(StateSection, "DockLocal", local.ToString());
                     state.Set(StateSection, "DockPath", PathText(_dockPathLocal));
+                    state.Set(StateSection, "DockGate", _dockBaseConnectorId);
                 }
             }
             state.Set(StateSection, "Zone", _zone);
@@ -317,6 +312,7 @@ namespace IngameScript
                 for (int i = 0; i < 7; i++)
                     _dockLocal[i] = ParseVec(localParts, i * 3);
                 _dockPathLocal = ParsePath(state.Get(StateSection, "DockPath").ToString(""));
+                _dockBaseConnectorId = state.Get(StateSection, "DockGate").ToInt64();
                 _baseKnown = true;
             }
             foreach (string id in state.Get(StateSection, "BaseGrids").ToString("").Split(';'))

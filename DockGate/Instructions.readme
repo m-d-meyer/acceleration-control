@@ -1,0 +1,5 @@
+Dock Gate - companion script for the base, for Acceleration Control
+https://github.com/m-d-meyer/acceleration-control
+
+Opens and closes gates when a ship with Acceleration Control docks or undocks
+(requests over the antennas). See "Gates" in README.md.

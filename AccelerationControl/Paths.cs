@@ -48,7 +48,7 @@ namespace IngameScript
         readonly List<PathPoint> _crumbs = new List<PathPoint>();
         readonly List<PathPoint> _path = new List<PathPoint>();         // being followed (world)
         List<PathPoint> _dockPathLocal = new List<PathPoint>();         // way into the dock (base coordinates)
-        int _pathIndex, _pathHoldUntil, _pathBlockedSince, _pathScan;
+        int _pathIndex, _pathHoldUntil, _pathBlockedSince, _pathScan, _pathEndTicks;
         bool _pathDock, _pathAfterRoute, _pathReverseDock;
         string _pathName = "";
         Vector3D _pathF, _pathU;
@@ -269,8 +269,10 @@ namespace IngameScript
         void StartPathFollow(int index)
         {
             _pathIndex = index;
-            _pathHoldUntil = _pathBlockedSince = 0;
+            _pathHoldUntil = _pathBlockedSince = _pathEndTicks = 0;
             _pathAfterRoute = false;
+            if (_pathDock)
+                Gate("open");
             _alignError = Math.PI;
             _enabled = true;
             _mode = Mode.Path;
@@ -296,6 +298,7 @@ namespace IngameScript
                 IMyShipConnector connector = DockConnector();
                 if (connector != null && connector.Status == MyShipConnectorStatus.Connected)
                 {
+                    Gate("close");
                     _mode = Mode.Manual;
                     _message = "Docked";
                     return false;
@@ -306,6 +309,8 @@ namespace IngameScript
                     return true;
                 }
             }
+            if (GateWait())
+                return true;
             Vector3D position = ReferencePosition();
             int last = _path.Count - 1;
             while (_pathIndex < last)
@@ -327,12 +332,28 @@ namespace IngameScript
             double remaining = PathRemaining(position);
             double togo = remaining - (_pathDock ? 0 : PathEndMargin);
             _targetDistance = _remainingDistance = Math.Max(togo, 0);
+            // Last meters into the dock: the connector to its recorded place
+            // (a little into the other connector, so it can lock).
+            IMyShipConnector own = DockConnector();
+            if (_pathDock && remaining < 3 && own != null)
+            {
+                if (++_pathEndTicks > 60 * 15)
+                {
+                    _mode = Mode.Manual;
+                    _message = "At the dock, but the connector does not lock";
+                    return false;
+                }
+                targetVelocity = ClampLength((_dockPosition - _dockAxis * 0.3 - own.GetPosition()) * 0.5, 0.5);
+                return true;
+            }
             if (togo <= 0.5)
             {
                 if (_currentSpeed < 0.5 && _alignError < 0.05)
                 {
                     _mode = Mode.Manual;
-                    _message = _pathDock ? "At the dock pose, but the connector does not lock" : "At " + _pathName + ", aligned as recorded";
+                    if (_pathReverseDock)
+                        Gate("close");
+                    _message = "At " + _pathName + ", aligned as recorded";
                     return false;
                 }
                 return true;    // hold still and finish turning
@@ -349,7 +370,8 @@ namespace IngameScript
             {
                 if (_pathBlockedSince == 0)
                     _pathBlockedSince = _ticks;
-                if (_ticks - _pathBlockedSince > PathGiveUpTicks)
+                // Docking and undocking wait longer: a gate may be opening.
+                if (_ticks - _pathBlockedSince > PathGiveUpTicks * (_pathDock || _pathReverseDock ? 6 : 1))
                 {
                     _mode = Mode.Manual;
                     _message = "The recorded way stays blocked: please take over";
@@ -394,12 +416,61 @@ namespace IngameScript
                 if (hit.IsEmpty() || !hit.HitPosition.HasValue || IsOwnHit(hit))
                     return false;
                 bool voxel = hit.Type == MyDetectedEntityType.Asteroid || hit.Type == MyDetectedEntityType.Planet;
-                bool atEnd = _pathDock ? IsBaseGrid(hit.EntityId) && remaining < ShipRadius * 2 + 10
+                bool atEnd = _pathDock || _pathReverseDock ? IsBaseGrid(hit.EntityId) && InDockedBox(hit.HitPosition.Value)
                     : voxel && remaining < ShipRadius + PathEndMargin + 10;
                 if (atEnd)
                     return false;
                 _pathHoldUntil = _ticks + 60;   // wait a second, then look again
                 _message = "Waiting: " + (voxel ? "rock" : hit.Name) + " on the recorded way";
+                return true;
+            }
+            return false;
+        }
+
+        // The base around the docked ship (1.5 m margin): what the ship touches
+        // when docked, not a closed gate on the way.
+        bool InDockedBox(Vector3D point)
+        {
+            Vector3D p = Vector3D.Transform(point, MatrixD.Invert(DockedGridMatrix())), min, max;
+            GridBox(out min, out max);
+            for (int i = 0; i < 3; i++)
+                if (p.GetDim(i) < min.GetDim(i) - 1.5 || p.GetDim(i) > max.GetDim(i) + 1.5)
+                    return false;
+            return true;
+        }
+
+        // -----------------------------------------------------------------
+        //  Gates: 'open' / 'close' to the base's DockGate script over the
+        //  antennas; it answers "busy" while opening and "ready" when open.
+        // -----------------------------------------------------------------
+
+        const string GateTag = "AccelDock";
+        long _dockBaseConnectorId;
+        int _gateSent, _gateState;      // 0 nothing asked, 1 asked, 2 opening, 3 open
+
+        void Gate(string command)
+        {
+            if (_dockBaseConnectorId == 0)
+                return;
+            IGC.SendBroadcastMessage(GateTag, command + "|" + _dockBaseConnectorId);
+            _gateSent = _ticks;
+            _gateState = command == "open" ? 1 : 0;
+        }
+
+        // Holds the ship while the base opens the gate: two seconds for an
+        // answer (no DockGate script: go on), at most a minute for opening.
+        bool GateWait()
+        {
+            while (IGC.UnicastListener.HasPendingMessage)
+            {
+                MyIGCMessage m = IGC.UnicastListener.AcceptMessage();
+                if (m.Tag == GateTag && _gateState > 0)
+                    _gateState = m.Data as string == "ready" ? 3 : 2;
+            }
+            int waited = _ticks - _gateSent;
+            if (_gateState == 1 && waited < 120 || _gateState == 2 && waited < 3600)
+            {
+                _message = "Waiting for the gate of " + BaseName;
                 return true;
             }
             return false;

@@ -254,6 +254,21 @@ The README describes all commands and Custom Data options for players.
   (or in Mode.Dock/Path); at script start only at the known dock position; others
   are `_carried` (ignored by `IsOwnHit`, `DockConnector`, `_wasConnected`).
 
+- Path docking stopped ~20 cm short (end tolerance 0.5 m, connector not in lock
+  range): the last 3 m now steer the connector to `_dockPosition` - 0.3 m along
+  the axis until Connectable (15 s limit). Base hits on the dock/undock way are
+  ignored only inside the docked ship's box + 1.5 m (`InDockedBox`), so a closed
+  gate blocks; blocked waits last 60 s there (sensor gates).
+- Gates: `DockGate/` is a second project, a companion PB script for the base
+  (build.py builds both into `dist/`). Protocol on IGC tag `AccelDock`: ship
+  broadcasts `open|<base connector id>` / `close|...`; base triggers timers
+  "Dock Open"/"Dock Close" (name part matching the connector name selects a dock),
+  replies by unicast "busy", then "ready" when "Dock Gate" blocks stopped. Ship:
+  `Gate()`, `GateWait()` (2 s for an answer, 60 s for opening), connector id saved
+  as DockGate. Not tested in game.
+- Ship script at ~99.0k of 100k after this; the Custom Data help comment was cut to
+  one line to make room.
+
 ## Open ideas / next steps
 
 - Verify in game: gyroscope sign calibration, jump flow, docking checks.

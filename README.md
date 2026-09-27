@@ -616,6 +616,37 @@ as docked only at the known dock. Without a
 way in, `dock` shows "No recorded way in" and uses the point in front of the
 connector, which is wrong for hangars whose connector does not face the entrance.
 
+On the last meters the ship moves its connector to the recorded place (slightly
+into the other connector) until it locks; if it has not locked after 15 seconds,
+the ship stops and says so. While the way into or out of the dock is blocked by a
+part of the base (e.g. a gate that a sensor opens), the ship waits up to a minute.
+
+### Gates
+
+A base can open a gate, hangar door, pistons, rotors or lights for the ship. Put the
+companion script `dist/DockGate.cs` into a programmable block on the base; ship and
+base need antennas in range of each other (relays work).
+
+1. Build a timer block named **Dock Open** whose toolbar opens the way in (any
+   actions: hangar doors, pistons, rotors, lights), and one named **Dock Close**
+   that closes it again.
+2. Optional: name the moving parts **Dock Gate** (or put them in a group of that
+   name). The base answers "ready" once all of them have stopped moving (doors open,
+   pistons and rotors at rest); without them it answers right away.
+3. Several docks on one base: add a part of the connector's name, e.g. timers
+   `Dock Open Hangar A` / `Dock Close Hangar A` and group `Dock Gate Hangar A`
+   belong to the connector `Connector Hangar A`. Names without such a part belong
+   to every connector.
+
+`dock` asks the base to open when the flight starts and again before following
+the way in; the ship waits at the start of the way until the base reports the gate
+open (at most a minute; without an answer within two seconds it just goes on).
+When the ship is docked it asks the base to close. `undock` opens the gate before
+moving out and closes it at the end of the way out. Running the base PB with `open`
+or `close` triggers the timers by hand. The gate stays open if a dock flight is
+cancelled. Dock by hand once with this version, so the ship knows the base
+connector to ask for.
+
 **Base position.** All dock data is stored relative to the base grid. Whenever a
 camera ray hits the base grid (background survey, collision guard, docking scans),
 its current position and orientation are taken from the hit, so the dock is found
