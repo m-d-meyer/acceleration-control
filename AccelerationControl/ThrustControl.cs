@@ -46,7 +46,14 @@ namespace IngameScript
         {
             _controller = FindActiveController();
             if (_controller == null)
+            {
                 _uiMode = false;
+                // Nobody in a seat: a flight (approach, GO, docking, cruise) goes on
+                // without a pilot, using any controller of the ship as reference.
+                // Overrides of thrusters and gyroscopes work without a pilot.
+                if (_mode != Mode.Manual && _layoutController != null && _layoutController.IsFunctional)
+                    _controller = _layoutController;
+            }
             if ((!_enabled && !_uiMode) || _controller == null)
             {
                 ReleaseAll();

@@ -621,6 +621,10 @@ at the limit until the ship is almost stopped.
 
 ## Notes
 
+- Flights (approach, GO/goto, docking, cruise) go on when you leave the seat: the
+  script then uses any cockpit or remote control of the ship as reference. The
+  acceleration limit itself needs a pilot. A jump still waits for someone to press
+  Jump if the game refuses the script's jump (cancelled after 90 s).
 - If the limit is higher than what your thrusters can deliver, the thrusters
   simply run at 100 %, as in vanilla.
 - Turning the programmable block **off** while flying can leave thruster
