@@ -91,6 +91,7 @@ Run the programmable block with one of these arguments:
 | `dock`              | Fly to the base and dock (after docking there once by hand) |
 | `track GPS:name:x:y:z:` | Real Solar Systems: a sample of a planet's moving GPS; after two samples the ship follows the moving planet into its zone (see Planets) |
 | `track` / `track clear` | Follow again with the samples known / forget them        |
+| `water here` / `water off` | Store the ship's height as this planet's water surface (water mod) / forget it |
 | `undock`            | Disconnect and back off from the base                    |
 | `delete`            | Delete the selected deposit                              |
 | `filter [<ore>/all]`| Show only one ore; without argument: next ore            |
@@ -382,10 +383,20 @@ the flight are not used. Braking on a descent is planned with the upward thrust
 minus gravity. If the collision guard sees terrain ahead, the route is planned again
 higher. Leaving a mine on a planet starts with a straight climb.
 
-Water (water mod): raycasts do not see water, so the script keeps above it by
-planning: the cruise height is at least 200 m above the ground at the start and the
-target (both above water) and above `WaterLevel` over sea level. Final descents end
-above the target.
+All planet heights are geodetic: distances from the planet's center, which the game
+reports exactly together with the sea level radius. The cruise height is a sphere
+around the center, so a deep sea floor under the route does not pull it down: it is
+at least `PlanetCruiseHeight` (short hops: a quarter of the distance, min. 200 m)
+above the highest of
+
+- the ground under the ship at the start and the target point (its distance from
+  the center),
+- terrain the collision guard has seen on this flight,
+- the water surface (water mod; raycasts do not see water): per planet with
+  `water here` (float on the water or hover just above it and run it once), else
+  `WaterLevel` above sea level.
+
+Final descents end above the target.
 
 Flights in gravity only start if the ship's upward thrusters give at least 1.1 times
 the local gravity. Locked landing gear is unlocked while a flight is under way, so

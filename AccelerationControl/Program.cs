@@ -243,6 +243,9 @@ namespace IngameScript
                 case "route":
                     PreviewRoute();
                     break;
+                case "water":
+                    HandleWaterCommand(value);
+                    break;
                 case "track":
                     HandleTrackCommand(parts.Length > 1 ? (value == "clear" ? "clear" : argument.Substring(argument.IndexOf(' ') + 1)) : null);
                     break;

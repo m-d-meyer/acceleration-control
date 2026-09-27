@@ -454,8 +454,11 @@ namespace IngameScript
         // ship, the target and any terrain the guard saw on this flight.
         double CruiseRadius(Obstacle planet, Vector3D from, Vector3D to)
         {
-            // Never below the water surface (water mod), given relative to sea level.
-            double ground = planet.Radius + Math.Max(_waterLevel, 0), elevation;
+            // Geodetic: all heights are distances from the planet center. Never below
+            // the water surface (water mod): stored per planet ('water here'), else
+            // WaterLevel above sea level. The ground under the ship may be the sea
+            // floor; it only raises the cruise height, never lowers it.
+            double ground = Math.Max(planet.Radius + Math.Max(_waterLevel, 0), planet.WaterRadius), elevation;
             IMyShipController c = _controller ?? _layoutController;
             if (c != null && Vector3D.Distance(from, ReferencePosition()) < 100
                 && c.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevation))
@@ -522,6 +525,37 @@ namespace IngameScript
         {
             route.Add(point);
             _planOwners.Add(null);
+        }
+
+        // water here   store the ship's current distance from the planet center as the
+        //              water surface of this planet (float on the water, or hover just above)
+        // water off    forget it
+        void HandleWaterCommand(string value)
+        {
+            UpdatePlanet();
+            if (_planet == null)
+            {
+                _message = "Not in a planet's gravity";
+                return;
+            }
+            if (value == "here")
+            {
+                _planet.WaterRadius = Vector3D.Distance(ReferencePosition(), _planet.Center);
+                _message = "Water surface stored: " + FormatDistance(_planet.WaterRadius - _planet.Radius) + " above sea level";
+            }
+            else if (value == "off")
+            {
+                _planet.WaterRadius = 0;
+                _message = "Water surface of this planet forgotten";
+            }
+            else
+            {
+                _message = _planet.WaterRadius > 0
+                    ? "Water surface: " + FormatDistance(_planet.WaterRadius - _planet.Radius) + " above sea level (water here|off)"
+                    : "Usage: water here | water off";
+                return;
+            }
+            _mapChanged = true;
         }
 
         // Below this distance from the center a target counts as on the planet:

@@ -59,6 +59,7 @@ namespace IngameScript
             public double GravityRadius; // planets: approximate extent of the gravity well
             public string Zone = "";
             public double AtmosphereRadius;             // planets: highest point where air was measured
+            public double WaterRadius;                  // planets: water surface (water mod), set with 'water here'
             public double SampleDistance, SampleGravity, Falloff;  // planets: learning the gravity falloff
         }
 
@@ -456,7 +457,8 @@ namespace IngameScript
             {
                 Obstacle o = i < _obstacles.Count ? _obstacles[i] : _otherObstacles[i - _obstacles.Count];
                 state.Set(MapSection, "O" + i, string.Join(";", o.Planet ? "P" : "A", o.EntityId.ToString(),
-                    Num(o.Center.X), Num(o.Center.Y), Num(o.Center.Z), Num(o.Radius), Num(o.GravityRadius), o.Zone, Num(o.AtmosphereRadius)));
+                    Num(o.Center.X), Num(o.Center.Y), Num(o.Center.Z), Num(o.Radius), Num(o.GravityRadius), o.Zone, Num(o.AtmosphereRadius),
+                    Num(o.WaterRadius)));
             }
         }
 
@@ -483,11 +485,13 @@ namespace IngameScript
                 if (p.Length < 7 || !long.TryParse(p[1], out id) || !TryParseNumber(p[2], out x) || !TryParseNumber(p[3], out y)
                     || !TryParseNumber(p[4], out z) || !TryParseNumber(p[5], out r) || !TryParseNumber(p[6], out g))
                     break;
-                double atmosphere = 0;
+                double atmosphere = 0, water = 0;
                 if (p.Length > 8)
                     TryParseNumber(p[8], out atmosphere);
+                if (p.Length > 9)
+                    TryParseNumber(p[9], out water);
                 var o = new Obstacle { Planet = p[0] == "P", EntityId = id, Center = new Vector3D(x, y, z), Radius = r, GravityRadius = g,
-                    Zone = p.Length > 7 ? p[7] : "", AtmosphereRadius = atmosphere };
+                    Zone = p.Length > 7 ? p[7] : "", AtmosphereRadius = atmosphere, WaterRadius = water };
                 (o.Zone == _zone ? _obstacles : _otherObstacles).Add(o);
             }
             _mapChanged = true;
