@@ -108,6 +108,12 @@ The README describes all commands and Custom Data options for players.
   (`IsBaseHit`) only while the ship can still stop in front of them; otherwise it
   makes an emergency stop. Without this, a base built into an asteroid made the
   guard stop early ("surface closer") and docking failed.
+- Dock flights: base/base-rock hits behind the stop point are ignored; in front of
+  it the stop point moves before the hit; emergency stop only if the braking
+  distance does not suffice (the earlier rule "within ShipRadius + buffer" fired on
+  every approach and caused stop/leave/return loops). Near the dock (`NearDock`)
+  GO/dock go straight into the slow docking manoeuvre; gyros hold the heading until
+  the turning-space check is done and do not face the target before docking.
 - Docking path check: voxel hits count only 1 m inside the swept ship box (grids
   with 1.5 m margin), and only the part of the path still ahead.
 - Screens: LCD textures are 512 px; the user found small fonts unreadable, so keep

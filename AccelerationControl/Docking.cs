@@ -130,6 +130,18 @@ namespace IngameScript
                 _message = "Flying to the base to dock";
         }
 
+        // Is the connector close to the approach point or inside the path into the dock?
+        bool NearDock()
+        {
+            IMyShipConnector connector = DockConnector();
+            if (connector == null)
+                return false;
+            Vector3D offset = connector.GetPosition() - _dockPosition;
+            double along = Vector3D.Dot(offset, _dockAxis);
+            double sideways = (offset - _dockAxis * along).Length();
+            return along > -2 && along < DockTravel + 50 && sideways < ShipRadius;
+        }
+
         void StartDockAlign()
         {
             _dockPhase = DockPhase.Clearance;

@@ -291,6 +291,13 @@ namespace IngameScript
             if (!resume)
                 _temporaryObstacles.Clear();    // ships seen on the way stay avoided when resuming
             _replanPending = _resumeGoal = false;
+            // Already near the dock (at the approach point or on the way in):
+            // go straight to the slow docking manoeuvre.
+            if (dock && NearDock())
+            {
+                StartDockAlign();
+                return;
+            }
             Vector3D departure;
             if (NeedsDeparture(ReferencePosition(), out departure))
             {
@@ -548,10 +555,18 @@ namespace IngameScript
             if (_dockAfterRoute && IsBaseHit(hit))
             {
                 // Flying to the base: the base and the rock it stands on are
-                // expected ahead and ignored (docking has its own checks), unless
-                // the ship could no longer stop in front of them.
-                if (along - ShipRadius > stopDistance * 1.3 + _approachBuffer)
+                // expected close to the approach point (docking has its own checks).
+                // Behind the stop point they do not matter.
+                if (along - ShipRadius > remaining + 5)
                     return;
+                if (along - ShipRadius > stopDistance * 1.2 + 5)
+                {
+                    // In front of the stop point, but the ship can still stop: stop there.
+                    _approachTarget = position + direction * (along - ShipRadius - 10);
+                    _route[_routeIndex] = _approachTarget;
+                    PlanCornerSpeeds();
+                    return;
+                }
                 _route.Clear();
                 _route.Add(position + direction * Math.Max(along - StopOffset, 0));
                 StartRoute(_targetName);
@@ -657,6 +672,8 @@ namespace IngameScript
             Vector3D pointing = matrix.Forward;     // ship direction that is turned towards 'desired'
             if (_mode == Mode.Jump)
                 desired = _jumpDirection;
+            else if (_mode == Mode.Dock && _dockPhase == DockPhase.Clearance)
+                desired = matrix.Forward;       // hold until the space to turn is checked
             else if (_mode == Mode.Dock)
             {
                 desired = _dockForward;
@@ -672,7 +689,8 @@ namespace IngameScript
                 if (OnLastLeg && !_probing && distance < AlignDistance)
                     // At the stop point: hold the heading while moving, then turn the
                     // nose to the target (safe: the stop point keeps the ship's radius).
-                    desired = _currentSpeed < 3 ? toward : matrix.Forward;
+                    // Not before docking: docking turns into the stored pose itself.
+                    desired = _currentSpeed < 3 && !_dockAfterRoute ? toward : matrix.Forward;
                 else
                 {
                     desired = toward;
