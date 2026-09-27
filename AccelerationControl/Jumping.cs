@@ -45,7 +45,9 @@ namespace IngameScript
 
         // Starts a jump if it is worth it and possible. Returns false otherwise,
         // then the caller flies the whole way.
-        bool TryStartJump(Vector3D from, Vector3D stopPoint, string name)
+        // Jumps along the first leg of the planned route (legEnd), which is
+        // known to be clear, and flies the rest to stopPoint afterwards.
+        bool TryStartJump(Vector3D from, Vector3D legEnd, Vector3D stopPoint, string name)
         {
             IMyShipController c = _controller ?? _layoutController;
             if (!_useJump || _jumpDrives.Count == 0 || c == null || c.GetNaturalGravity().LengthSquared() > 0.01)
@@ -58,7 +60,7 @@ namespace IngameScript
                     max = Math.Max(max, d.MaxJumpDistanceMeters);
                 }
 
-            Vector3D ray = stopPoint - from;
+            Vector3D ray = legEnd - from;
             double distance = ray.Length();
             double jump = Math.Min(max, distance - _jumpArrival);
             if (jump < Math.Max(min, _jumpThreshold))

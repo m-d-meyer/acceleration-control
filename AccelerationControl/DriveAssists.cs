@@ -72,7 +72,7 @@ namespace IngameScript
             {
                 _message = _mode == Mode.Jump ? "Jump cancelled" : _mode == Mode.Dock ? "Docking cancelled" : "Approach cancelled";
                 _mode = Mode.Manual;
-                _dockAfterRoute = false;
+                _dockAfterRoute = _departing = _resumeGoal = false;
                 return false;
             }
 
@@ -323,6 +323,19 @@ namespace IngameScript
 
             if ((_probing || OnLastLeg) && _targetDistance < ArrivalDistance && velocity.Length() < ArrivalSpeed)
             {
+                if (_departing)
+                {
+                    // Clear of the rock: now plan and head off.
+                    _departing = false;
+                    ContinueGoal();
+                    return false;
+                }
+                if (_resumeGoal)
+                {
+                    // Stopped in front of an obstacle: start over from here.
+                    StartGoal(_goalTarget, _goalName, _goalDock, true);
+                    return false;
+                }
                 if (_dockAfterRoute)
                 {
                     StartDockAlign();
@@ -344,7 +357,7 @@ namespace IngameScript
                 distance = Math.Min(distance, Math.Max(clear, 0));
             }
 
-            double speed = Math.Min(_maxSpeed, Math.Sqrt(endSpeed * endSpeed + 2 * brake * distance));
+            double speed = Math.Min(_departing ? DepartureSpeed : _maxSpeed, Math.Sqrt(endSpeed * endSpeed + 2 * brake * distance));
             // Close in: approach proportionally so the ship settles instead of oscillating.
             if (endSpeed <= 0)
                 speed = Math.Min(speed, distance * _velocityGain * 0.5);

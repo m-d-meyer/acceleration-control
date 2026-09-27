@@ -125,25 +125,9 @@ namespace IngameScript
                 _message = "No connector on this ship";
                 return;
             }
-            _temporaryObstacles.Clear();
-            Vector3D from = ReferencePosition();
-            Vector3D target = DockApproachPoint;
-            _dockAfterRoute = true;
-            if (TryStartJump(from, target, BaseName))
-                return;
-            if (Vector3D.Distance(from, target) < 20)
-            {
-                StartDockAlign();
-                return;
-            }
-            if (!PlanRoute(from, target, _route))
-            {
-                _dockAfterRoute = false;
-                _message = "No complete route to the base found";
-                return;
-            }
-            StartRoute(BaseName);
-            _message = "Flying to the base to dock";
+            StartGoal(DockApproachPoint, BaseName, true);
+            if (_mode == Mode.Approach && !_departing)
+                _message = "Flying to the base to dock";
         }
 
         void StartDockAlign()

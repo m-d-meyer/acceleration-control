@@ -42,6 +42,10 @@ namespace IngameScript
         readonly List<Obstacle> _temporaryObstacles = new List<Obstacle>();
 
         int _routeIndex;
+        Vector3D _goalTarget;
+        string _goalName = "";
+        bool _goalDock, _departing, _resumeGoal, _replanPending;
+        const double DepartureSpeed = 10;           // m/s while moving away from a rock
         string _previewName;
         double _routeDeltaV, _routeLength, _routeTime;
         bool _gyrosActive;
@@ -221,18 +225,95 @@ namespace IngameScript
         // stops the ship in front of the surface instead.
         void GoToPoint(Vector3D target, string name)
         {
-            _dockAfterRoute = false;
-            _temporaryObstacles.Clear();
-            Vector3D from = ReferencePosition();
-            if (TryStartJump(from, StopPoint(from, target), name))
-                return;
-            if (!PlanRoute(from, StopPoint(from, target), _route))
+            StartGoal(target, name, false);
+        }
+
+        // Every flight (GO, goto, dock) starts here:
+        //  1. Next to an asteroid or a deposit, first move straight out without
+        //     turning (backwards, the way the ship came in, if possible).
+        //  2. Plan the route around known obstacles.
+        //  3. Jump along the first leg if it is long enough, else fly it.
+        void StartGoal(Vector3D target, string name, bool dock, bool resume = false)
+        {
+            _goalTarget = target;
+            _goalName = name;
+            _goalDock = dock;
+            _dockAfterRoute = dock;
+            if (!resume)
+                _temporaryObstacles.Clear();    // ships seen on the way stay avoided when resuming
+            _replanPending = _resumeGoal = false;
+            Vector3D departure;
+            if (NeedsDeparture(ReferencePosition(), out departure))
             {
+                _route.Clear();
+                _route.Add(departure);
+                StartRoute("leaving");
+                _departing = true;
+                _message = "Moving away from the rock first";
+                return;
+            }
+            ContinueGoal();
+        }
+
+        void ContinueGoal()
+        {
+            Vector3D from = ReferencePosition();
+            Vector3D stop = _goalDock ? _goalTarget : StopPoint(from, _goalTarget);
+            if (_goalDock && Vector3D.Distance(from, stop) < 20)
+            {
+                StartDockAlign();
+                return;
+            }
+            if (!PlanRoute(from, stop, _route))
+            {
+                _mode = Mode.Manual;
+                _dockAfterRoute = false;
                 _message = "No complete route found";
                 return;
             }
-            StartRoute(name);
-            _message = string.Format("Flying to {0}: {1} legs, {2}", name, _route.Count, FormatDistance(_routeLength));
+            if (TryStartJump(from, _route[0], stop, _goalName))
+                return;
+            StartRoute(_goalName);
+            _message = string.Format("Flying to {0}: {1} legs, {2}", _goalName, _route.Count, FormatDistance(_routeLength));
+        }
+
+        // Is the ship so close to an asteroid (or a deposit, i.e. a rock face)
+        // that turning or heading off could hit it? Then returns a point to
+        // move to first: straight back if that leads away, else directly away.
+        bool NeedsDeparture(Vector3D from, out Vector3D point)
+        {
+            point = from;
+            IMyShipController reference = _controller ?? _layoutController;
+            if (reference == null)
+                return false;
+            Vector3D back = reference.WorldMatrix.Backward, away = back;
+            double need = 0;
+            foreach (Obstacle o in _obstacles)
+            {
+                if (o.Planet)
+                    continue;
+                double clearance = o.Radius + ShipRadius + _approachBuffer, d = Vector3D.Distance(from, o.Center);
+                if (d < clearance && clearance - d > need)
+                {
+                    need = clearance - d;
+                    away = Vector3D.Normalize(from - o.Center);
+                }
+            }
+            foreach (Deposit d in _deposits)
+            {
+                double clearance = ShipRadius + _approachBuffer * 2, distance = Vector3D.Distance(from, d.Position);
+                if (distance < clearance && clearance - distance > need)
+                {
+                    need = clearance - distance;
+                    if (distance > 1)
+                        away = Vector3D.Normalize(from - d.Position);
+                }
+            }
+            if (need <= 0)
+                return false;
+            Vector3D direction = Vector3D.Dot(back, away) > 0.3 ? back : away;
+            point = from + direction * (need + _approachBuffer);
+            return true;
         }
 
         // goto GPS:name:x:y:z:...  (as copied from the game's GPS list)
@@ -259,6 +340,7 @@ namespace IngameScript
 
         void StartRoute(string name)
         {
+            _departing = _resumeGoal = _replanPending = false;
             _routeIndex = 0;
             _approachTarget = _route[0];
             _targetName = name;
@@ -317,7 +399,7 @@ namespace IngameScript
         // makes the route go around the new obstacle.
         void UpdateGuard()
         {
-            if (_mode != Mode.Approach || _probing || !_guard || _cameras.Count == 0)
+            if (_mode != Mode.Approach || _probing || _departing || _replanPending || !_guard || _cameras.Count == 0)
                 return;
             Vector3D position = ReferencePosition();
             Vector3D toTarget = _approachTarget - position;
@@ -385,25 +467,40 @@ namespace IngameScript
                 BoundingBoxD box = hit.BoundingBox;
                 _temporaryObstacles.Add(new Obstacle { EntityId = hit.EntityId, Center = box.Center, Radius = (box.Max - box.Min).Length() / 2 });
             }
-            _message = "Obstacle ahead (" + (voxel ? "asteroid" : hit.Name) + "), going around";
-            Replan();
-
-            // If the ship is already so close that the new route still leads
-            // past the hit point, stop before it instead.
-            if (_mode == Mode.Approach && DistanceToSegment(hit.HitPosition.Value, position, _approachTarget) < ShipRadius + _approachBuffer)
+            // Too close to go around at this speed: stop in front of it, then
+            // start over from there (moving away first). Otherwise plan a way
+            // around in the next tick.
+            double stopDistance = _currentSpeed * _currentSpeed / (2 * Math.Max(BrakeAccel(direction), 0.1));
+            if (along - _approachBuffer - ShipRadius < stopDistance * 1.3)
             {
                 _route.Clear();
-                _route.Add(position + direction * Math.Max(along - _approachBuffer, 0));
+                _route.Add(position + direction * Math.Max(along - _approachBuffer - ShipRadius, 0));
                 StartRoute(_targetName);
-                _message = "Obstacle ahead, stopping before it";
+                _resumeGoal = true;
+                _message = "Obstacle ahead (" + (voxel ? "rock" : hit.Name) + "), stopping in front of it";
             }
+            else
+            {
+                _replanPending = true;
+                _message = "Obstacle ahead (" + (voxel ? "rock" : hit.Name) + "), going around";
+            }
+        }
+
+        // Runs at the start of a tick, so planning has the full instruction budget.
+        void RunPendingReplan()
+        {
+            if (!_replanPending)
+                return;
+            _replanPending = false;
+            if (_mode == Mode.Approach && !_probing && !_departing && _route.Count > 0)
+                Replan();
         }
 
         // Called when a new obstacle becomes known (survey, scans): plans the
         // rest of the flight again if the obstacle lies on it.
         void CheckRouteAfterNewObstacle()
         {
-            if (_mode != Mode.Approach || _probing)
+            if (_mode != Mode.Approach || _probing || _departing)
                 return;
             Vector3D from = ReferencePosition();
             for (int i = _routeIndex; i < _route.Count; i++)
@@ -411,7 +508,7 @@ namespace IngameScript
                 if (BlockingObstacle(from, _route[i], i == _routeIndex, i == _route.Count - 1) != null)
                 {
                     _message = "New asteroid on the route, planning again";
-                    Replan();
+                    _replanPending = true;     // next tick, with the full instruction budget
                     return;
                 }
                 from = _route[i];
@@ -446,6 +543,8 @@ namespace IngameScript
                 desired = _dockForward;
                 desiredUp = _dockUp;
             }
+            else if (_departing)
+                desired = matrix.Forward;       // leaving a rock: hold the heading, do not turn
             else
             {
                 Vector3D toTarget = _approachTarget - ReferencePosition();

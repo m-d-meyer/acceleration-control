@@ -77,6 +77,12 @@ The README describes all commands and Custom Data options for players.
   drive's "Jump" action apparently is not available to scripts.
 - `Main` wraps everything in try/catch and releases all overrides on errors, so a
   crash never leaves thrusters or gyroscopes overridden.
+- Route planning ignores obstacles whose clearance contains the start point, so a
+  flight next to a rock must begin with the departure leg (straight out, no
+  turning); turning a long ship in place next to a rock caused a collision.
+- Replanning is deferred to the start of the next tick (`_replanPending`): planning
+  twice in one tick with many known asteroids likely hit the instruction limit
+  ("Script Too Complex" cannot be caught by try/catch).
 - Screens: LCD textures are 512 px; the user found small fonts unreadable, so keep
   text scales around 0.55 or larger.
 

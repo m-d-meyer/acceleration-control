@@ -281,6 +281,10 @@ movement keys. The actions are also available as commands (`ui left`, `ui right`
 **ROUTE** plans a route to the selected entry and draws it on the radar, with its
 length, delta-v and flight time. **GO** plans and flies it.
 
+- **Leaving a rock**: if the ship is next to an asteroid or a deposit (e.g. after
+  mining), it first moves straight out at 10 m/s without turning, backwards (the way
+  it came in) if that leads away from the rock. Only then does it turn, plan and fly
+  or jump.
 - **Planning**: if a known asteroid (or a planet's gravity well) is in the way, the
   route gets a waypoint beside it, keeping the ship's radius plus `ApproachBuffer`
   of distance. Several obstacles give several waypoints. If no complete route is
@@ -293,8 +297,9 @@ length, delta-v and flight time. **GO** plans and flies it.
   center ray and a ring of rays at the ship's radius, as far as the stopping
   distance. If the target rock sticks out further than scanned (a protrusion
   beside the scanned point), the stop point moves closer. An unknown asteroid or a
-  grid on the path makes the route go around it; if the ship is already too close
-  for that, it stops before the obstacle.
+  grid on the path makes the route go around it (planned in the next tick); if the
+  ship is too close to go around at its speed, it stops in front of the obstacle,
+  moves away from it and plans again.
 - **Live replanning**: an asteroid found later (by the guard or the background
   survey) that lies on the rest of the route triggers a new plan from the current
   position.
@@ -305,8 +310,8 @@ length, delta-v and flight time. **GO** plans and flies it.
 
 ## Jump drive
 
-For targets further away than `JumpMinDistance` (and outside gravity), GO first
-jumps: the ship stops, sets the jump distance, waits until a jump drive is ready,
+If the first leg of the planned route is longer than `JumpMinDistance` (and the
+ship is outside gravity), GO first jumps along that leg, which is known to be clear: the ship stops, sets the jump distance, waits until a jump drive is ready,
 turns its nose to the target (within 2 degrees; after 20 seconds within 5) and
 jumps ("blind jump" along the nose). You can also press Jump yourself at any time
 during this; the script notices the jump and continues. The jump ends

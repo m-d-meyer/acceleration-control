@@ -95,6 +95,7 @@ namespace IngameScript
             if (_ticks % BlockRefreshTicks == 0)
                 RefreshBlocks();
 
+            RunPendingReplan();
             UpdateScan();
             ControlThrust();
             if (_ticks % 2 == 0)
