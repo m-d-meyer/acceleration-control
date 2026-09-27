@@ -259,7 +259,7 @@ namespace IngameScript
         void UpdateSurvey()
         {
             // Docked (connector connected): nothing to survey, save the raycasts.
-            if (!_survey || _cameras.Count == 0 || _wasConnected)
+            if (!_survey || _cameras.Count == 0 || _wasConnected || _pendingStart || _departing)
                 return;
             for (int i = 0; i < _cameras.Count; i++)
             {

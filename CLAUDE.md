@@ -209,6 +209,18 @@ The README describes all commands and Custom Data options for players.
   parallel to the path from a camera facing the way). ETA stood still while
   climbing (it ignored the stop at the top of the climb): now leg by leg with
   `_cornerLimits`.
+- RSS space base test: (a) "jump complete" fired while the ship was still moving
+  (distance from the jump start > 1 km); now a jump is the first unexplained
+  position jump after a drive countdown (`_jumped`), a second one is a teleport.
+  (b) Flights starting in gravity never jumped (50 h ETA): `CheckJumpOnRoute` once a
+  second tries a jump per leg once out of gravity. (c) Backing into the asteroid
+  behind the ship again: cameras drained by the survey were "unseen", so the blind
+  way was taken; now a camera looking that way but uncharged means wait
+  (`WaitForCameras`, up to 10 s, survey paused). (d) Landed on the Earth base the
+  start was refused (ground in the turn sphere, no up camera): up is allowed blind
+  when only the ground below confines. Open: the space base's stored pose was
+  50,000 km off in another zone (base probably in a planet's orbit zone outside
+  gravity, where the zone key cannot be derived); docking came from the wrong side.
 - Planet obstacles: raycast hits on a known planet (center within 1 km) only store the
   entity id; `UpdatePlanet` measures radius/well (duplicates caused replanning loops).
 

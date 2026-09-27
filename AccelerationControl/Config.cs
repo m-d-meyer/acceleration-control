@@ -270,6 +270,8 @@ namespace IngameScript
             }
             state.Set(StateSection, "Zone", _zone);
             state.Set(StateSection, "PlanetZonesSeen", _planetZonesSeen);
+            if (_cameFromValid)
+                state.Set(StateSection, "CameFrom", Vec(_cameFrom) + ";" + Vec(_cameFromAt));
             var radii = new StringBuilder();
             foreach (KeyValuePair<string, double> r in _zoneRadii)
                 radii.Append(r.Key + "=" + Num(r.Value) + "|");
@@ -327,6 +329,13 @@ namespace IngameScript
             _dockZone = state.Get(StateSection, "DockZone").ToString("");
             _zone = state.Get(StateSection, "Zone").ToString("");
             _planetZonesSeen = state.Get(StateSection, "PlanetZonesSeen").ToBoolean(false);
+            string[] came = state.Get(StateSection, "CameFrom").ToString("").Split(';');
+            if (came.Length == 6)
+            {
+                _cameFrom = ParseVec(came, 0);
+                _cameFromAt = ParseVec(came, 3);
+                _cameFromValid = _cameFrom.LengthSquared() > 0.5;
+            }
             foreach (string entry in state.Get(StateSection, "ZoneRadii").ToString("").Split('|'))
             {
                 string[] kv = entry.Split('=');

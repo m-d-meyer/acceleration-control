@@ -329,6 +329,11 @@ length, delta-v and flight time. **GO** plans and flies it.
   is used (it just passed there, e.g. backing out of a mine it drilled forward
   into); otherwise the flight stops and asks to move away by hand. Only then does
   it turn, plan and fly or jump.
+- **Charged cameras**: a camera that looks the right way but has not charged enough
+  range yet (the background survey uses it up) makes the ship wait a second and look
+  again, up to ten times, instead of moving without seeing. The survey pauses
+  meanwhile. Landed on a planet with only the ground close by, the way out is
+  straight up, also without a camera looking up.
 - **Camera checks for straight moves**: every camera facing the way looks straight
   along it from where it sits on the hull (cameras offset to the sides are fine), plus
   rays to the ship's centre line and four lines around it. One camera facing the way
@@ -516,6 +521,12 @@ space. The gravity falloff of the mod's planets is measured in flight
 routes avoid in space is estimated correctly.
 
 ## Jump drive
+
+During a flight the script jumps as soon as it can: when the ship leaves a planet's
+gravity (no jumps inside it) or the target changes, and the current leg is at least
+`JumpMinDistance` long and would take more than two minutes to fly, it stops, aligns
+and jumps (drive charged). A jump is recognised by the sudden position change, so it
+also works when the ship was still moving when the jump was planned.
 
 If the first leg of the planned route is longer than `JumpMinDistance` (and the
 ship is outside gravity), GO first jumps along that leg, which is known to be clear: the ship stops, sets the jump distance, waits until a jump drive is ready,

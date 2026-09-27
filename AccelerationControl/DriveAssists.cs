@@ -76,11 +76,16 @@ namespace IngameScript
                 return true;
             }
 
+            if (_pendingStart && move.LengthSquared() > InputDeadzone * InputDeadzone)
+            {
+                _pendingStart = false;
+                _message = "Start cancelled";
+            }
             if (_mode != Mode.Manual && _mode != Mode.Cruise && move.LengthSquared() > InputDeadzone * InputDeadzone)
             {
                 _message = _mode == Mode.Jump ? "Jump cancelled" : _mode == Mode.Dock ? "Docking cancelled" : "Approach cancelled";
                 _mode = Mode.Manual;
-                _dockAfterRoute = _departing = _resumeGoal = _zoneGoal = false;
+                _dockAfterRoute = _departing = _resumeGoal = _zoneGoal = _pendingStart = false;
                 return false;
             }
 
@@ -427,8 +432,11 @@ namespace IngameScript
                 {
                     // Clear of the rock or out of the hangar: check again, then plan and head off.
                     _departing = false;
-                    if (!TryLeaveConfined())
+                    int confined = TryLeaveConfined();
+                    if (confined == 0)
                         ContinueGoal();
+                    else if (confined == 2)
+                        WaitForCameras();
                     return false;
                 }
                 if (_resumeGoal)

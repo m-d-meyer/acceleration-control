@@ -104,6 +104,7 @@ namespace IngameScript
                 RefreshBlocks();
 
             UpdateZone();
+            RunPendingStart();
             RunPendingReplan();
             UpdateScan();
             ControlThrust();
@@ -116,7 +117,10 @@ namespace IngameScript
             if (_ticks % StatusTicks == 30)
                 ReceiveMaps();
             if (_ticks % StatusTicks == 0)
+            {
                 UpdateShipStatus(StatusTicks / TicksPerSecond);
+                CheckJumpOnRoute();
+            }
 
             if (_ticks % DisplayTicks == DisplayTickOffset)
                 UpdateDisplays();
@@ -229,7 +233,7 @@ namespace IngameScript
                     break;
                 case "stop":
                     _mode = Mode.Manual;
-                    _scanPending = _tracking = _zoneGoal = false;
+                    _scanPending = _tracking = _zoneGoal = _pendingStart = false;
                     break;
                 case "mark":
                     HandleMarkCommand(parts);

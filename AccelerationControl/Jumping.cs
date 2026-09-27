@@ -32,11 +32,10 @@ namespace IngameScript
         const double JumpAlignTolerance = 0.035;    // rad (2 degrees: about 700 m off after 20 km, corrected afterwards)
         const int JumpAlignTicks = 60 * 20;         // after aligning this long, a looser tolerance is accepted
         const double JumpLooseTolerance = 0.087;    // rad (5 degrees)
-        const double JumpDetected = 1000;           // m moved at once = the jump happened
         const int JumpTimeoutTicks = 60 * 90;
         const int JumpManualTicks = 60 * 3;         // no jump after this: ask the pilot to press Jump
 
-        Vector3D _jumpDirection, _jumpFrom, _afterJumpTarget;
+        Vector3D _jumpDirection, _afterJumpTarget;
         double _jumpDistance;
         string _afterJumpName = "";
         bool _jumpTriggered;
@@ -74,7 +73,6 @@ namespace IngameScript
                     continue;
                 _jumpDirection = direction;
                 _jumpDistance = jump;
-                _jumpFrom = from;
                 _afterJumpTarget = stopPoint;
                 _afterJumpName = name;
                 _jumpTriggered = false;
@@ -92,6 +90,24 @@ namespace IngameScript
             return false;
         }
 
+        // Once a second during a flight: a flight that started in gravity (no jumps
+        // there) or whose target changed may be long enough for a jump now. Tried
+        // once per leg, only out of gravity, with the drive charged and if the leg
+        // takes more than two minutes to fly.
+        int _jumpCheckedLeg = -1;
+
+        void CheckJumpOnRoute()
+        {
+            if (_mode != Mode.Approach || _probing || _departing || _tracking || !_useJump || _jumpDrives.Count == 0
+                || _jumpCheckedLeg == _routeIndex || _gravity.LengthSquared() > 0.01 || _jumpMax <= 0 || _jumpStored < _jumpMax * 0.99)
+                return;
+            _jumpCheckedLeg = _routeIndex;
+            Vector3D from = ReferencePosition();
+            if (Vector3D.Distance(from, _route[_routeIndex]) > Math.Max(_jumpThreshold, _currentSpeed * 120)
+                && TryStartJump(from, _route[_routeIndex], _route[_route.Count - 1], _targetName))
+                _message = "Out of the gravity: jumping on towards " + _targetName;
+        }
+
         bool IsFreeForJump(Vector3D point)
         {
             foreach (Obstacle o in _obstacles)
@@ -104,7 +120,9 @@ namespace IngameScript
         void UpdateJump()
         {
             // The jump happened, started by the script or by the pilot: fly the rest.
-            if (Vector3D.Distance(ReferencePosition(), _jumpFrom) > JumpDetected)
+            // (a sudden position jump, not the distance flown: the ship may still be
+            // moving when the jump is planned, e.g. when the target changed in flight).
+            if (_jumped)
             {
                 Vector3D from = ReferencePosition();
                 if (PlanRoute(from, _afterJumpTarget, _route))

@@ -49,6 +49,7 @@ namespace IngameScript
         readonly List<Obstacle> _otherObstacles = new List<Obstacle>();    // obstacles of other zones
         Vector3D _lastPosition, _lastVelocity;
         bool _haveLastPosition, _hadPlanet;
+        bool _jumped, _jumpUsed = true;     // the jump drive jumped this tick / the last countdown's jump happened
         int _jumpSeenTick = -100000;
 
         // Flight to an entry in another zone: waits for the zone change.
@@ -150,14 +151,27 @@ namespace IngameScript
             Vector3D before = _lastPosition;
             foreach (IMyJumpDrive d in _jumpDrives)
                 if (d.Status == MyJumpDriveStatus.Jumping)
+                {
                     _jumpSeenTick = _ticks;
+                    _jumpUsed = false;      // counting down: the next position jump is this jump
+                }
 
+            // A position jump the velocity does not explain is the jump drive's jump
+            // (one per countdown), or else a teleport. A teleport right after a jump
+            // (e.g. into a planet zone) is a separate jump and counts as teleport.
             bool teleported = false;
+            _jumped = false;
             if (_haveLastPosition)
             {
                 double dt = MathHelper.Clamp(Runtime.TimeSinceLastRun.TotalSeconds, 1 / TicksPerSecond, 1);
                 Vector3D predicted = _lastPosition + (_lastVelocity + velocity) * 0.5 * dt;
-                teleported = Vector3D.Distance(position, predicted) > TeleportDistance && _ticks - _jumpSeenTick > JumpGraceTicks;
+                if (Vector3D.Distance(position, predicted) > TeleportDistance)
+                {
+                    if (!_jumpUsed && _ticks - _jumpSeenTick <= JumpGraceTicks)
+                        _jumped = _jumpUsed = true;
+                    else
+                        teleported = true;
+                }
             }
             _lastPosition = position;
             _lastVelocity = velocity;
