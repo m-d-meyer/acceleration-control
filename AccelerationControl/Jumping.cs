@@ -29,7 +29,8 @@ namespace IngameScript
     // the jump drive's Jump action on the toolbar.
     partial class Program
     {
-        const double JumpAlignTolerance = 0.01;     // rad (about 0.6 degrees)
+        const double JumpAlignTolerance = 0.035;    // rad (2 degrees: about 700 m off after 20 km, corrected afterwards)
+        const int JumpAlignTicks = 60 * 20;         // jump anyway after aligning this long
         const double JumpDetected = 1000;           // m moved at once = the jump happened
         const int JumpTimeoutTicks = 60 * 90;
         const int JumpManualTicks = 60 * 3;         // no jump after this: ask the pilot to press Jump
@@ -38,7 +39,7 @@ namespace IngameScript
         double _jumpDistance;
         string _afterJumpName = "";
         bool _jumpTriggered;
-        int _jumpTicks;
+        int _jumpTicks, _jumpTriggerTick;
         string _jumpState = "";
 
         // Starts a jump if it is worth it and possible. Returns false otherwise,
@@ -78,6 +79,10 @@ namespace IngameScript
                 _alignError = Math.PI;
                 _enabled = true;
                 _mode = Mode.Jump;
+                _jumpState = "aligning";
+                // Set the distance right away, so the pilot can also jump by hand.
+                foreach (IMyJumpDrive d in _jumpDrives)
+                    d.JumpDistanceMeters = (float)jump;
                 _message = "Jump " + FormatDistance(jump) + " towards " + name;
                 return true;
             }
@@ -95,43 +100,9 @@ namespace IngameScript
         // Runs every tick in jump mode, while the thrust control holds the ship still.
         void UpdateJump()
         {
-            if (!_jumpTriggered)
-            {
-                IMyJumpDrive ready = null;
-                foreach (IMyJumpDrive d in _jumpDrives)
-                    if (d.IsWorking && d.Status == MyJumpDriveStatus.Ready)
-                        ready = d;
-                if (ready == null)
-                    _jumpState = "charging";
-                else if (!_gyrosActive || _alignError > JumpAlignTolerance || _currentSpeed > 1)
-                    _jumpState = "aligning";
-                else
-                {
-                    foreach (IMyJumpDrive d in _jumpDrives)
-                        d.JumpDistanceMeters = (float)_jumpDistance;
-                    ready.ApplyAction("Jump");
-                    _jumpTriggered = true;
-                    _jumpState = "jumping";
-                }
-                return;
-            }
-
-            _jumpTicks++;
-            bool counting = false;
-            foreach (IMyJumpDrive d in _jumpDrives)
-                if (d.Status == MyJumpDriveStatus.Jumping)
-                    counting = true;
-            if (counting)
-                _jumpState = "jumping";
-            else if (_jumpTicks == JumpManualTicks)
-            {
-                _jumpState = "press JUMP on your toolbar";
-                _message = "Ship aligned, distance set: press the jump drive's Jump action";
-            }
-
+            // The jump happened, started by the script or by the pilot: fly the rest.
             if (Vector3D.Distance(ReferencePosition(), _jumpFrom) > JumpDetected)
             {
-                // Arrived: fly the rest.
                 Vector3D from = ReferencePosition();
                 if (PlanRoute(from, _afterJumpTarget, _route))
                 {
@@ -143,6 +114,49 @@ namespace IngameScript
                     _mode = Mode.Manual;
                     _message = "Jump complete, no route for the rest found";
                 }
+                return;
+            }
+
+            IMyJumpDrive ready = null;
+            bool counting = false;
+            foreach (IMyJumpDrive d in _jumpDrives)
+            {
+                if (d.IsWorking && d.Status == MyJumpDriveStatus.Ready)
+                    ready = d;
+                if (d.Status == MyJumpDriveStatus.Jumping)
+                    counting = true;
+            }
+            if (counting)
+            {
+                _jumpState = "jumping";
+                return;
+            }
+            if (ready == null)
+            {
+                _jumpState = "charging";
+                return;
+            }
+
+            // Ready: align (good enough within JumpAlignTolerance, or after
+            // JumpAlignTicks at the latest), then jump.
+            _jumpTicks++;
+            bool aligned = _gyrosActive && _alignError < JumpAlignTolerance && _currentSpeed < 1;
+            if (!_jumpTriggered && !aligned && _jumpTicks < JumpAlignTicks)
+            {
+                _jumpState = "aligning";
+                return;
+            }
+            if (!_jumpTriggered)
+            {
+                ready.ApplyAction("Jump");
+                _jumpTriggered = true;
+                _jumpTriggerTick = _jumpTicks;
+                _jumpState = "jumping";
+            }
+            else if (_jumpTicks - _jumpTriggerTick == JumpManualTicks)
+            {
+                _jumpState = "press JUMP on your toolbar";
+                _message = "Ship aligned, distance set: press the jump drive's Jump action";
             }
             else if (_jumpTicks > JumpTimeoutTicks)
             {

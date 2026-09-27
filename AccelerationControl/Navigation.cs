@@ -30,6 +30,7 @@ namespace IngameScript
         const double DetourFactor = 1.3;            // detour points lie this far outside the inflated obstacle
         const double GyroGain = 2.0;                // rad/s per rad of heading error
         const double GyroMaxRate = 1.5;             // rad/s
+        const double GyroMinRate = 0.03;            // rad/s
         const double GyroCalibrationRate = 0.4;     // rad/s while the rotation directions are not known yet
         const double GyroEvidence = 0.03;           // rad^2/s of evidence needed to decide a direction
         const double AlignDistance = 300;           // m - closer than this, the heading is held instead of turned
@@ -453,7 +454,8 @@ namespace IngameScript
             Vector3D axis = Vector3D.Cross(matrix.Forward, desired);
             double sin = axis.Length(), cos = Vector3D.Dot(matrix.Forward, desired);
             _alignError = Math.Atan2(sin, cos);
-            Vector3D rate = sin > 1e-6 ? axis / sin * _alignError * GyroGain
+            // At least GyroMinRate while not aligned, so small errors do not linger.
+            Vector3D rate = sin > 1e-6 ? axis / sin * Math.Max(_alignError * GyroGain, _alignError > 0.002 ? GyroMinRate : 0)
                 : cos < 0 ? matrix.Up * Math.PI * GyroGain : Vector3D.Zero;
             if (desiredUp != Vector3D.Zero && cos > 0)
             {

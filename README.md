@@ -306,8 +306,10 @@ length, delta-v and flight time. **GO** plans and flies it.
 ## Jump drive
 
 For targets further away than `JumpMinDistance` (and outside gravity), GO first
-jumps: the ship stops, turns its nose to the target, waits until a jump drive is
-ready, sets the jump distance and jumps ("blind jump" along the nose). The jump ends
+jumps: the ship stops, sets the jump distance, waits until a jump drive is ready,
+turns its nose to the target (within 2 degrees, or for at most 20 seconds) and
+jumps ("blind jump" along the nose). You can also press Jump yourself at any time
+during this; the script notices the jump and continues. The jump ends
 `JumpArrival` meters before the target, at a point at least `JumpClearance` away
 from known asteroids and gravity wells (the distance is shortened if needed). After
 the jump the rest is planned and flown as usual.

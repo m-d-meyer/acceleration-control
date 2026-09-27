@@ -70,6 +70,8 @@ The README describes all commands and Custom Data options for players.
   the map changes.
 - Docking data format changed once (grid pose added); after such changes the user has
   to dock by hand again.
+- Jump: the gyros settle at about 0.6 degrees of heading error; alignment
+  tolerances must not be tighter than that (now 2 degrees).
 - Screens: LCD textures are 512 px; the user found small fonts unreadable, so keep
   text scales around 0.55 or larger.
 
