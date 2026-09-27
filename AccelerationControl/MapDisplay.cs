@@ -700,7 +700,10 @@ namespace IngameScript
             float length = d.Length();
             if (length < 0.01f)
                 return;
-            _frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", P((x1 + x2) / 2, (y1 + y2) / 2),
+            // Slanted segments are not snapped to pixels: that makes curves look stepped.
+            bool straight = Math.Abs(d.X) < 0.01f || Math.Abs(d.Y) < 0.01f;
+            Vector2 center = straight ? P((x1 + x2) / 2, (y1 + y2) / 2) : _origin + new Vector2(x1 + x2, y1 + y2) * 0.5f * _u;
+            _frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", center,
                 new Vector2(length * _u, Math.Max(thickness * _u, MinLinePixels)), color, null, TextAlignment.CENTER, (float)Math.Atan2(d.Y, d.X)));
         }
 
