@@ -137,6 +137,11 @@ namespace IngameScript
         {
             if (_zoneGoal)
                 _text.AppendLine("Waiting for the zone of " + _zoneGoalName);
+            IMyShipController reference = _controller ?? _layoutController;
+            if (_tracking && _mode == Mode.Approach && reference != null)
+                _text.AppendFormat("Planet moves {0:0} m/s, closing {1:0} m/s\n", _trackVelocity.Length(),
+                    Vector3D.Dot(reference.GetShipVelocities().LinearVelocity - _trackVelocity,
+                        Vector3D.Normalize(_approachTarget - ReferencePosition())));
             if (_planet == null && !InGravity)
                 return;
             _text.AppendFormat("Gravity {0:0.00} g", _gravity.Length() / 9.81);

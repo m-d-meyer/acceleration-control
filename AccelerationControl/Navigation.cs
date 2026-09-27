@@ -422,7 +422,7 @@ namespace IngameScript
 
         void StartRoute(string name)
         {
-            _departing = _resumeGoal = _replanPending = _flipBraking = false;
+            _departing = _resumeGoal = _replanPending = _flipBraking = _tracking = false;
             _routeIndex = 0;
             _legStart = ReferencePosition();
             PlanCornerSpeeds();
@@ -604,6 +604,19 @@ namespace IngameScript
         {
             double along = Vector3D.Dot(hit.HitPosition.Value - position, direction);
             double stopDistance = _currentSpeed * _currentSpeed / (2 * Math.Max(BrakeAccel(direction), 0.1));
+            if (_tracking)
+            {
+                // Following a moving planet: no route to plan around, stop in front.
+                if (hit.Type == MyDetectedEntityType.Asteroid)
+                    RegisterObstacle(hit);
+                bool waiting = _zoneGoal;
+                _route.Clear();
+                _route.Add(position + direction * Math.Max(along - StopOffset, 0));
+                StartRoute(_targetName);
+                _zoneGoal = waiting;
+                _message = "Obstacle ahead, stopping: steer past it, then run 'track' to continue";
+                return;
+            }
             if (_dockAfterRoute && IsBaseHit(hit))
             {
                 // Flying to the base: the base and the rock it stands on are

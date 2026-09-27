@@ -80,6 +80,8 @@ namespace IngameScript
         double _atmosphereSpeed = 100;
         double _gravityFalloff = 7;
         bool _compensateWind = true;
+        double _zoneEntrySpeed = 100;
+        double _zoneRadiusGuess = 200000;
 
         // ---- state ----
         double _limit;
@@ -150,6 +152,8 @@ namespace IngameScript
             _atmosphereSpeed = _ini.Get(IniSection, "AtmosphereSpeed").ToDouble(_atmosphereSpeed);
             _gravityFalloff = _ini.Get(IniSection, "GravityFalloff").ToDouble(_gravityFalloff);
             _compensateWind = _ini.Get(IniSection, "CompensateWind").ToBoolean(_compensateWind);
+            _zoneEntrySpeed = _ini.Get(IniSection, "ZoneEntrySpeed").ToDouble(_zoneEntrySpeed);
+            _zoneRadiusGuess = _ini.Get(IniSection, "ZoneRadiusGuess").ToDouble(_zoneRadiusGuess);
 
             // Write back so every option is visible and editable in Custom Data.
             _ini.Set(IniSection, "DefaultAcceleration", _defaultLimit);
@@ -202,6 +206,8 @@ namespace IngameScript
             _ini.Set(IniSection, "AtmosphereSpeed", _atmosphereSpeed);
             _ini.Set(IniSection, "GravityFalloff", _gravityFalloff);
             _ini.Set(IniSection, "CompensateWind", _compensateWind);
+            _ini.Set(IniSection, "ZoneEntrySpeed", _zoneEntrySpeed);
+            _ini.Set(IniSection, "ZoneRadiusGuess", _zoneRadiusGuess);
             _ini.SetSectionComment(IniSection,
                 " Accelerations in m/s² (1 g = 9.81 m/s²), speeds in m/s, distances in m.\n" +
                 " *CockpitSurface: cockpit screen index for that page, -1 = off.\n" +
@@ -258,6 +264,10 @@ namespace IngameScript
             }
             state.Set(StateSection, "Zone", _zone);
             state.Set(StateSection, "PlanetZonesSeen", _planetZonesSeen);
+            var radii = new StringBuilder();
+            foreach (KeyValuePair<string, double> r in _zoneRadii)
+                radii.Append(r.Key + "=" + Num(r.Value) + "|");
+            state.Set(StateSection, "ZoneRadii", radii.ToString());
             SaveMap(state);
             Storage = state.ToString();
         }
@@ -311,6 +321,13 @@ namespace IngameScript
             _dockZone = state.Get(StateSection, "DockZone").ToString("");
             _zone = state.Get(StateSection, "Zone").ToString("");
             _planetZonesSeen = state.Get(StateSection, "PlanetZonesSeen").ToBoolean(false);
+            foreach (string entry in state.Get(StateSection, "ZoneRadii").ToString("").Split('|'))
+            {
+                string[] kv = entry.Split('=');
+                double radius;
+                if (kv.Length == 2 && TryParseNumber(kv[1], out radius))
+                    _zoneRadii[kv[0]] = radius;
+            }
             LoadMap(state);
         }
 

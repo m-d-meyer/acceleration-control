@@ -89,6 +89,8 @@ Run the programmable block with one of these arguments:
 | `goto`              | Fly to the selected entry along a planned route (stops `ApproachBuffer` before it); long distances start with a jump |
 | `goto GPS:name:x:y:z:` | Fly to GPS coordinates (paste a GPS from the game's GPS list); stops in front of the surface if the point is inside a rock |
 | `dock`              | Fly to the base and dock (after docking there once by hand) |
+| `track GPS:name:x:y:z:` | Real Solar Systems: a sample of a planet's moving GPS; after two samples the ship follows the moving planet into its zone (see Planets) |
+| `track` / `track clear` | Follow again with the samples known / forget them        |
 | `undock`            | Disconnect and back off from the base                    |
 | `delete`            | Delete the selected deposit                              |
 | `filter [<ore>/all]`| Show only one ore; without argument: next ore            |
@@ -158,6 +160,8 @@ first run. Edit them there and run `reload`.
 | `AtmosphereSpeed`    | `100`     | Speed limit inside an atmosphere (m/s); the ship brakes to it before entering, `0` = off |
 | `GravityFalloff`     | `7`       | Gravity falloff exponent until measured (vanilla planets: 7; mods may use less) |
 | `CompensateWind`     | `true`    | Measure wind, drag and lift and compensate them during flights |
+| `ZoneEntrySpeed`     | `100`     | Speed relative to a followed planet when entering its zone (m/s) |
+| `ZoneRadiusGuess`    | `200000`  | Assumed zone radius around a followed planet's GPS until the first entry has measured it (m); better too large than too small |
 
 ## Drive assists
 
@@ -412,14 +416,42 @@ the jump drive do not explain):
 - A teleport ends the current flight. Within the same planet zone (e.g. between
   orbit and surface) the route is simply planned again.
 - GO/dock to an entry in another zone: in a planet zone the ship climbs straight up
-  until the zone changes; in space fly towards the planet yourself (the script cannot
-  see the moving proxy planets). As soon as the ship is in the target's zone, the
-  flight continues automatically. The control page shows "Waiting for the zone of …".
+  until the zone changes. In space the script cannot see the moving proxy planets
+  itself, so either fly there yourself or let it follow the planet (below). As soon
+  as the ship is in the target's zone, the flight continues automatically. The
+  control page shows "Waiting for the zone of …".
 - The mod's zone change can change the ship's velocity (a planet "running into" a
   resting ship). Keep dampeners on when entering a zone by hand. If the ship then
   falls faster than its upward thrust can stop above the ground, the control page
   shows a warning. Simulated: a ship with 1.5 g of upward thrust entering 60 km up at
   1500 m/s cannot be saved; at 500 m/s, or with 3 g, all runs stopped safely.
+
+**Following a moving planet.** The mod keeps a moving copy of every GPS placed on
+a planet (marked `PROXY_DO_NOT_EDIT`), e.g. of your base. Scripts cannot read the GPS
+list, but they can be given samples:
+
+1. GO/dock to the base (or any entry on the planet) while in space: the script waits
+   for the zone change.
+2. Copy the planet's moving GPS (e.g. the proxy copy of your base GPS) and run
+   `track GPS:...` with it. Do it again 10-30 s later (a third time improves the
+   prediction on curved orbits).
+3. From two samples the script knows where the GPS is and how it moves (from three
+   also how its path curves) and follows it: it matches the planet's velocity and
+   closes in, braking to `ZoneEntrySpeed` relative to the planet before the zone
+   edge, because the zone change keeps that relative speed. The first time the zone
+   edge is not known (`ZoneRadiusGuess`); at the zone change its distance is
+   measured and stored per planet, so later approaches brake at the right place.
+4. After the zone change the flight continues to the base on the planet.
+
+Simulated (planet on a circular orbit, 3 samples 15 s apart): entry at about
+100 m/s relative to the planet when the zone is smaller than `ZoneRadiusGuess`, but
+340 m/s when the real zone was 150 km and the guess 100 km, hence the generous
+default. The prediction was off by less than 3 km after hours of flight.
+
+Pasting the GPS again during the flight refreshes the prediction (the oldest sample
+is dropped). If the planet moves faster than `MaxSpeed`, the ship cannot match its
+velocity; the script says so. The collision guard stops the ship in front of
+obstacles; steer past and run `track` to continue.
 
 Zones switch on by themselves at the first teleport into or out of a planet zone.
 If the ship is already in a planet zone when the script is installed, set

@@ -229,7 +229,7 @@ namespace IngameScript
                     break;
                 case "stop":
                     _mode = Mode.Manual;
-                    _scanPending = false;
+                    _scanPending = _tracking = _zoneGoal = false;
                     break;
                 case "mark":
                     HandleMarkCommand(parts);
@@ -242,6 +242,9 @@ namespace IngameScript
                     break;
                 case "route":
                     PreviewRoute();
+                    break;
+                case "track":
+                    HandleTrackCommand(parts.Length > 1 ? (value == "clear" ? "clear" : argument.Substring(argument.IndexOf(' ') + 1)) : null);
                     break;
                 case "dock":
                     StartDocking();

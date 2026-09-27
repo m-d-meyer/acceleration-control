@@ -345,6 +345,8 @@ namespace IngameScript
 
         bool ApproachVelocity(Vector3D velocity, out Vector3D targetVelocity)
         {
+            if (_tracking)
+                return TrackVelocity(velocity, out targetVelocity);
             targetVelocity = Vector3D.Zero;
             Vector3D position = ReferencePosition();
             Vector3D toTarget = _approachTarget - position;
