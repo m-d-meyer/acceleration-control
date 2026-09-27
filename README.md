@@ -313,14 +313,22 @@ length, delta-v and flight time. **GO** plans and flies it.
   walls and other ships are not on the map, so this is the only way to know. If
   something is inside, the ship first moves straight out without turning, in the
   ship direction that the cameras see clear for three ship radii plus
-  `ApproachBuffer` (centre and four rays at 60 % of the radius around it),
-  preferably backwards, and checks again afterwards. Directions no camera can see
-  count as blocked; if none is clear the flight stops with "fly out by hand". Rear
-  and side cameras make this work in every direction.
+  `ApproachBuffer`, preferably backwards, and checks again afterwards. If no
+  camera sees a direction clear, the way the ship came in is used; otherwise the
+  flight stops with "fly out by hand". Rear and side cameras make this work in
+  every direction.
 - **Leaving a rock**: if the ship is next to an asteroid or a deposit (e.g. after
-  mining), it first moves straight out at 10 m/s without turning, backwards (the way
-  it came in) if that leads away from the rock. Only then does it turn, plan and fly
-  or jump.
+  mining), it first moves straight out at 10 m/s without turning: backwards if that
+  leads away from the rock, else directly away or along another ship axis. The way
+  must be clear on the map (another rock may be right behind the ship) and seen
+  clear by the cameras. If no camera looks that way, only the way the ship came in
+  is used (it just passed there, e.g. backing out of a mine it drilled forward
+  into); otherwise the flight stops and asks to move away by hand. Only then does
+  it turn, plan and fly or jump.
+- **Camera checks for straight moves**: every camera facing the way looks straight
+  along it from where it sits on the hull (cameras offset to the sides are fine), plus
+  rays to the ship's centre line and four lines around it. One camera facing the way
+  that sees it clear is enough.
 - **Planning**: if a known asteroid (or a planet's gravity well) is in the way, the
   route gets a waypoint beside it, keeping the ship's radius plus `ApproachBuffer`
   of distance. If the ship would drift too far in the turn at that waypoint (from

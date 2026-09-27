@@ -127,6 +127,12 @@ The README describes all commands and Custom Data options for players.
   the wall. Grids are not on the map. `TryLeaveConfined` (StartGoal and after each
   departure) scans a sphere of ShipRadius + 5 m with the cameras; if blocked, moves
   straight out along a ship axis verified clear by 5 rays, else stops.
+  Second test (before that fix): goto just outside the hangar backed the ship into
+  another asteroid behind it (departure direction never checked). `NeedsDeparture`
+  and `TryLeaveConfined` share `ChooseWayOut`: candidates must be `MapClear` and seen
+  clear by `CheckPath` (parallel rays from every camera facing the way, since the
+  user's cameras sit offset on the sides, plus 5 rays to the centre corridor);
+  unverified only the way the ship came in (`TrackCameFrom`), else stop.
 - Waypoints and flight end points are hit roughly (user's request, the guard
   prevents collisions): intermediate waypoints switch within 50 m or after crossing
   the bisector plane (`WaypointReached`); the end counts within

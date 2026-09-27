@@ -126,6 +126,10 @@ namespace IngameScript
             _lastPosition = position;
             _lastVelocity = velocity;
             _haveLastPosition = true;
+            if (!teleported)
+                TrackCameFrom(velocity);
+            else
+                _cameFromValid = false;
 
             // A teleport into or out of a planet's gravity is how Real Solar Systems
             // moves ships between zones: from now on entries remember their zone.

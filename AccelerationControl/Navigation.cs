@@ -322,7 +322,14 @@ namespace IngameScript
             if (TryLeaveConfined())
                 return;
             Vector3D departure;
-            if (NeedsDeparture(ReferencePosition(), out departure))
+            int leave = NeedsDeparture(ReferencePosition(), out departure);
+            if (leave < 0)
+            {
+                _mode = Mode.Manual;
+                _message = "Close to a rock and no way out seen by the cameras: move away by hand";
+                return;
+            }
+            if (leave > 0)
             {
                 _route.Clear();
                 _route.Add(departure);
@@ -357,14 +364,18 @@ namespace IngameScript
         }
 
         // Is the ship so close to an asteroid (or a deposit, i.e. a rock face)
-        // that turning or heading off could hit it? Then returns a point to
-        // move to first: straight back if that leads away, else directly away.
-        bool NeedsDeparture(Vector3D from, out Vector3D point)
+        // that turning or heading off could hit it? Then returns 1 and a point to
+        // move to first, straight and without turning: backwards if that leads
+        // away, else away from the rock or along another ship axis, whichever the
+        // cameras see clear and the map allows (another rock may be right behind
+        // the ship). Without any verified way, the way the ship came in is used.
+        // Returns 0 if no departure is needed, -1 if no way out was found.
+        int NeedsDeparture(Vector3D from, out Vector3D point)
         {
             point = from;
             IMyShipController reference = _controller ?? _layoutController;
             if (reference == null)
-                return false;
+                return 0;
             Vector3D back = reference.WorldMatrix.Backward, away = back;
             double need = 0;
             foreach (Obstacle o in _obstacles)
@@ -391,11 +402,122 @@ namespace IngameScript
                 }
             }
             if (need <= 0)
-                return false;
+                return 0;
+            double move = need + _approachBuffer;
             // In gravity straight up (the ship is level, a mine is below or beside it).
-            Vector3D direction = InGravity ? -Vector3D.Normalize(_gravity) : Vector3D.Dot(back, away) > 0.3 ? back : away;
-            point = from + direction * (need + _approachBuffer);
+            if (InGravity)
+            {
+                point = from - Vector3D.Normalize(_gravity) * move;
+                return 1;
+            }
+            MatrixD m = reference.WorldMatrix;
+            _wayCandidates.Clear();
+            if (Vector3D.Dot(back, away) > 0.3)
+                _wayCandidates.Add(back);
+            _wayCandidates.Add(away);
+            foreach (Vector3D axis in new[] { m.Backward, m.Up, m.Down, m.Left, m.Right, m.Forward })
+                if (Vector3D.Dot(axis, away) > -0.2)
+                    _wayCandidates.Add(axis);
+            Vector3D direction;
+            if (!ChooseWayOut(from, move, away, out direction))
+                return -1;
+            point = from + direction * move;
+            return 1;
+        }
+
+        readonly List<Vector3D> _wayCandidates = new List<Vector3D>();
+        Vector3D _cameFrom, _cameFromAt;        // direction the ship last came from, and where it stopped
+        bool _cameFromValid;
+
+        // Every tick: while moving, remember where the ship came from. That way
+        // is known to be free (the ship just passed there), even where no
+        // camera can look.
+        void TrackCameFrom(Vector3D velocity)
+        {
+            if (velocity.LengthSquared() < 0.25)
+                return;
+            _cameFrom = -Vector3D.Normalize(velocity);
+            _cameFromAt = ReferencePosition();
+            _cameFromValid = true;
+        }
+
+        // First candidate direction (in _wayCandidates) that the map allows and
+        // the cameras see clear for the move plus the ship's radius and a buffer;
+        // else the way the ship came in, if the map allows it and it does not lead
+        // towards the rock. False if neither.
+        bool ChooseWayOut(Vector3D from, double distance, Vector3D away, out Vector3D direction)
+        {
+            double length = distance + ShipRadius + _approachBuffer;
+            foreach (Vector3D candidate in _wayCandidates)
+                if (MapClear(from, candidate, distance) && CheckPath(from, candidate, length) > 0)
+                {
+                    direction = candidate;
+                    return true;
+                }
+            direction = _cameFrom;
+            return _cameFromValid && Vector3D.Distance(from, _cameFromAt) < ShipRadius && Vector3D.Dot(_cameFrom, away) > -0.2
+                && MapClear(from, _cameFrom, distance) && CheckPath(from, _cameFrom, length) == 0;
+        }
+
+        // Known rocks along a straight move: none may be entered, and a rock the
+        // ship is already too close to may not get closer.
+        bool MapClear(Vector3D from, Vector3D direction, double distance)
+        {
+            Vector3D to = from + direction * distance;
+            foreach (Obstacle o in _obstacles)
+            {
+                if (o.Planet)
+                    continue;
+                double now = Vector3D.Distance(from, o.Center), limit = o.Radius + ShipRadius + TurnMargin;
+                double closest = DistanceToSegment(o.Center, from, to);
+                if (now < limit ? closest < now - 1 : closest < limit)
+                    return false;
+            }
             return true;
+        }
+
+        // Rays along a straight move: from every camera facing that way, and to
+        // the centre line and four lines at 60 % of the ship's radius around it.
+        // 1 = seen clear, 0 = could not be seen (no camera looks that way),
+        // -1 = something is in the way.
+        int CheckPath(Vector3D from, Vector3D direction, double length)
+        {
+            // Cameras facing the way (they may sit anywhere on the hull, e.g. offset
+            // to the sides) look straight along it from where they are, so their
+            // rays run parallel to the path the hull takes.
+            int parallel = 0;
+            foreach (IMyCameraBlock c in _cameras)
+            {
+                if (!c.IsWorking || Vector3D.Dot(c.WorldMatrix.Forward, direction) < 0.75)
+                    continue;
+                c.EnableRaycast = true;
+                Vector3D start = c.GetPosition();
+                Vector3D target = start + direction * Math.Max(length - Vector3D.Dot(start - from, direction), 10);
+                if (!c.CanScan(target))
+                    continue;
+                MyDetectedEntityInfo hit = c.Raycast(target);
+                if (!hit.IsEmpty() && hit.HitPosition.HasValue)
+                {
+                    if (!IsOwnHit(hit))
+                        return -1;
+                    continue;       // looking along the own hull: no information
+                }
+                parallel++;
+            }
+            Vector3D side = Vector3D.CalculatePerpendicularVector(direction), up = Vector3D.Cross(direction, side);
+            int result = 1;
+            for (int i = 0; i < 5; i++)
+            {
+                Vector3D offset = i == 0 ? Vector3D.Zero : (i < 3 ? side : up) * (i % 2 == 0 ? -0.6 : 0.6) * ShipRadius;
+                double hit = ScanFrom(from + offset, direction, length);
+                if (hit >= 0 && hit < double.MaxValue)
+                    return -1;
+                if (hit < 0)
+                    result = 0;
+            }
+            // Seen clear along the way by at least one camera facing it: good enough
+            // where the rays towards the centre line could not all be cast.
+            return parallel > 0 ? 1 : result;
         }
 
         // -----------------------------------------------------------------
@@ -434,22 +556,13 @@ namespace IngameScript
             if (!confined)
                 return false;
 
-            // A straight way out: centre line and four rays at 60 % of the radius
-            // around it must be clear for the whole move plus the ship's length.
-            Vector3D[] axes = { m.Backward, m.Forward, m.Up, m.Down, m.Left, m.Right };
-            double length = 3 * r + _approachBuffer;
-            foreach (Vector3D axis in axes)
+            // A straight way out along a ship axis that the cameras see clear
+            // (preferably backwards), else the way the ship came in.
+            _wayCandidates.Clear();
+            _wayCandidates.AddRange(new[] { m.Backward, m.Forward, m.Up, m.Down, m.Left, m.Right });
+            Vector3D axis;
+            if (ChooseWayOut(center, 2 * r + _approachBuffer, _cameFromValid ? _cameFrom : m.Backward, out axis))
             {
-                Vector3D side = Vector3D.CalculatePerpendicularVector(axis), up = Vector3D.Cross(axis, side);
-                bool clear = true;
-                for (int i = 0; i < 5 && clear; i++)
-                {
-                    Vector3D offset = i == 0 ? Vector3D.Zero : (i < 3 ? side : up) * (i % 2 == 0 ? -0.6 : 0.6) * r;
-                    double hit = ScanFrom(center + offset, axis, length);
-                    clear = hit == double.MaxValue;
-                }
-                if (!clear)
-                    continue;
                 _exitAttempts++;
                 _route.Clear();
                 _route.Add(center + axis * (2 * r + _approachBuffer));
