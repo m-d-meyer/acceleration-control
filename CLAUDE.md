@@ -122,6 +122,11 @@ The README describes all commands and Custom Data options for players.
   the turning-space check is done and do not face the target before docking.
 - Docking path check: voxel hits count only 1 m inside the swept ship box (grids
   with 1.5 m margin), and only the part of the path still ahead.
+- Stress test: goto from inside a hangar (base grid in an asteroid, door opened by
+  pistons) turned the ship (target 1000+ km away: jump alignment or route turn) into
+  the wall. Grids are not on the map. `TryLeaveConfined` (StartGoal and after each
+  departure) scans a sphere of ShipRadius + 5 m with the cameras; if blocked, moves
+  straight out along a ship axis verified clear by 5 rays, else stops.
 - Waypoints and flight end points are hit roughly (user's request, the guard
   prevents collisions): intermediate waypoints switch within 50 m or after crossing
   the bisector plane (`WaypointReached`); the end counts within

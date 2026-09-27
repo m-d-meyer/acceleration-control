@@ -308,6 +308,15 @@ movement keys. The actions are also available as commands (`ui left`, `ui right`
 **ROUTE** plans a route to the selected entry and draws it on the radar, with its
 length, delta-v and flight time. **GO** plans and flies it.
 
+- **Leaving a hangar**: before a flight turns the ship (towards the route or to
+  align for a jump), the cameras check a sphere around it (ship radius + 5 m). Hangar
+  walls and other ships are not on the map, so this is the only way to know. If
+  something is inside, the ship first moves straight out without turning, in the
+  ship direction that the cameras see clear for three ship radii plus
+  `ApproachBuffer` (centre and four rays at 60 % of the radius around it),
+  preferably backwards, and checks again afterwards. Directions no camera can see
+  count as blocked; if none is clear the flight stops with "fly out by hand". Rear
+  and side cameras make this work in every direction.
 - **Leaving a rock**: if the ship is next to an asteroid or a deposit (e.g. after
   mining), it first moves straight out at 10 m/s without turning, backwards (the way
   it came in) if that leads away from the rock. Only then does it turn, plan and fly

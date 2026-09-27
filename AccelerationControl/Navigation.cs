@@ -317,6 +317,10 @@ namespace IngameScript
                 StartDockAlign();
                 return;
             }
+            if (!resume)
+                _exitAttempts = 0;
+            if (TryLeaveConfined())
+                return;
             Vector3D departure;
             if (NeedsDeparture(ReferencePosition(), out departure))
             {
@@ -392,6 +396,99 @@ namespace IngameScript
             Vector3D direction = InGravity ? -Vector3D.Normalize(_gravity) : Vector3D.Dot(back, away) > 0.3 ? back : away;
             point = from + direction * (need + _approachBuffer);
             return true;
+        }
+
+        // -----------------------------------------------------------------
+        //  Confined spaces (hangars, docking bays)
+        // -----------------------------------------------------------------
+
+        const double TurnMargin = 5;        // m beyond the ship's radius that must be free to turn
+        const int MaxExitAttempts = 4;
+        int _exitAttempts;
+
+        // Before a flight turns the ship (towards the route or for a jump): is
+        // there room to turn? Walls of a hangar are grids and not on the map, so
+        // the cameras check a sphere around the ship. If something is inside,
+        // the ship first moves straight out (without turning) in the ship
+        // direction that is clear far enough, preferably backwards. Returns true
+        // if it took over (moving out, or stopped because no way out was found).
+        bool TryLeaveConfined()
+        {
+            IMyShipController reference = _controller ?? _layoutController;
+            if (reference == null || _cameras.Count == 0 || _exitAttempts >= MaxExitAttempts)
+                return false;
+            MatrixD m = reference.WorldMatrix;
+            Vector3D center = ReferencePosition();
+            double r = ShipRadius;
+            bool confined = false;
+            for (int x = -1; x <= 1 && !confined; x++)
+                for (int y = -1; y <= 1 && !confined; y++)
+                    for (int z = -1; z <= 1 && !confined; z++)
+                    {
+                        if (x == 0 && y == 0 && z == 0)
+                            continue;
+                        Vector3D direction = Vector3D.Normalize(m.Right * x + m.Up * y + m.Backward * z);
+                        double hit = ScanFrom(center, direction, r + TurnMargin);
+                        confined = hit >= 0 && hit < r + TurnMargin;
+                    }
+            if (!confined)
+                return false;
+
+            // A straight way out: centre line and four rays at 60 % of the radius
+            // around it must be clear for the whole move plus the ship's length.
+            Vector3D[] axes = { m.Backward, m.Forward, m.Up, m.Down, m.Left, m.Right };
+            double length = 3 * r + _approachBuffer;
+            foreach (Vector3D axis in axes)
+            {
+                Vector3D side = Vector3D.CalculatePerpendicularVector(axis), up = Vector3D.Cross(axis, side);
+                bool clear = true;
+                for (int i = 0; i < 5 && clear; i++)
+                {
+                    Vector3D offset = i == 0 ? Vector3D.Zero : (i < 3 ? side : up) * (i % 2 == 0 ? -0.6 : 0.6) * r;
+                    double hit = ScanFrom(center + offset, axis, length);
+                    clear = hit == double.MaxValue;
+                }
+                if (!clear)
+                    continue;
+                _exitAttempts++;
+                _route.Clear();
+                _route.Add(center + axis * (2 * r + _approachBuffer));
+                StartRoute("leaving");
+                _departing = true;
+                _message = "Too tight to turn: moving out straight first";
+                return true;
+            }
+            _mode = Mode.Manual;
+            _message = "Too tight to turn and no straight way out seen: fly out by hand";
+            return true;
+        }
+
+        // Distance from 'from' to the first foreign object along a ray of the given
+        // length (MaxValue: clear), or -1 if no camera can look there or only the
+        // own hull is in the way.
+        double ScanFrom(Vector3D from, Vector3D direction, double length)
+        {
+            Vector3D point = from + direction * length;
+            IMyCameraBlock best = null;
+            double bestDistance = double.MaxValue;
+            foreach (IMyCameraBlock c in _cameras)
+            {
+                if (!c.IsWorking)
+                    continue;
+                c.EnableRaycast = true;
+                double d = Vector3D.DistanceSquared(c.GetPosition(), point);
+                if (d < bestDistance && c.CanScan(point))
+                {
+                    best = c;
+                    bestDistance = d;
+                }
+            }
+            if (best == null)
+                return -1;
+            MyDetectedEntityInfo hit = best.Raycast(point);
+            if (hit.IsEmpty() || !hit.HitPosition.HasValue)
+                return double.MaxValue;
+            return IsOwnHit(hit) ? -1 : Vector3D.Distance(from, hit.HitPosition.Value);
         }
 
         // goto GPS:name:x:y:z:...  (as copied from the game's GPS list)

@@ -378,9 +378,10 @@ namespace IngameScript
                 _settling = false;
                 if (_departing)
                 {
-                    // Clear of the rock: now plan and head off.
+                    // Clear of the rock or out of the hangar: check again, then plan and head off.
                     _departing = false;
-                    ContinueGoal();
+                    if (!TryLeaveConfined())
+                        ContinueGoal();
                     return false;
                 }
                 if (_resumeGoal)
