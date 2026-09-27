@@ -85,8 +85,9 @@ The README describes all commands and Custom Data options for players.
   ("Script Too Complex" cannot be caught by try/catch).
 - Navigation distances use the grid's bounding sphere center (`ReferencePosition`);
   stop points keep `ApproachBuffer + ShipRadius` from surfaces, so turning in place at
-  the stop point is safe. Flip-and-burn braking was simulated: fine up to about 12 s
-  turn time with the default `FlipTime` of 8 s and brake safety 0.8.
+  the stop point is safe. Flip-and-burn: `FlipTime` 30 s (user's choice); the flip is
+  used only if the estimated trip time (TripTime) is shorter than without. Simulated:
+  stops correctly with actual turn times up to 30 s.
 - Screens: LCD textures are 512 px; the user found small fonts unreadable, so keep
   text scales around 0.55 or larger.
 

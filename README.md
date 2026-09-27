@@ -147,7 +147,7 @@ first run. Edit them there and run `reload`.
 | `JumpClearance`      | `1000`    | Minimum distance of the jump destination from known obstacles (m) |
 | `DockApproach`       | `30`      | Distance in front of the base connector where docking starts (m, plus ship radius) |
 | `UseStrongestThrusters` | `true` | Turn the ship so its strongest thrusters push along the flight, and flip for braking if worth it |
-| `FlipTime`           | `8`       | Seconds planned for turning around before braking (increase for slow-turning ships) |
+| `FlipTime`           | `30`      | Seconds planned for turning around before braking                 |
 
 ## Drive assists
 
@@ -295,10 +295,12 @@ length, delta-v and flight time. **GO** plans and flies it.
   slower for sharper turns. The gyroscopes turn the ship so that its strongest
   thrusters push along the route (`UseStrongestThrusters`; otherwise the nose points
   along the route).
-- **Flip and burn**: if the side that would brake is much weaker (factor 1.3) than the
-  strongest side, the ship turns around for the final braking and brakes with its
-  strongest thrusters. Braking starts `FlipTime` seconds earlier to allow for the
-  turn; increase it for ships that turn slowly.
+- **Flip and burn**: if the side that would brake is much weaker than the strongest
+  side, the ship turns around for the final braking and brakes with its strongest
+  thrusters. The turn is given `FlipTime` seconds (default 30): braking starts earlier
+  by the distance flown in that time, which also lowers the top speed on short trips
+  that never reach `MaxSpeed`. The script compares the trip time with and without
+  turning around and only flips when it is faster.
 - **At the target**: the stop point keeps `ApproachBuffer` plus the ship's radius
   (its bounding sphere) from the surface, measured from the ship's center, so the
   ship can turn safely there. Near the stop point it holds its heading; once slow,

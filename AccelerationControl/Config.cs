@@ -61,7 +61,7 @@ namespace IngameScript
         double _jumpClearance = 1000;
         double _dockApproach = 30;
         bool _useBestThrust = true;
-        double _flipTime = 8;
+        double _flipTime = 30;
         double _defaultCruiseSpeed = 0.75;
         double _cruiseStep = 0.25;
         double _velocityGain = 2.0;

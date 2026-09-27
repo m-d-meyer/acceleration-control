@@ -303,6 +303,18 @@ namespace IngameScript
             return facing;
         }
 
+        // Time for a trip from rest to rest: accelerate, coast 'coast' seconds
+        // (e.g. to turn around), brake; the top speed is limited by MaxSpeed.
+        double TripTime(double distance, double accel, double brake, double coast)
+        {
+            accel = Math.Max(accel, 0.01);
+            brake = Math.Max(brake, 0.01);
+            double k = 1 / (2 * accel) + 1 / (2 * brake);
+            double top = Math.Min(_maxSpeed, (-coast + Math.Sqrt(coast * coast + 4 * k * distance)) / (2 * k));
+            double used = k * top * top + coast * top;
+            return top / accel + coast + top / brake + Math.Max(distance - used, 0) / Math.Max(top, 0.01);
+        }
+
         // Deceleration the approach plans with when moving along a direction.
         double BrakeAccel(Vector3D direction)
         {
@@ -360,19 +372,23 @@ namespace IngameScript
             double distance = _targetDistance;
             double current = Vector3D.Dot(velocity, direction);
 
-            // Flip and burn: if the strongest thrusters are much stronger than the
-            // ones that brake in the current heading, the ship turns around for
-            // the final braking. Braking starts earlier by the time the turn takes.
-            _flipPlanned = false;
+            // Flip and burn: the ship turns around for the final braking if that is
+            // faster overall than braking with the weaker side. The turn is given
+            // FlipTime seconds: braking starts earlier by the distance flown in
+            // that time, which also lowers the top speed on short trips that never
+            // reach MaxSpeed. Once turned, the ship stays turned (_flipBraking).
+            _flipPlanned = _flipBraking;
             IMyShipController reference = _controller ?? _layoutController;
             if (_useBestThrust && !_probing && !_departing && OnLastLeg && _gyros.Count > 0 && reference != null
                 && _targetDistance > FlipMinDistance)
             {
                 Vector3D bestDirection;
                 double reverse, best = BestThrust(reference.WorldMatrix, reference.CalculateShipMass().PhysicalMass, out bestDirection, out reverse);
-                if (best > reverse * FlipFactor && best * _brakeSafety > brake)
+                if (!_flipBraking)
+                    _flipPlanned = best * _brakeSafety > brake * FlipFactor
+                        && TripTime(_targetDistance, best, best * _brakeSafety, _flipTime) < TripTime(_targetDistance, best, brake, 0);
+                if (_flipPlanned)
                 {
-                    _flipPlanned = true;
                     brake = best * _brakeSafety;
                     distance = Math.Max(distance - Math.Max(current, 0) * _flipTime, 0);
                 }
