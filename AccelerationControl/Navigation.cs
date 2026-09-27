@@ -413,7 +413,7 @@ namespace IngameScript
         Vector3D StopPoint(Vector3D from, Vector3D target)
         {
             Obstacle planet = PlanetAt(target);
-            if (planet != null && Vector3D.Distance(target, planet.Center) < planet.Radius * 1.5)
+            if (planet != null && Vector3D.Distance(target, planet.Center) < NearGroundRadius(planet))
                 return target + Vector3D.Normalize(target - planet.Center) * StopOffset;
             Vector3D ray = target - from;
             double distance = ray.Length();

@@ -294,8 +294,10 @@ namespace IngameScript
             if (c != null && Vector3D.Distance(from, ReferencePosition()) < 100
                 && c.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevation))
                 ground = Math.Max(ground, Vector3D.Distance(from, planet.Center) - elevation);
+            // A target on or near the ground raises the cruise height; one high up
+            // (orbit, asteroids in a large gravity well) is flown to directly.
             double rt = Vector3D.Distance(to, planet.Center);
-            if (rt < planet.GravityRadius)
+            if (rt < NearGroundRadius(planet))
                 ground = Math.Max(ground, rt);
             ground = Math.Max(ground, _terrainRadius);
             double height = MathHelper.Clamp(Vector3D.Distance(from, to) * 0.25, 200, Math.Max(_planetCruiseHeight, 200));
@@ -354,6 +356,13 @@ namespace IngameScript
         {
             route.Add(point);
             _planOwners.Add(null);
+        }
+
+        // Below this distance from the center a target counts as on the planet:
+        // inside the atmosphere, or within 10 % of the radius above sea level.
+        double NearGroundRadius(Obstacle planet)
+        {
+            return Math.Max(AtmosphereTop(planet), planet.Radius * 1.1);
         }
 
         // The planet the point lies in the gravity well of (this zone), or null.

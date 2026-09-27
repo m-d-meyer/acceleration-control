@@ -366,8 +366,9 @@ direct line would pass lower than the cruise height, the route:
    from higher up (e.g. after entering a planet zone in orbit) the arc descends
    evenly to the cruise height,
 3. descends vertically above the target and stops `ApproachBuffer` plus the ship's
-   radius above it (targets in space: heads straight for them once the planet is
-   out of the way).
+   radius above it. Targets high above the planet (above the atmosphere and more
+   than 10 % of the radius above sea level, e.g. asteroids in a large gravity well)
+   are flown to directly once the planet is out of the way.
 
 In gravity (above 0.5 m/s²) the ship stays level: its up side points against
 gravity and only the nose turns towards the flight direction. Climbs and descents
