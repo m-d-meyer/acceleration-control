@@ -137,7 +137,9 @@ The README describes all commands and Custom Data options for players.
   `ScreenTextScale` option; the PB detail info shows the map texture size. The
   user's wide cockpit screen has a 256x256 texture (only a wide strip used): below
   200 px height the radar uses a compact layout (200 units high, 3 text lines,
-  `TextFit` shrinks/shortens texts).
+  `TextFit` shrinks/shortens texts). Its used area is 256 x 153.6 px: the centered
+  viewport starts at y = 51.2, so all sprites sat between pixels and blurred;
+  `P()` and `Rect()` snap to whole pixels.
 
 - Real Solar Systems (user's save): proxy planets move, real planets are static and
   far away; near a proxy the ship is teleported into the planet's zone with its own

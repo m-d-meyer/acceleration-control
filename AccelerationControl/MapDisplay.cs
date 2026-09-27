@@ -668,14 +668,21 @@ namespace IngameScript
         //  Sprite helpers (coordinates in layout units)
         // -----------------------------------------------------------------
 
+        // Snapped to whole pixels: screens whose used area is not a whole number of
+        // pixels (e.g. 256 x 153.6) otherwise put every edge between two pixels,
+        // which blurs the whole picture.
         Vector2 P(float x, float y)
         {
-            return _origin + new Vector2(x, y) * _u;
+            Vector2 p = _origin + new Vector2(x, y) * _u;
+            return new Vector2((float)Math.Round(p.X), (float)Math.Round(p.Y));
         }
 
         void Rect(float x, float y, float w, float h, Color color)
         {
-            _frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", P(x + w / 2, y + h / 2), new Vector2(w, h) * _u, color));
+            // From the snapped corners, so all four edges lie on pixel borders.
+            Vector2 a = P(x, y), b = P(x + w, y + h);
+            Vector2 size = new Vector2(Math.Max(b.X - a.X, 1), Math.Max(b.Y - a.Y, 1));
+            _frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", a + size / 2, size, color));
         }
 
         void Box(float x, float y, float w, float h, float t, Color color)
