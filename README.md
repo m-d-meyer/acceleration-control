@@ -724,6 +724,42 @@ at the limit until the ship is almost stopped.
   on rotor/piston subgrids that are aligned with the cockpit). Do not combine it
   with other scripts that also set thruster overrides.
 
+## Limitations
+
+Good to know before relying on the script. "Tested" below means flown in a single
+player game; everything else was checked with the compiler and simulations only.
+
+**Not or only briefly tested in game**
+- Planet flights (climb, arc, descent, atmosphere limit, wind compensation) were
+  developed with simulations and flown only a few times.
+- Real Solar Systems support (zones, `track`) is built for that mod's behaviour as
+  described by its author; it was tried in one save.
+- Multiplayer and dedicated servers were never tried.
+
+**Bases and docking**
+- Bases must stand still while the ship docks. A base that was moved is found again
+  once a camera ray hits it, but the ship does not follow a moving base.
+- One dock per base entry on the map. The way in is recorded only while the script
+  runs (last 300 m, at least 20 m flown by hand) and is replayed slowly (8 m/s);
+  the ship does not steer around something new on it, it waits and then hands over.
+- Gates need the `DockGate` script on the base and antennas in range.
+
+**Sensing**
+- The script only knows what its cameras have hit. Camera rays often miss asteroids
+  farther than about 6 km, asteroids are approximated by spheres, and ships and
+  stations are not on the map: the collision guard sees them only ahead of the ship.
+  Few or badly placed cameras mean less protection.
+- Scripts cannot see water (water mod) or read wind; wind, drag and lift are
+  estimated from how the ship reacts.
+
+**Game limits**
+- The game may refuse a jump started by a script: the pilot then has to press Jump.
+- The script runs every tick and does a lot of work; many known asteroids cost
+  instructions. It sets thruster and gyroscope overrides, so do not combine it with
+  other scripts that do the same.
+- The paste-ready script is minified to fit the 100,000 character limit (about 98k
+  used); the readable source is in this repository.
+
 ## Development
 
 The script is an [MDK2](https://github.com/malforge/mdk2) project in
@@ -742,8 +778,13 @@ The script is an [MDK2](https://github.com/malforge/mdk2) project in
 | `Navigation.cs`    | Route planning, gyroscopes, collision guard     |
 | `Jumping.cs`       | Jump drive                                      |
 | `Docking.cs`       | Automatic docking at the base                   |
+| `Paths.cs`         | Recorded ways (docking, deposits), base pose, gates |
+| `Planets.cs`       | Planet flights, atmosphere, Real Solar Systems  |
 | `StatusDisplay.cs` | Graphical ship status page                      |
 | `Config.cs`        | Custom Data configuration and saved state       |
+
+[`DockGate/`](DockGate) is the small companion script for bases (gates, see
+*Docking*), built into [`dist/DockGate.cs`](dist/DockGate.cs).
 
 With Space Engineers installed, the project can be opened in Visual Studio or Rider
 with MDK2 for full compiler checks and IntelliSense.
