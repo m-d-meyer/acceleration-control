@@ -134,7 +134,10 @@ The README describes all commands and Custom Data options for players.
   text scales around 0.55 or larger. A wide cockpit screen looked small and blurry
   with the square layout: radar has a wide layout (>= 1.5:1, 300 units high), the
   palette is high contrast (game glare washes out mid tones), lines >= 1.6 px,
-  `ScreenTextScale` option; the PB detail info shows the map texture size.
+  `ScreenTextScale` option; the PB detail info shows the map texture size. The
+  user's wide cockpit screen has a 256x256 texture (only a wide strip used): below
+  200 px height the radar uses a compact layout (200 units high, 3 text lines,
+  `TextFit` shrinks/shortens texts).
 
 - Real Solar Systems (user's save): proxy planets move, real planets are static and
   far away; near a proxy the ship is teleported into the planet's zone with its own

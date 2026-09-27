@@ -56,6 +56,8 @@ namespace IngameScript
         float _u;                  // pixels per layout unit
         float _layoutWidth = 512;  // width of the layout in units (wide screens: more than 512)
         float _maxStem = MaxStem;
+        bool _compact;              // low-resolution wide screen
+        const float CompactPixels = 200;    // wide screens lower than this (px) get the compact layout
         string _mapScreenInfo = "";
         bool _frameToggle;
 
@@ -70,7 +72,8 @@ namespace IngameScript
         void DrawMapSurface(IMyTextSurface surface, MapView view)
         {
             RectangleF viewport = BeginSprites(surface);
-            _mapScreenInfo = string.Format("Map screen: {0}x{1} px", surface.TextureSize.X, surface.TextureSize.Y);
+            _mapScreenInfo = string.Format("Map screen: texture {0}x{1} px, used {2}x{3} px", surface.TextureSize.X, surface.TextureSize.Y,
+                surface.SurfaceSize.X, surface.SurfaceSize.Y);
             using (MySpriteDrawFrame frame = surface.DrawFrame())
             {
                 _frame = frame;
@@ -81,7 +84,24 @@ namespace IngameScript
                 float width = viewport.Width, height = viewport.Height;
                 bool active = view == _view;
                 _layoutWidth = 512;
-                if (view == MapView.Radar && width >= height * 1.5f)
+                _compact = false;
+                if (view == MapView.Radar && width >= height * 1.5f && height < CompactPixels)
+                {
+                    // Wide and low resolution (e.g. cockpit screens with a 256 px texture):
+                    // 200 units high, fewer and larger texts, only the selection labelled.
+                    _compact = true;
+                    _u = height / 200f;
+                    _origin = viewport.Position;
+                    float w = _layoutWidth = width / _u;
+                    float radarWidth = Math.Min(200, w - 190), x = radarWidth + 6, panelWidth = w - x - 6;
+                    DrawRadar(radarWidth / 2, 36 + (200 - 36) / 2f + 6, Math.Min(radarWidth / 2 - 6, 90), true);
+                    Rect(x - 4, 37, w - x + 4, 163, BgColor);
+                    DrawCompactPanel(x, 40, panelWidth, 80);
+                    DrawButtons(RadarButtons, x, 126, panelWidth, 3, 34, active);
+                    if (active)
+                        DrawDialog(200);
+                }
+                else if (view == MapView.Radar && width >= height * 1.5f)
                 {
                     // Wide screen: 300 units high, radar left, info and buttons right,
                     // so everything is drawn larger than the square layout fitted in.
@@ -185,8 +205,11 @@ namespace IngameScript
             EllipseOutline(cx, cy, radius / 4, radius / 4 * PlaneTilt, 1, GridFaint, false);
             Line(cx - radius, cy, cx + radius, cy, 1, GridFaint);
             Line(cx, cy - radius * PlaneTilt, cx, cy + radius * PlaneTilt, 1, GridFaint);
-            Text(FormatDistance(MapRange), cx + radius * 0.74f, cy - radius * PlaneTilt * 0.74f - 20, 0.5f, DimColor, TextAlignment.LEFT);
-            Text(FormatDistance(MapRange / 2), cx + radius * 0.37f, cy - radius * PlaneTilt * 0.37f - 18, 0.45f, DimColor, TextAlignment.LEFT);
+            if (!_compact)      // the header shows the range; small texts would be unreadable there
+            {
+                Text(FormatDistance(MapRange), cx + radius * 0.74f, cy - radius * PlaneTilt * 0.74f - 20, 0.5f, DimColor, TextAlignment.LEFT);
+                Text(FormatDistance(MapRange / 2), cx + radius * 0.37f, cy - radius * PlaneTilt * 0.37f - 18, 0.45f, DimColor, TextAlignment.LEFT);
+            }
 
             // Asteroids and deposits, far ones first
             _mapItems.Clear();
@@ -226,7 +249,7 @@ namespace IngameScript
 
             // Header and info panel are drawn last so they cover anything that
             // sticks out of the radar area.
-            DrawHeader(44, (inGravity ? "IN GRAVITY  " : "") + FormatDistance(MapRange) + "  " + (_filter ?? "all"));
+            DrawHeader(_compact ? 34 : 44, (inGravity ? "IN GRAVITY  " : "") + FormatDistance(MapRange) + "  " + (_filter ?? "all"));
             if (wide)
                 return;
             Rect(0, 294, 512, 218, BgColor);
@@ -277,7 +300,7 @@ namespace IngameScript
             }
 
             // Labels only for the selection and the nearest deposits, so they stay readable.
-            if (!selected && _visibleDeposits.IndexOf(d) >= RadarLabels)
+            if (!selected && (_compact || _visibleDeposits.IndexOf(d) >= RadarLabels))
                 return;
             string name = d.Number > 0 ? ShortOre(d.Ore) + d.Number : d.Ore.Length > 10 ? d.Ore.Substring(0, 10) : d.Ore;
             string distance = FormatDistance(d.Distance);
@@ -354,6 +377,61 @@ namespace IngameScript
 
             if (_message.Length > 0)
                 Text(_message, left, y + height - 26, 0.52f, DimColor);
+        }
+
+        // Three large lines for low-resolution screens: what is selected or flown
+        // to, the most important detail, and the last message.
+        void DrawCompactPanel(float x, float y, float width, float height)
+        {
+            Rect(x, y, width, height, PanelColor);
+            Box(x, y, width, height, 1, GridColor);
+            float left = x + 8, right = x + width - 8;
+            string title = "", detail = "";
+            Color color = RouteColor;
+            if (_mode == Mode.Jump)
+            {
+                title = "JUMP " + FormatDistance(_jumpDistance);
+                detail = _jumpState;
+                color = JumpColor;
+            }
+            else if (_mode == Mode.Dock)
+            {
+                title = "DOCKING";
+                detail = DockPhaseText();
+                color = Cyan;
+            }
+            else if (_mode == Mode.Approach)
+            {
+                title = "> " + _targetName;
+                detail = _approachPhase + "  " + FormatDistance(_remainingDistance) + "  " + _currentSpeed.ToString("0") + " m/s";
+            }
+            else if (_selected != null)
+            {
+                title = _selected.Label;
+                detail = FormatDistance(_selected.Distance) + "  " + (_selected.Zone == _zone ? DirectionText(_selected.Position, true) : "");
+            }
+            else
+                title = "No entries";
+            TextFit(title, left, y + 4, 0.85f, right - left, color);
+            TextFit(detail, left, y + 32, 0.68f, right - left, TextColor);
+            if (_message.Length > 0)
+                TextFit(_message, left, y + 56, 0.56f, right - left, DimColor);
+        }
+
+        // Text shrunk to fit a width (down to 75 %), then shortened.
+        void TextFit(string text, float x, float y, float scale, float width, Color color)
+        {
+            float measured = MeasureText(text, scale, "White");
+            if (measured > width)
+            {
+                float fitted = Math.Max(scale * width / measured, scale * 0.75f);
+                string shown = text;
+                for (int n = text.Length - 1; n > 3 && MeasureText(shown, fitted, "White") > width; n--)
+                    shown = text.Substring(0, n) + "..";
+                text = shown;
+                scale = fitted;
+            }
+            Text(text, x, y, scale, color);
         }
 
         // Distance to the target with the stopping distance marked: braking
@@ -478,7 +556,7 @@ namespace IngameScript
         {
             if (_dialog == Dialog.None)
                 return;
-            float x = (_layoutWidth - 432) / 2, w = 432, y = 48;
+            float w = Math.Min(432, _layoutWidth - 16), x = (_layoutWidth - w) / 2, y = 48;
             if (_dialog == Dialog.ConfirmDelete)
             {
                 float h = 110;

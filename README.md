@@ -263,7 +263,11 @@ The **base** is marked like an ore: choose *Base* in the MARK list, or run
   spheres are known asteroids, violet areas are gravity wells. Deposits beyond the
   range appear as small markers on the edge. On wide screens (1.5:1 or wider) the
   radar is on the left and the info panel and buttons on the right, drawn about
-  twice as large as the square layout would be.
+  twice as large as the square layout would be. Wide screens with a low resolution
+  (below 200 px high, e.g. cockpit screens that only have a 256 px texture) get a
+  compact layout: three large lines about the selection or the flight, and only the
+  selected entry labelled on the radar. The programmable block's detail info shows
+  the screen's resolution.
 - **List** (`[Accel List]`, or the `[Accel Map]` screen after pressing LIST): deposits
   sorted by distance, with the direction relative to the ship's nose (degrees
   left/right and up/down, plus a small indicator).
