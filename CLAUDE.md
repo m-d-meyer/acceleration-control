@@ -10,8 +10,9 @@ Context for continuing work on this project in a new session.
 - The user tests in game and reports back with screenshots. Nothing can be run in
   game from here, so state clearly what is verified (compiler check, simulations)
   and what is not.
-- Work happens on a branch; PR https://github.com/m-d-meyer/acceleration-control/pull/1
-  targets `main`. The user reviews and merges.
+- Work happens on branch `claude/keen-feynman-ek97hm`; PRs target `main`, the user
+  reviews and merges. PR 1 (everything up to docking) is merged; PR
+  https://github.com/m-d-meyer/acceleration-control/pull/2 adds planets.
 
 ## What the project is
 
