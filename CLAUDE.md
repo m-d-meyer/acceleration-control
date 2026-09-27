@@ -243,6 +243,11 @@ The README describes all commands and Custom Data options for players.
   raycasts should go through `Cast()`. Storage keys DockBase/DockLocal/DockPath;
   older saves need one manual dock. Path following is only compile-checked, not
   simulated or flown.
+- Hangar test: `dock` flew through the rock above the hangar opening. Found: every
+  script start while docked re-recorded the dock with no crumbs and dropped the way
+  in (now kept for the same dock); the path index advanced by projection alone, so
+  a ship off to the side skipped points (now only near the segment). `NoteHit`
+  checks that the reported orientation reproduces the hit's box size (`_baseHalf`).
 
 ## Open ideas / next steps
 

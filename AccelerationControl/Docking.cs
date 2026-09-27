@@ -143,7 +143,7 @@ namespace IngameScript
             }
             StartGoal(DockApproachPoint, BaseName, true);
             if (_mode == Mode.Approach && !_departing)
-                _message = "Flying to the base to dock";
+                _message = "No recorded way in: flying to the point in front of the connector";
         }
 
         // Is the connector close to the approach point or inside the path into the dock?

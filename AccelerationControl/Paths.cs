@@ -56,7 +56,7 @@ namespace IngameScript
         // Base grid pose: world matrix and its bounding box centre in grid
         // coordinates (a raycast reports the box centre and the orientation).
         MatrixD _baseMatrix = MatrixD.Identity;
-        Vector3D _baseCenterLocal;
+        Vector3D _baseCenterLocal, _baseHalf;   // box centre and half size in grid coordinates
         bool _baseKnown;
         readonly Vector3D[] _dockLocal = new Vector3D[7];   // connector pos/axis, ship forward/up, ship grid pos/forward/up
 
@@ -116,7 +116,14 @@ namespace IngameScript
         // At docking: the base grid's pose, and all dock data relative to it.
         void RecordBase(IMyCubeGrid baseGrid)
         {
+            // Connected again at the same dock without a new way in (script
+            // restarted or world loaded while docked): keep the recorded way.
+            List<PathPoint> path = RecentPath();
+            List<PathPoint> keep = path == null && HasDockPath && Vector3D.Distance(FromBase(_dockLocal[0]), _dockPosition) < 20
+                ? _dockPathLocal : null;
             _baseMatrix = baseGrid.WorldMatrix;
+            _baseHalf = new Vector3D(baseGrid.Max.X - baseGrid.Min.X + 1, baseGrid.Max.Y - baseGrid.Min.Y + 1,
+                baseGrid.Max.Z - baseGrid.Min.Z + 1) * (baseGrid.GridSize * 0.5);
             _baseCenterLocal = ToBaseDir(baseGrid.WorldAABB.Center - _baseMatrix.Translation);
             _baseKnown = true;
             _dockLocal[0] = ToBase(_dockPosition);
@@ -126,8 +133,9 @@ namespace IngameScript
             _dockLocal[4] = ToBase(_dockGridPosition);
             _dockLocal[5] = ToBaseDir(_dockGridForward);
             _dockLocal[6] = ToBaseDir(_dockGridUp);
+            if (keep != null)
+                return;
             _dockPathLocal.Clear();
-            List<PathPoint> path = RecentPath();
             if (path != null)
                 foreach (PathPoint p in path)
                     _dockPathLocal.Add(new PathPoint { P = ToBase(p.P), F = ToBaseDir(p.F), U = ToBaseDir(p.U) });
@@ -152,9 +160,20 @@ namespace IngameScript
         // base is now (another zone's frame, or it moved).
         void NoteHit(MyDetectedEntityInfo hit)
         {
-            if (!_baseKnown || hit.IsEmpty() || hit.EntityId != _dockGridId)
+            if (!_baseKnown || hit.IsEmpty() || !hit.HitPosition.HasValue || hit.EntityId != _dockGridId)
                 return;
             MatrixD m = hit.Orientation;
+            // Plausibility: the reported orientation must give the reported box
+            // size, and the hit point must lie in the grid's box.
+            if (_baseHalf.X > 0)
+            {
+                Vector3D size = AbsVec(m.Right) * _baseHalf.X + AbsVec(m.Up) * _baseHalf.Y + AbsVec(m.Backward) * _baseHalf.Z
+                    - hit.BoundingBox.HalfExtents;
+                Vector3D local = Vector3D.TransformNormal(hit.HitPosition.Value - hit.Position, MatrixD.Transpose(m));
+                if (AbsVec(size).Max() > 3 || Math.Abs(local.X) > _baseHalf.X + 3
+                    || Math.Abs(local.Y) > _baseHalf.Y + 3 || Math.Abs(local.Z) > _baseHalf.Z + 3)
+                    return;
+            }
             m.Translation = hit.Position - Vector3D.TransformNormal(_baseCenterLocal, m);
             if (Vector3D.DistanceSquared(m.Translation, _baseMatrix.Translation) < 0.25
                 && Vector3D.Dot(m.Forward, _baseMatrix.Forward) > 0.99999 && Vector3D.Dot(m.Up, _baseMatrix.Up) > 0.99999)
@@ -170,6 +189,11 @@ namespace IngameScript
                 _route[_route.Count - 1] = DockTarget;
                 _replanPending = true;
             }
+        }
+
+        static Vector3D AbsVec(Vector3D v)
+        {
+            return new Vector3D(Math.Abs(v.X), Math.Abs(v.Y), Math.Abs(v.Z));
         }
 
         // World dock data from the base-relative copy.
@@ -287,7 +311,12 @@ namespace IngameScript
             while (_pathIndex < last)
             {
                 Vector3D a = _path[_pathIndex].P, b = _path[_pathIndex + 1].P;
-                if (Vector3D.Distance(position, a) < PathReach || Vector3D.Dot(position - a, b - a) > 0)
+                // Passed a: within reach, or beyond it and close to the segment
+                // (off to the side, e.g. above a hangar roof, is not "passed").
+                Vector3D ab = Vector3D.Normalize(b - a);
+                double along = Vector3D.Dot(position - a, ab);
+                if (Vector3D.Distance(position, a) < PathReach
+                    || along > 0 && (position - a - ab * along).Length() < PathReach * 2)
                     _pathIndex++;
                 else
                     break;

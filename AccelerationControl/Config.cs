@@ -246,7 +246,7 @@ namespace IngameScript
                 {
                     // Base pose and all dock data relative to it (see Paths.cs).
                     state.Set(StateSection, "DockBase", Vec(_baseMatrix.Translation) + ";" + Vec(_baseMatrix.Forward) + ";"
-                        + Vec(_baseMatrix.Up) + ";" + Vec(_baseCenterLocal));
+                        + Vec(_baseMatrix.Up) + ";" + Vec(_baseCenterLocal) + ";" + Vec(_baseHalf));
                     var local = new StringBuilder();
                     foreach (Vector3D v in _dockLocal)
                         local.Append(Vec(v)).Append(';');
@@ -308,10 +308,12 @@ namespace IngameScript
             }
             string[] baseParts = state.Get(StateSection, "DockBase").ToString("").Split(';');
             string[] localParts = state.Get(StateSection, "DockLocal").ToString("").Split(';');
-            if (_dockKnown && baseParts.Length == 12 && localParts.Length >= 21)
+            if (_dockKnown && baseParts.Length >= 12 && localParts.Length >= 21)
             {
                 _baseMatrix = MatrixD.CreateWorld(ParseVec(baseParts, 0), ParseVec(baseParts, 3), ParseVec(baseParts, 6));
                 _baseCenterLocal = ParseVec(baseParts, 9);
+                if (baseParts.Length >= 15)
+                    _baseHalf = ParseVec(baseParts, 12);
                 for (int i = 0; i < 7; i++)
                     _dockLocal[i] = ParseVec(localParts, i * 3);
                 _dockPathLocal = ParsePath(state.Get(StateSection, "DockPath").ToString(""));

@@ -605,7 +605,12 @@ flew it (1.5 m/s near the connector), which also works in tight hangars and from
 right side. It turns into each recorded pose before moving on, scans ahead along the
 way and waits while something is in it; after 10 seconds blocked it stops and asks
 you to take over. `undock` follows the same way backwards out. Docks recorded before
-this feature have no way in: dock by hand once more to record it.
+this feature have no way in: dock by hand once more to record it. The way is
+recorded only while the script runs (the last 300 m before the connector locks, at
+least 20 m); the message after docking says "Dock position and the way in saved".
+Reloading the world or the script while docked keeps the recorded way. Without a
+way in, `dock` shows "No recorded way in" and uses the point in front of the
+connector, which is wrong for hangars whose connector does not face the entrance.
 
 **Base position.** All dock data is stored relative to the base grid. Whenever a
 camera ray hits the base grid (background survey, collision guard, docking scans),
