@@ -221,6 +221,28 @@ namespace IngameScript
             return thrust / mass;
         }
 
+        // The ship side with the strongest thrusters: returns its acceleration and
+        // the world direction it pushes the ship in, plus the acceleration of the
+        // opposite side.
+        double BestThrust(MatrixD m, double mass, out Vector3D direction, out double reverse)
+        {
+            Vector3D[] axes = { m.Right, m.Up, m.Backward };
+            double best = -1;
+            direction = m.Forward;
+            reverse = 0;
+            for (int a = 0; a < 3; a++)
+                for (int s = 0; s < 2; s++)
+                {
+                    double accel = MaxAccel(a, s, mass);
+                    if (accel <= best)
+                        continue;
+                    best = accel;
+                    direction = s == 0 ? axes[a] : -axes[a];
+                    reverse = MaxAccel(a, 1 - s, mass);
+                }
+            return best;
+        }
+
         // Highest acceleration the thrusters can produce along a world direction.
         double MaxAccelAlong(Vector3D worldDir)
         {

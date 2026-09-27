@@ -330,17 +330,17 @@ namespace IngameScript
             GoToPoint(new Vector3D(x, y, z), p[1]);
         }
 
-        // The point ApproachBuffer meters before a target, seen from the ship.
+        // The point where the ship's center stops in front of a target: ApproachBuffer plus the ship's radius.
         Vector3D StopPoint(Vector3D from, Vector3D target)
         {
             Vector3D ray = target - from;
             double distance = ray.Length();
-            return distance > _approachBuffer ? target - ray / distance * _approachBuffer : from;
+            return distance > StopOffset ? target - ray / distance * StopOffset : from;
         }
 
         void StartRoute(string name)
         {
-            _departing = _resumeGoal = _replanPending = false;
+            _departing = _resumeGoal = _replanPending = _flipBraking = false;
             _routeIndex = 0;
             _approachTarget = _route[0];
             _targetName = name;
@@ -444,7 +444,7 @@ namespace IngameScript
             if (_dockAfterRoute && IsBaseGrid(hit.EntityId))
                 return;     // flying to the base: the base itself is expected ahead
             double along = Vector3D.Dot(hit.HitPosition.Value - position, direction);
-            if (along > remaining + _approachBuffer)
+            if (along > remaining + StopOffset + 5)
                 return;     // beyond the stop point plus buffer: no problem
 
             bool voxel = hit.Type == MyDetectedEntityType.Asteroid || hit.Type == MyDetectedEntityType.Planet;
@@ -454,7 +454,7 @@ namespace IngameScript
             if (OnLastLeg && voxel)
             {
                 // Most likely the target rock itself: stop earlier.
-                double stop = Math.Max(along - _approachBuffer, 0);
+                double stop = Math.Max(along - StopOffset, 0);
                 _approachTarget = position + direction * stop;
                 _route[_route.Count - 1] = _approachTarget;
                 _message = "Surface closer than scanned, stopping earlier";
@@ -536,6 +536,7 @@ namespace IngameScript
 
             MatrixD matrix = controller.WorldMatrix;
             Vector3D desired, desiredUp = Vector3D.Zero;
+            Vector3D pointing = matrix.Forward;     // ship direction that is turned towards 'desired'
             if (_mode == Mode.Jump)
                 desired = _jumpDirection;
             else if (_mode == Mode.Dock)
@@ -548,14 +549,32 @@ namespace IngameScript
             else
             {
                 Vector3D toTarget = _approachTarget - ReferencePosition();
-                desired = toTarget.Length() > AlignDistance || !OnLastLeg ? Vector3D.Normalize(toTarget) : matrix.Forward;
+                double distance = toTarget.Length();
+                Vector3D toward = distance > 1e-3 ? toTarget / distance : matrix.Forward;
+                if (OnLastLeg && !_probing && distance < AlignDistance)
+                    // At the stop point: hold the heading while moving, then turn the
+                    // nose to the target (safe: the stop point keeps the ship's radius).
+                    desired = _currentSpeed < 3 ? toward : matrix.Forward;
+                else
+                {
+                    desired = toward;
+                    if (_useBestThrust && !_probing)
+                    {
+                        // Point the strongest thrusters along the flight; for the
+                        // final braking of a flip, against the velocity.
+                        double reverse;
+                        BestThrust(matrix, controller.CalculateShipMass().PhysicalMass, out pointing, out reverse);
+                        if (_flipBraking)
+                            desired = velocity.LengthSquared() > 1 ? -Vector3D.Normalize(velocity) : -toward;
+                    }
+                }
             }
-            Vector3D axis = Vector3D.Cross(matrix.Forward, desired);
-            double sin = axis.Length(), cos = Vector3D.Dot(matrix.Forward, desired);
+            Vector3D axis = Vector3D.Cross(pointing, desired);
+            double sin = axis.Length(), cos = Vector3D.Dot(pointing, desired);
             _alignError = Math.Atan2(sin, cos);
             // At least GyroMinRate while not aligned, so small errors do not linger.
             Vector3D rate = sin > 1e-6 ? axis / sin * Math.Max(_alignError * GyroGain, _alignError > 0.002 ? GyroMinRate : 0)
-                : cos < 0 ? matrix.Up * Math.PI * GyroGain : Vector3D.Zero;
+                : cos < 0 ? Vector3D.CalculatePerpendicularVector(pointing) * Math.PI * GyroGain : Vector3D.Zero;
             if (desiredUp != Vector3D.Zero && cos > 0)
             {
                 // Roll: bring the ship's up direction to the desired one as well.

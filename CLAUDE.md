@@ -83,6 +83,10 @@ The README describes all commands and Custom Data options for players.
 - Replanning is deferred to the start of the next tick (`_replanPending`): planning
   twice in one tick with many known asteroids likely hit the instruction limit
   ("Script Too Complex" cannot be caught by try/catch).
+- Navigation distances use the grid's bounding sphere center (`ReferencePosition`);
+  stop points keep `ApproachBuffer + ShipRadius` from surfaces, so turning in place at
+  the stop point is safe. Flip-and-burn braking was simulated: fine up to about 12 s
+  turn time with the default `FlipTime` of 8 s and brake safety 0.8.
 - Screens: LCD textures are 512 px; the user found small fonts unreadable, so keep
   text scales around 0.55 or larger.
 

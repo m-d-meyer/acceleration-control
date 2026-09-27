@@ -60,6 +60,8 @@ namespace IngameScript
         double _jumpArrival = 3000;
         double _jumpClearance = 1000;
         double _dockApproach = 30;
+        bool _useBestThrust = true;
+        double _flipTime = 8;
         double _defaultCruiseSpeed = 0.75;
         double _cruiseStep = 0.25;
         double _velocityGain = 2.0;
@@ -122,6 +124,8 @@ namespace IngameScript
             _jumpArrival = _ini.Get(IniSection, "JumpArrival").ToDouble(_jumpArrival);
             _jumpClearance = _ini.Get(IniSection, "JumpClearance").ToDouble(_jumpClearance);
             _dockApproach = _ini.Get(IniSection, "DockApproach").ToDouble(_dockApproach);
+            _useBestThrust = _ini.Get(IniSection, "UseStrongestThrusters").ToBoolean(_useBestThrust);
+            _flipTime = _ini.Get(IniSection, "FlipTime").ToDouble(_flipTime);
             _defaultCruiseSpeed = _ini.Get(IniSection, "CruiseSpeed").ToDouble(_defaultCruiseSpeed);
             _cruiseStep = _ini.Get(IniSection, "CruiseStep").ToDouble(_cruiseStep);
             _velocityGain = _ini.Get(IniSection, "VelocityGain").ToDouble(_velocityGain);
@@ -166,6 +170,8 @@ namespace IngameScript
             _ini.Set(IniSection, "JumpArrival", _jumpArrival);
             _ini.Set(IniSection, "JumpClearance", _jumpClearance);
             _ini.Set(IniSection, "DockApproach", _dockApproach);
+            _ini.Set(IniSection, "UseStrongestThrusters", _useBestThrust);
+            _ini.Set(IniSection, "FlipTime", _flipTime);
             _ini.Set(IniSection, "CruiseSpeed", _defaultCruiseSpeed);
             _ini.Set(IniSection, "CruiseStep", _cruiseStep);
             _ini.Set(IniSection, "VelocityGain", _velocityGain);

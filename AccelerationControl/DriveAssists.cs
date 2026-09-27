@@ -41,6 +41,10 @@ namespace IngameScript
         double _targetDistance;
         double _stopDistance;
         string _approachPhase = "";
+        bool _flipPlanned;              // final braking with the strongest thrusters after turning around
+        bool _flipBraking;              // turned around for braking; kept until the flight ends
+        const double FlipFactor = 1.3;              // turn around only if the strongest side is this much stronger
+        const double FlipMinDistance = 1000;        // m - shorter legs are flown without turning around
 
         // Approach without a target in scan range: search along the line of sight.
         const double ProbeMinRange = 1000;
@@ -256,26 +260,30 @@ namespace IngameScript
         {
             Vector3D ray = surfacePoint - ReferencePosition();
             double distance = ray.Length();
-            if (distance <= _approachBuffer)
+            if (distance <= StopOffset)
             {
-                _message = "Target is closer than " + FormatDistance(_approachBuffer);
+                _message = "Target is closer than " + FormatDistance(StopOffset);
                 return false;
             }
             _route.Clear();
-            _route.Add(surfacePoint - ray / distance * _approachBuffer);
+            _route.Add(surfacePoint - ray / distance * StopOffset);
             _temporaryObstacles.Clear();
             _dockAfterRoute = false;
             StartRoute(name);
             return true;
         }
 
-        // Point of the ship used for distances: the scan camera, else the cockpit.
+        // Point of the ship used for navigation: the center of its bounding
+        // sphere. Stop points keep ApproachBuffer plus the sphere radius from a
+        // surface, so the ship can turn in place there, whatever its heading.
         Vector3D ReferencePosition()
         {
-            if (_camera != null && _camera.IsFunctional)
-                return _camera.GetPosition();
-            IMyShipController reference = _controller ?? _layoutController;
-            return reference != null ? reference.GetPosition() : Me.GetPosition();
+            return Me.CubeGrid.WorldVolume.Center;
+        }
+
+        double StopOffset
+        {
+            get { return _approachBuffer + ShipRadius; }
         }
 
         IMyCameraBlock FindCamera()
@@ -350,10 +358,29 @@ namespace IngameScript
             Vector3D direction = toTarget / Math.Max(_targetDistance, 1e-3);
             double brake = BrakeAccel(direction);
             double distance = _targetDistance;
+            double current = Vector3D.Dot(velocity, direction);
+
+            // Flip and burn: if the strongest thrusters are much stronger than the
+            // ones that brake in the current heading, the ship turns around for
+            // the final braking. Braking starts earlier by the time the turn takes.
+            _flipPlanned = false;
+            IMyShipController reference = _controller ?? _layoutController;
+            if (_useBestThrust && !_probing && !_departing && OnLastLeg && _gyros.Count > 0 && reference != null
+                && _targetDistance > FlipMinDistance)
+            {
+                Vector3D bestDirection;
+                double reverse, best = BestThrust(reference.WorldMatrix, reference.CalculateShipMass().PhysicalMass, out bestDirection, out reverse);
+                if (best > reverse * FlipFactor && best * _brakeSafety > brake)
+                {
+                    _flipPlanned = true;
+                    brake = best * _brakeSafety;
+                    distance = Math.Max(distance - Math.Max(current, 0) * _flipTime, 0);
+                }
+            }
             if (_probing)
             {
                 // Only the scanned part of the line is known to be free.
-                double clear = Vector3D.Dot(_clearUntil - position, direction) - _approachBuffer;
+                double clear = Vector3D.Dot(_clearUntil - position, direction) - StopOffset;
                 distance = Math.Min(distance, Math.Max(clear, 0));
             }
 
@@ -364,9 +391,10 @@ namespace IngameScript
             targetVelocity = direction * speed;
 
             // For the display: stopping distance and flight phase.
-            double current = Vector3D.Dot(velocity, direction);
             _stopDistance = current > 0 ? current * current / (2 * Math.Max(brake, 0.01)) : 0;
             _approachPhase = speed < current - 1 ? "BRAKING" : speed > current + 1 ? "ACCELERATING" : "CRUISING";
+            if (_flipPlanned && _approachPhase == "BRAKING")
+                _flipBraking = true;
             return true;
         }
     }

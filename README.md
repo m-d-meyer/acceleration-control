@@ -146,6 +146,8 @@ first run. Edit them there and run `reload`.
 | `JumpArrival`        | `3000`    | The jump ends this far before the target; the rest is flown (m) |
 | `JumpClearance`      | `1000`    | Minimum distance of the jump destination from known obstacles (m) |
 | `DockApproach`       | `30`      | Distance in front of the base connector where docking starts (m, plus ship radius) |
+| `UseStrongestThrusters` | `true` | Turn the ship so its strongest thrusters push along the flight, and flip for braking if worth it |
+| `FlipTime`           | `8`       | Seconds planned for turning around before braking (increase for slow-turning ships) |
 
 ## Drive assists
 
@@ -290,8 +292,19 @@ length, delta-v and flight time. **GO** plans and flies it.
   of distance. Several obstacles give several waypoints. If no complete route is
   found (very dense fields), GO refuses instead of flying a risky path.
 - **Flying**: full thrust up to `MaxSpeed`. Waypoints are passed without stopping,
-  slower for sharper turns. The gyroscopes turn the ship's nose along the route,
-  so the forward camera looks where the ship goes. Turning the ship yourself
+  slower for sharper turns. The gyroscopes turn the ship so that its strongest
+  thrusters push along the route (`UseStrongestThrusters`; otherwise the nose points
+  along the route).
+- **Flip and burn**: if the side that would brake is much weaker (factor 1.3) than the
+  strongest side, the ship turns around for the final braking and brakes with its
+  strongest thrusters. Braking starts `FlipTime` seconds earlier to allow for the
+  turn; increase it for ships that turn slowly.
+- **At the target**: the stop point keeps `ApproachBuffer` plus the ship's radius
+  (its bounding sphere) from the surface, measured from the ship's center, so the
+  ship can turn safely there. Near the stop point it holds its heading; once slow,
+  it turns its nose to the target (e.g. for drilling).
+- Docking, cruise, leaving a rock and all manual movement never turn the ship; all
+  thrusters work together there. Turning the ship yourself
   takes over the gyroscopes; any movement key cancels the flight.
 - **Collision guard**: during the flight the cameras scan the path ahead, with a
   center ray and a ring of rays at the ship's radius, as far as the stopping
