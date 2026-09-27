@@ -88,10 +88,12 @@ namespace IngameScript
             }
             // Wind, drag and lift: measured while an assist controls all axes and
             // compensated like gravity (see Planets.cs).
-            MeasureThrust();
             // Not while cruising: drilling pushes back, and compensating that would
             // push the ship into the rock when the drills break through.
-            UpdateDisturbance(hasTarget && _mode != Mode.Cruise && move.LengthSquared() < InputDeadzone * InputDeadzone, velocity, gravity, mass);
+            bool observe = hasTarget && _mode != Mode.Cruise && move.LengthSquared() < InputDeadzone * InputDeadzone;
+            if (observe)
+                MeasureThrust();    // only while it is used: it reads every thruster
+            UpdateDisturbance(observe, velocity, gravity, mass);
             Vector3D external = gravity + _disturbance;
 
             Vector3D[] axes = { matrix.Right, matrix.Up, matrix.Backward };

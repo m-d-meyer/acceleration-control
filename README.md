@@ -141,7 +141,7 @@ first run. Edit them there and run `reload`.
 | `LogStone`           | `false`   | Also log stone                                                 |
 | `MergeDistance`      | `150`     | Entries of the same ore closer than this are treated as one (m) |
 | `GravityWellFactor`  | `1.7`     | Gravity well size relative to a scanned planet's radius        |
-| `Survey`             | `true`    | Cameras scan the surroundings in the background for asteroids   |
+| `Survey`             | `true`    | Cameras scan the surroundings in the background for asteroids (not while docked) |
 | `SurveyRange`        | `6000`    | Range of the background scans (m)                              |
 | `SearchRange`        | `50000`   | How far an approach searches along the line of sight (m)       |
 | `AlignShip`          | `true`    | Turn the ship along its route with the gyroscopes              |
@@ -260,7 +260,9 @@ The **base** is marked like an ore: choose *Base* in the MARK list, or run
 - **Radar** (`[Accel Map]`): a plane through the ship that turns with it, forward is up.
   Deposits sit on stems that show how far above or below the ship they are. Grey
   spheres are known asteroids, violet areas are gravity wells. Deposits beyond the
-  range appear as small markers on the edge.
+  range appear as small markers on the edge. On wide screens (1.5:1 or wider) the
+  radar is on the left and the info panel and buttons on the right, drawn about
+  twice as large as the square layout would be.
 - **List** (`[Accel List]`, or the `[Accel Map]` screen after pressing LIST): deposits
   sorted by distance, with the direction relative to the ship's nose (degrees
   left/right and up/down, plus a small indicator).

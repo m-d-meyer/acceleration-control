@@ -258,7 +258,8 @@ namespace IngameScript
         // The approach camera is left alone while it is needed.
         void UpdateSurvey()
         {
-            if (!_survey || _cameras.Count == 0)
+            // Docked (connector connected): nothing to survey, save the raycasts.
+            if (!_survey || _cameras.Count == 0 || _wasConnected)
                 return;
             for (int i = 0; i < _cameras.Count; i++)
             {

@@ -51,6 +51,8 @@ namespace IngameScript
         IMyTextSurface _surface;
         Vector2 _origin;
         float _u;                  // pixels per layout unit
+        float _layoutWidth = 512;  // width of the layout in units (wide screens: more than 512)
+        float _maxStem = MaxStem;
         bool _frameToggle;
 
         // A deposit or asteroid prepared for depth-sorted drawing.
@@ -73,12 +75,28 @@ namespace IngameScript
 
                 float width = viewport.Width, height = viewport.Height;
                 bool active = view == _view;
-                if (view == MapView.Radar)
+                _layoutWidth = 512;
+                if (view == MapView.Radar && width >= height * 1.5f)
+                {
+                    // Wide screen: 300 units high, radar left, info and buttons right,
+                    // so everything is drawn larger than the square layout fitted in.
+                    _u = height / 300f;
+                    _origin = viewport.Position;
+                    float w = _layoutWidth = width / _u;
+                    float radarWidth = Math.Min(300, w - 250), x = radarWidth + 6, panelWidth = w - x - 6;
+                    DrawRadar(radarWidth / 2, 44 + (300 - 44) / 2f + 10, Math.Min(radarWidth / 2 - 10, 130), true);
+                    Rect(x - 4, 45, w - x + 4, 255, BgColor);
+                    DrawSelectionPanel(x, 50, panelWidth, 158);
+                    DrawButtons(RadarButtons, x, 213, panelWidth, 3, 40, active);
+                    if (active)
+                        DrawDialog(300);
+                }
+                else if (view == MapView.Radar)
                 {
                     _u = Math.Min(width, height) / 512f;
                     _origin = viewport.Position + new Vector2((width - 512 * _u) / 2, (height - 512 * _u) / 2);
-                    DrawRadar();
-                    DrawButtons(RadarButtons, 452, active);
+                    DrawRadar(256, 180, RadarRadius, false);
+                    DrawButtons(RadarButtons, 4, 452, 504, RadarButtons.Length, 52, active);
                     if (active)
                         DrawDialog(512);
                 }
@@ -88,7 +106,7 @@ namespace IngameScript
                     _origin = viewport.Position;
                     float h = height / _u;
                     DrawList(h);
-                    DrawButtons(ListButtons, h - 56, active);
+                    DrawButtons(ListButtons, 4, h - 56, 504, ListButtons.Length, 52, active);
                     if (active)
                         DrawDialog(h);
                 }
@@ -97,9 +115,9 @@ namespace IngameScript
 
         void DrawHeader(float height, string right)
         {
-            Rect(0, 0, 512, height, PanelColor);
+            Rect(0, 0, _layoutWidth, height, PanelColor);
             Text("ORE MAP", 12, height / 2 - 15, 0.95f, Cyan);
-            float x = 500;
+            float x = _layoutWidth - 12;
             if (_uiMode)
             {
                 float w = MeasureText("UI MODE", 0.6f, "White") + 14;
@@ -114,11 +132,13 @@ namespace IngameScript
         //  Radar view
         // -----------------------------------------------------------------
 
-        void DrawRadar()
+        // cx, cy, radius: where the radar plane is drawn (layout units). Wide screens
+        // put the info panel beside the radar instead of below it.
+        void DrawRadar(float cx, float cy, float radius, bool wide)
         {
             IMyShipController reference = _controller ?? _layoutController;
-            float cx = 256, cy = 180;
-            float scale = RadarRadius / (float)MapRange;       // units per meter
+            _maxStem = radius * MaxStem / RadarRadius;
+            float scale = radius / (float)MapRange;       // units per meter
             MatrixD ship = reference != null ? reference.WorldMatrix : Me.WorldMatrix;
             Vector3D shipPos = ReferencePosition();
             bool inGravity = false;
@@ -148,20 +168,20 @@ namespace IngameScript
                     toShip = new Vector2(toShip.X / rx, toShip.Y / ry);
                     toShip.Normalize();
                     Vector2 edge = center + new Vector2(toShip.X * rx, toShip.Y * ry);
-                    if (Math.Abs(edge.X - cx) < RadarRadius && Math.Abs(edge.Y - cy) < RadarRadius * PlaneTilt + 20)
+                    if (Math.Abs(edge.X - cx) < radius && Math.Abs(edge.Y - cy) < radius * PlaneTilt + 20)
                         Text("GRAVITY " + FormatDistance(Vector3D.Distance(o.Center, shipPos) - o.GravityRadius),
                             edge.X, edge.Y + 4, 0.55f, GravityColor, TextAlignment.CENTER);
                 }
             }
 
             // Range rings and axes
-            EllipseOutline(cx, cy, RadarRadius, RadarRadius * PlaneTilt, 1.5f, GridColor, false);
-            EllipseOutline(cx, cy, RadarRadius / 2, RadarRadius / 2 * PlaneTilt, 1, GridFaint, false);
-            EllipseOutline(cx, cy, RadarRadius / 4, RadarRadius / 4 * PlaneTilt, 1, GridFaint, false);
-            Line(cx - RadarRadius, cy, cx + RadarRadius, cy, 1, GridFaint);
-            Line(cx, cy - RadarRadius * PlaneTilt, cx, cy + RadarRadius * PlaneTilt, 1, GridFaint);
-            Text(FormatDistance(MapRange), cx + RadarRadius * 0.74f, cy - RadarRadius * PlaneTilt * 0.74f - 20, 0.5f, DimColor, TextAlignment.LEFT);
-            Text(FormatDistance(MapRange / 2), cx + RadarRadius * 0.37f, cy - RadarRadius * PlaneTilt * 0.37f - 18, 0.45f, DimColor, TextAlignment.LEFT);
+            EllipseOutline(cx, cy, radius, radius * PlaneTilt, 1.5f, GridColor, false);
+            EllipseOutline(cx, cy, radius / 2, radius / 2 * PlaneTilt, 1, GridFaint, false);
+            EllipseOutline(cx, cy, radius / 4, radius / 4 * PlaneTilt, 1, GridFaint, false);
+            Line(cx - radius, cy, cx + radius, cy, 1, GridFaint);
+            Line(cx, cy - radius * PlaneTilt, cx, cy + radius * PlaneTilt, 1, GridFaint);
+            Text(FormatDistance(MapRange), cx + radius * 0.74f, cy - radius * PlaneTilt * 0.74f - 20, 0.5f, DimColor, TextAlignment.LEFT);
+            Text(FormatDistance(MapRange / 2), cx + radius * 0.37f, cy - radius * PlaneTilt * 0.37f - 18, 0.45f, DimColor, TextAlignment.LEFT);
 
             // Asteroids and deposits, far ones first
             _mapItems.Clear();
@@ -202,6 +222,8 @@ namespace IngameScript
             // Header and info panel are drawn last so they cover anything that
             // sticks out of the radar area.
             DrawHeader(44, (inGravity ? "IN GRAVITY  " : "") + FormatDistance(MapRange) + "  " + (_filter ?? "all"));
+            if (wide)
+                return;
             Rect(0, 294, 512, 218, BgColor);
             DrawSelectionPanel(8, 298, 496, 146);
         }
@@ -299,8 +321,10 @@ namespace IngameScript
                 Text(_selected.Zone == _zone ? DirectionText(_selected.Position, false) : "GO: flight via the zone change",
                     left, y + 40, 0.6f, DimColor);
 
+                bool narrow = width < 400;     // info panel beside the radar on wide screens
                 if (_previewRoute.Count > 0 && _previewName == _selected.Label)
-                    Text(string.Format("Route {0} legs  {1}  {2:0} m/s  {3}", _previewRoute.Count, FormatDistance(_routeLength),
+                    Text(narrow ? string.Format("{0} legs  {1}  {2}", _previewRoute.Count, FormatDistance(_routeLength), FormatTime(_routeTime))
+                        : string.Format("Route {0} legs  {1}  {2:0} m/s  {3}", _previewRoute.Count, FormatDistance(_routeLength),
                         _routeDeltaV, FormatTime(_routeTime)), left, y + 64, 0.6f, RouteColor);
                 else
                 {
@@ -313,12 +337,13 @@ namespace IngameScript
                 double total = _deltaVHydrogen + _deltaVElectric;
                 if (total > 0)
                 {
-                    float barW = width - 230;
+                    // Narrow: the numbers go below the bar.
+                    float barW = narrow ? width - 60 : width - 230;
                     Text("dv", left, y + 90, 0.6f, TextColor);
                     Box(left + 32, y + 94, barW, 14, 1, GridColor);
                     double needed = _previewRoute.Count > 0 && _previewName == _selected.Label ? _routeDeltaV : TripDeltaV();
                     Rect(left + 33, y + 95, (barW - 2) * (float)Math.Min(needed / total, 1), 12, needed > total ? WarnColor : RouteColor);
-                    Text(string.Format("{0:0} / {1:0} m/s", needed, total), right, y + 90, 0.55f, TextColor, TextAlignment.RIGHT);
+                    Text(string.Format("{0:0} / {1:0} m/s", needed, total), right, y + (narrow ? 110 : 90), 0.55f, TextColor, TextAlignment.RIGHT);
                 }
             }
 
@@ -331,9 +356,10 @@ namespace IngameScript
         void DrawApproachGauge(float x, float y, float width)
         {
             bool braking = _approachPhase == "BRAKING";
-            Text(_approachPhase, x, y, 0.6f, braking ? RouteColor : Cyan);
+            float scale = width < 380 ? 0.5f : 0.6f;       // narrow panel beside the radar
+            Text(_approachPhase, x, y, scale, braking ? RouteColor : Cyan);
             Text("stop " + FormatDistance(_stopDistance) + " / " + FormatDistance(_remainingDistance),
-                x + width, y, 0.6f, TextColor, TextAlignment.RIGHT);
+                x + width, y, scale, TextColor, TextAlignment.RIGHT);
             float by = y + 26, bh = 18;
             double full = Math.Max(Math.Max(_remainingDistance, _stopDistance), 1);
             Box(x, by, width, bh, 1, GridColor);
@@ -428,16 +454,18 @@ namespace IngameScript
         //  Buttons and dialogs
         // -----------------------------------------------------------------
 
-        void DrawButtons(string[] buttons, float y, bool active)
+        // Buttons in rows of 'columns'; labels shrink if a button is too narrow.
+        void DrawButtons(string[] buttons, float left, float top, float totalWidth, int columns, float height, bool active)
         {
-            float gap = 5, width = (504 - gap * (buttons.Length - 1)) / buttons.Length;
+            float gap = 5, width = (totalWidth - gap * (columns - 1)) / columns;
             for (int i = 0; i < buttons.Length; i++)
             {
-                float x = 4 + i * (width + gap);
+                float x = left + i % columns * (width + gap), y = top + i / columns * (height + gap);
                 bool highlighted = active && i == _button && _dialog == Dialog.None;
-                Rect(x, y, width, 52, highlighted ? Cyan : PanelColor);
-                Box(x, y, width, 52, 1.5f, active ? Cyan : GridColor);
-                Text(buttons[i], x + width / 2, y + 12, 0.72f, highlighted ? BgColor : active ? Cyan : DimColor, TextAlignment.CENTER);
+                Rect(x, y, width, height, highlighted ? Cyan : PanelColor);
+                Box(x, y, width, height, 1.5f, active ? Cyan : GridColor);
+                float scale = Math.Min(0.72f, 0.72f * (width - 10) / Math.Max(MeasureText(buttons[i], 0.72f, "White"), 1));
+                Text(buttons[i], x + width / 2, y + height / 2 - 19 * scale, scale, highlighted ? BgColor : active ? Cyan : DimColor, TextAlignment.CENTER);
             }
         }
 
@@ -445,7 +473,7 @@ namespace IngameScript
         {
             if (_dialog == Dialog.None)
                 return;
-            float x = 40, w = 432, y = 48;
+            float x = (_layoutWidth - 432) / 2, w = 432, y = 48;
             if (_dialog == Dialog.ConfirmDelete)
             {
                 float h = 110;
@@ -494,9 +522,9 @@ namespace IngameScript
             return new Vector2(cx + (float)local.X * scale, cy - (float)local.Z * scale * PlaneTilt);
         }
 
-        static Vector2 ProjectedPoint(Vector3D local, float cx, float cy, float scale)
+        Vector2 ProjectedPoint(Vector3D local, float cx, float cy, float scale)
         {
-            float height = MathHelper.Clamp((float)local.Y * scale * HeightScale, -MaxStem, MaxStem);
+            float height = MathHelper.Clamp((float)local.Y * scale * HeightScale, -_maxStem, _maxStem);
             Vector2 plane = PlanePoint(local, cx, cy, scale);
             return new Vector2(plane.X, plane.Y - height);
         }
