@@ -361,7 +361,10 @@ direct line would pass lower than the cruise height, the route:
    the ground under the ship and the target; for short hops a quarter of the
    distance, at least 200 m),
 2. follows the curvature of the planet at that height (waypoints at most 100 m below
-   the cruise sphere),
+   the cruise sphere). Long flights go 500 m above the atmosphere instead if that is
+   faster (climb and descent at `AtmosphereSpeed`, the rest at `MaxSpeed`). Coming
+   from higher up (e.g. after entering a planet zone in orbit) the arc descends
+   evenly to the cruise height,
 3. descends vertically above the target and stops `ApproachBuffer` plus the ship's
    radius above it (targets in space: heads straight for them once the planet is
    out of the way).
@@ -372,6 +375,10 @@ use the up/down thrusters; flip-and-burn and turning the strongest thrusters alo
 the flight are not used. Braking on a descent is planned with the upward thrust
 minus gravity. If the collision guard sees terrain ahead, the route is planned again
 higher. Leaving a mine on a planet starts with a straight climb.
+
+Flights in gravity only start if the ship's upward thrusters give at least 1.1 times
+the local gravity. Locked landing gear is unlocked while a flight is under way, so
+the ship does not pull against it (and auto-lock does not catch the ground again).
 
 ### Atmosphere
 
@@ -386,7 +393,9 @@ During flights the script measures the ship's acceleration and subtracts what th
 thrusters (their actual output) and gravity explain. The rest is the external
 acceleration: wind, aerodynamic drag, lift from wings. It is filtered (1 s) and
 compensated like gravity, so the ship holds course and speed in wind and the
-thrusters only add what the wings do not carry. The control page shows it as
+thrusters only add what the wings do not carry. Not used while cruising: drilling
+pushes back, and compensating that would push the ship into the rock when the drills
+break through. The control page shows it as
 "Wind/drag". `CompensateWind=false` turns it off.
 
 ### Real Solar Systems

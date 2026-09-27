@@ -308,6 +308,8 @@ namespace IngameScript
                 _terrainRadius = 0;
             }
             _replanPending = _resumeGoal = false;
+            if (!resume && !CanHover())
+                return;
             // Already near the dock (at the approach point or on the way in):
             // go straight to the slow docking manoeuvre.
             if (dock && NearDock())

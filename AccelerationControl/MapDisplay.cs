@@ -182,7 +182,7 @@ namespace IngameScript
                 Vector2 point = ProjectedPoint(ToLocal(route[i], shipPos, ship), cx, cy, scale);
                 Dashed(px, py, point.X, point.Y, 3, flying ? RouteColor : RouteColor * 0.7f);
                 DiamondOutline(point.X, point.Y, 8, RouteColor);
-                if (i < route.Count - 1)
+                if (i < route.Count - 1 && i < (flying ? _routeIndex : 0) + 4)     // planet routes have many
                     Text("W" + (i + 1), point.X - 12, point.Y - 8, 0.55f, RouteColor, TextAlignment.RIGHT);
                 px = point.X;
                 py = point.Y;

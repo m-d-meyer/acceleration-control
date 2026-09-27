@@ -142,6 +142,7 @@ namespace IngameScript
             GridTerminalSystem.GetBlocksOfType(_gyros, g => g.IsSameConstructAs(Me));
             GridTerminalSystem.GetBlocksOfType(_connectors, c => c.IsSameConstructAs(Me));
             GridTerminalSystem.GetBlocksOfType(_sensors, s => s.IsSameConstructAs(Me));
+            GridTerminalSystem.GetBlocksOfType(_landingGears, g => g.IsSameConstructAs(Me));
             // Raycasts also hit the ship itself (a ray from a camera can pass
             // through the own hull), so all grids of this ship are remembered.
             _ownGrids.Clear();

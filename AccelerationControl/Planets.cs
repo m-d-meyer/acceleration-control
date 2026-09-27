@@ -41,7 +41,8 @@ namespace IngameScript
         const double MaxDisturbance = 6;            // m/s^2 - larger estimates are clipped
         const double PlanetArcSag = 100;            // m - planet routes stay within this of the cruise sphere
         const double ZoneExitDistance = 1e6;        // m - leaving a planet zone: climb at most this far
-        const double AirDetected = 0.02;            // thruster effectiveness change that counts as air
+        const double AirDetected = 0.02;
+        const double AtmosphereMargin = 500;        // m - flights above the atmosphere stay this far above its top            // thruster effectiveness change that counts as air
 
         string _zone = "";              // "" = space (proxy zone), else the zone of one real planet
         bool _planetZonesSeen;          // a teleport was seen: zones are in use (Real Solar Systems)
@@ -59,6 +60,7 @@ namespace IngameScript
         Obstacle _planet;               // planet whose gravity the ship is in (this zone)
         double _terrainRadius;          // highest terrain (distance from the planet center) seen on this flight
 
+        readonly List<IMyLandingGear> _landingGears = new List<IMyLandingGear>();
         readonly List<IMyThrust> _atmoThrusters = new List<IMyThrust>();
         readonly List<IMyThrust> _ionThrusters = new List<IMyThrust>();
         double _air = -1;               // air density estimate 0..1, -1 = unknown (no suitable thrusters)
@@ -194,6 +196,11 @@ namespace IngameScript
             _zoneGoalName = name;
             _zoneGoalZone = zone;
             _zoneGoalDock = dock;
+            if (!CanHover())
+            {
+                _zoneGoal = false;
+                return;
+            }
             IMyShipController c = _controller ?? _layoutController;
             Vector3D center;
             if (_zone != "" && c != null && c.TryGetPlanetPosition(out center))
@@ -209,6 +216,28 @@ namespace IngameScript
             }
             else
                 _message = name + " is in another zone: fly there, the flight continues after the zone change";
+        }
+
+        // Flights need enough upward thrust to hover (with some margin to climb and brake).
+        bool CanHover()
+        {
+            IMyShipController c = _controller ?? _layoutController;
+            if (!InGravity || c == null)
+                return true;
+            double up = MaxAccel(1, 0, c.CalculateShipMass().PhysicalMass), g = _gravity.Length();
+            if (up >= g * 1.1)
+                return true;
+            _mode = Mode.Manual;
+            _message = string.Format("Not enough upward thrust: {0:0.0} m/s² for {1:0.0} m/s² of gravity", up, g);
+            return false;
+        }
+
+        // A flight starting from the ground (or a rock) must not pull against locked landing gear.
+        void UnlockLandingGear()
+        {
+            foreach (IMyLandingGear g in _landingGears)
+                if (g.IsLocked)
+                    g.Unlock();
         }
 
         // -----------------------------------------------------------------
@@ -248,7 +277,18 @@ namespace IngameScript
                 ground = Math.Max(ground, rt);
             ground = Math.Max(ground, _terrainRadius);
             double height = MathHelper.Clamp(Vector3D.Distance(from, to) * 0.25, 200, Math.Max(_planetCruiseHeight, 200));
-            return ground + height + ShipRadius;
+            double cruise = ground + height + ShipRadius;
+            // Long flights: above the atmosphere (no speed limit there) if that is faster,
+            // counting the climb and the descent at AtmosphereSpeed.
+            double top = AtmosphereTop(planet) + AtmosphereMargin;
+            if (_atmosphereSpeed > 0 && top > cruise && _maxSpeed > _atmosphereSpeed)
+            {
+                double angle = Math.Acos(MathHelper.Clamp(Vector3D.Dot(Vector3D.Normalize(from - planet.Center),
+                    Vector3D.Normalize(to - planet.Center)), -1, 1));
+                if (2 * (top - cruise) / _atmosphereSpeed + angle * top / _maxSpeed < angle * cruise / _atmosphereSpeed)
+                    cruise = top;
+            }
+            return cruise;
         }
 
         // Adds climb and arc waypoints around the planet to the route and
@@ -279,7 +319,10 @@ namespace IngameScript
                 if (!below && DistanceToSegment(c, point, to) >= r - PlanetArcSag)
                     break;
                 double a = angle * i / steps;
-                point = c + (uf * Math.Cos(a) + side * Math.Sin(a)) * r;
+                // Coming from high up (e.g. after the zone change in orbit) the arc
+                // descends evenly to the cruise height on the way.
+                double height = below ? r + (Math.Max(cruise, rt) - r) * i / steps : r;
+                point = c + (uf * Math.Cos(a) + side * Math.Sin(a)) * height;
                 AddPlanWaypoint(route, point);
             }
             return point;

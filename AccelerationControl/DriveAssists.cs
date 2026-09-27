@@ -98,6 +98,7 @@ namespace IngameScript
 
             if (_mode == Mode.Approach)
             {
+                UnlockLandingGear();    // auto-lock could catch the ground again right after the start
                 if (_approachFullThrust)
                     maxAccel = double.MaxValue;
                 return ApproachVelocity(velocity, out targetVelocity);
@@ -276,6 +277,8 @@ namespace IngameScript
                 _message = "Target is closer than " + FormatDistance(StopOffset);
                 return false;
             }
+            if (!CanHover())
+                return false;
             _route.Clear();
             _route.Add(surfacePoint - ray / distance * StopOffset);
             _temporaryObstacles.Clear();
