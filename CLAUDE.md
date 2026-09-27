@@ -11,8 +11,8 @@ Context for continuing work on this project in a new session.
   game from here, so state clearly what is verified (compiler check, simulations)
   and what is not.
 - Work happens on branch `claude/keen-feynman-ek97hm`; PRs target `main`, the user
-  reviews and merges. PR 1 (everything up to docking) is merged; PR
-  https://github.com/m-d-meyer/acceleration-control/pull/2 adds planets.
+  reviews and merges. PR 1 (everything up to docking) and PR 2 (planets, recorded
+  ways, gates, several docks) are merged; the Workshop material followed in PR 3.
 
 ## What the project is
 
@@ -280,6 +280,11 @@ The README describes all commands and Custom Data options for players.
   `GetBlocksOfType`; the minifier (step 5b) caches frequent static API values
   (enum members, constants, static fields, InvariantCulture) in short fields.
   Ship script ~98.0k after the multi-dock feature.
+
+- Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character
+  limit), images (mock-ups/diagrams, not screenshots) and their generators. The
+  user wants the disclaimer "code written 100% by Claude Opus 5.5, tested in game
+  by me" at the top of the Workshop text.
 
 ## Open ideas / next steps
 
