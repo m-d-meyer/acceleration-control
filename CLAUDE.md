@@ -191,6 +191,16 @@ The README describes all commands and Custom Data options for players.
   center, which `TryGetPlanetPosition`/`TryGetPlanetElevation(Sealevel)` give
   exactly); the cruise sphere is at least above `water here` (per planet) /
   `WaterLevel`, start/target ground and seen terrain.
+- Planet test (user): the script died right after a jump towards a planet: the
+  radar drew every route leg as dashes of 12 units, and planet arcs thousands of km
+  off the radar produced endless dashes ("Script Too Complex"). Legs are clipped to
+  the layout (`ClipToLayout`), at most 60 dashes. After the jump, outside the
+  gravity but in the planet's zone, the zone had switched to "" (zone was tied to
+  gravity), so the planet was unknown and a jump to the surface was planned: the
+  zone now changes only by teleport. Planet arcs from high above go straight to the
+  farthest visible arc point (tangent). Level flight only in an atmosphere or when
+  g > 30 % of the weakest thrust side (user: strongest thrusters point down;
+  weak gravity far out is flown like space).
 - Planet obstacles: raycast hits on a known planet (center within 1 km) only store the
   entity id; `UpdatePlanet` measures radius/well (duplicates caused replanning loops).
 

@@ -55,6 +55,7 @@ namespace IngameScript
         Vector2 _origin;
         float _u;                  // pixels per layout unit
         float _layoutWidth = 512;  // width of the layout in units (wide screens: more than 512)
+        float _layoutHeight = 512;
         float _maxStem = MaxStem;
         bool _compact;              // low-resolution wide screen
         const float CompactPixels = 200;    // wide screens lower than this (px) get the compact layout
@@ -91,6 +92,7 @@ namespace IngameScript
                     // 200 units high, fewer and larger texts, only the selection labelled.
                     _compact = true;
                     _u = height / 200f;
+                    _layoutHeight = 200;
                     _origin = viewport.Position;
                     float w = _layoutWidth = width / _u;
                     float radarWidth = Math.Min(200, w - 190), x = radarWidth + 6, panelWidth = w - x - 6;
@@ -106,6 +108,7 @@ namespace IngameScript
                     // Wide screen: 300 units high, radar left, info and buttons right,
                     // so everything is drawn larger than the square layout fitted in.
                     _u = height / 300f;
+                    _layoutHeight = 300;
                     _origin = viewport.Position;
                     float w = _layoutWidth = width / _u;
                     float radarWidth = Math.Min(300, w - 250), x = radarWidth + 6, panelWidth = w - x - 6;
@@ -119,6 +122,7 @@ namespace IngameScript
                 else if (view == MapView.Radar)
                 {
                     _u = Math.Min(width, height) / 512f;
+                    _layoutHeight = 512;
                     _origin = viewport.Position + new Vector2((width - 512 * _u) / 2, (height - 512 * _u) / 2);
                     DrawRadar(256, 180, RadarRadius, false);
                     DrawButtons(RadarButtons, 4, 452, 504, RadarButtons.Length, 52, active);
@@ -224,14 +228,21 @@ namespace IngameScript
             // Active route (or the previewed one) as a dashed line with waypoints
             bool flying = _mode == Mode.Approach;
             List<Vector3D> route = flying ? _route : _previewRoute;
+            // Legs are clipped to the screen: waypoints thousands of km away
+            // would otherwise produce endless dashes ("Script Too Complex").
             float px = cx, py = cy;
             for (int i = flying ? _routeIndex : 0; i < route.Count; i++)
             {
                 Vector2 point = ProjectedPoint(ToLocal(route[i], shipPos, ship), cx, cy, scale);
-                Dashed(px, py, point.X, point.Y, 3, flying ? RouteColor : RouteColor * 0.7f);
-                DiamondOutline(point.X, point.Y, 8, RouteColor);
-                if (i < route.Count - 1 && i < (flying ? _routeIndex : 0) + 4)     // planet routes have many
-                    Text("W" + (i + 1), point.X - 12, point.Y - 8, 0.55f, RouteColor, TextAlignment.RIGHT);
+                float ax = px, ay = py, bx = point.X, by = point.Y;
+                if (ClipToLayout(ref ax, ref ay, ref bx, ref by))
+                    Dashed(ax, ay, bx, by, 3, flying ? RouteColor : RouteColor * 0.7f);
+                if (point.X > 0 && point.X < _layoutWidth && point.Y > 0 && point.Y < _layoutHeight)
+                {
+                    DiamondOutline(point.X, point.Y, 8, RouteColor);
+                    if (i < route.Count - 1 && i < (flying ? _routeIndex : 0) + 4)     // planet routes have many
+                        Text("W" + (i + 1), point.X - 12, point.Y - 8, 0.55f, RouteColor, TextAlignment.RIGHT);
+                }
                 px = point.X;
                 py = point.Y;
             }
@@ -707,10 +718,39 @@ namespace IngameScript
                 new Vector2(length * _u, Math.Max(thickness * _u, MinLinePixels)), color, null, TextAlignment.CENTER, (float)Math.Atan2(d.Y, d.X)));
         }
 
+        // Cuts a line to the layout area. False if it lies completely outside.
+        bool ClipToLayout(ref float x1, ref float y1, ref float x2, ref float y2)
+        {
+            float t0 = 0, t1 = 1, dx = x2 - x1, dy = y2 - y1;
+            float[] p = { -dx, dx, -dy, dy }, q = { x1, _layoutWidth - x1, y1, _layoutHeight - y1 };
+            for (int i = 0; i < 4; i++)
+            {
+                if (Math.Abs(p[i]) < 1e-6f)
+                {
+                    if (q[i] < 0)
+                        return false;
+                    continue;
+                }
+                float t = q[i] / p[i];
+                if (p[i] < 0)
+                    t0 = Math.Max(t0, t);
+                else
+                    t1 = Math.Min(t1, t);
+                if (t0 > t1)
+                    return false;
+            }
+            float sx = x1, sy = y1;
+            x1 = sx + dx * t0;
+            y1 = sy + dy * t0;
+            x2 = sx + dx * t1;
+            y2 = sy + dy * t1;
+            return true;
+        }
+
         void Dashed(float x1, float y1, float x2, float y2, float thickness, Color color)
         {
             float length = new Vector2(x2 - x1, y2 - y1).Length();
-            int dashes = Math.Max(1, (int)(length / 12));
+            int dashes = MathHelper.Clamp((int)(length / 12), 1, 60);
             for (int i = 0; i < dashes; i++)
             {
                 float t0 = (float)i / dashes, t1 = t0 + 0.5f / dashes;

@@ -87,6 +87,37 @@ namespace IngameScript
             get { return _gravity.LengthSquared() > InGravityLimit * InGravityLimit; }
         }
 
+        // Level flight (up side against gravity, no strongest-thruster orientation or
+        // flips): in an atmosphere, or where gravity is more than LevelGravityShare of
+        // what the ship's weakest side can push. Weaker gravity (high orbit of a planet
+        // with a wide gravity well) is flown like space.
+        const double LevelGravityShare = 0.3;
+        double _weakestAccel;           // m/s^2, weakest of the six thrust directions (updated each second)
+
+        bool LevelFlight
+        {
+            get
+            {
+                if (!InGravity)
+                    return false;
+                bool air = _air > AirDetected
+                    || (_planet != null && Vector3D.Distance(ReferencePosition(), _planet.Center) < AtmosphereTop(_planet));
+                return air || _gravity.Length() > _weakestAccel * LevelGravityShare;
+            }
+        }
+
+        void UpdateWeakestAccel()
+        {
+            IMyShipController c = _controller ?? _layoutController;
+            if (c == null)
+                return;
+            double mass = c.CalculateShipMass().PhysicalMass, weakest = double.MaxValue;
+            for (int a = 0; a < 3; a++)
+                for (int s = 0; s < 2; s++)
+                    weakest = Math.Min(weakest, MaxAccel(a, s, mass));
+            _weakestAccel = weakest;
+        }
+
         bool PlanetZones
         {
             get { return _planetZonesConfig || _planetZonesSeen; }
@@ -138,7 +169,9 @@ namespace IngameScript
             if (teleported && hasPlanet != _hadPlanet)
                 _planetZonesSeen = true;
             _hadPlanet = hasPlanet;
-            string zone = PlanetZones && hasPlanet ? ZoneKey(center) : "";
+            // A planet zone reaches beyond the gravity: leaving the gravity keeps the
+            // zone, only a teleport leads back to space.
+            string zone = !PlanetZones ? "" : hasPlanet ? ZoneKey(center) : teleported ? "" : _zone;
             bool changed = zone != _zone;
             if (changed)
                 SwitchZone(zone);
@@ -494,35 +527,55 @@ namespace IngameScript
         Vector3D PlanPlanetArc(Obstacle planet, double cruise, Vector3D from, Vector3D to, List<Vector3D> route)
         {
             Vector3D c = planet.Center;
-            double rf = Vector3D.Distance(from, c), rt = Vector3D.Distance(to, c);
+            double rf = Vector3D.Distance(from, c), rt = Vector3D.Distance(to, c), r = cruise;
             Vector3D uf = (from - c) / Math.Max(rf, 1), ut = (to - c) / Math.Max(rt, 1);
-            double r = Math.Max(cruise, rf);
             Vector3D point = from;
-            if (r - rf > 20)
+            if (rf < r - 20)
             {
                 point = c + uf * r;         // climb straight up
                 AddPlanWaypoint(route, point);
             }
-            bool below = rt < r;
+            bool below = rt < r;            // target on the ground: end above it, then descend
             double angle = Math.Acos(MathHelper.Clamp(Vector3D.Dot(uf, ut), -1, 1));
             Vector3D axis = Vector3D.Cross(uf, ut);
             axis = axis.LengthSquared() > 1e-12 ? Vector3D.Normalize(axis) : Vector3D.Normalize(Vector3D.CalculatePerpendicularVector(uf));
             Vector3D side = Vector3D.Cross(axis, uf);
             double step = 2 * Math.Acos(1 - Math.Min(PlanetArcSag / r, 1));
-            int steps = (int)Math.Ceiling(angle / Math.Max(step, 0.01));
-            for (int i = 1; i <= steps; i++)
+            int steps = Math.Max((int)Math.Ceiling(angle / Math.Max(step, 0.01)), 1);
+            // Starting high above (far out in space, or in orbit after a zone change):
+            // straight down to the farthest point of the arc that is in clear view
+            // (a tangent), instead of circling at the start's height.
+            int first = 1;
+            if (rf >= r - 20)
+                for (int i = steps; i > 1; i--)
+                    if (DistanceToSegment(c, from, ArcPoint(c, uf, side, angle * i / steps, r)) >= r - PlanetArcSag)
+                    {
+                        first = i;
+                        break;
+                    }
+            for (int i = first; i <= steps; i++)
             {
-                // A target out in space: head straight for it once the line clears the planet.
-                if (!below && DistanceToSegment(c, point, to) >= r - PlanetArcSag)
-                    break;
-                double a = angle * i / steps;
-                // Coming from high up (e.g. after the zone change in orbit) the arc
-                // descends evenly to the cruise height on the way.
-                double height = below ? r + (Math.Max(cruise, rt) - r) * i / steps : r;
-                point = c + (uf * Math.Cos(a) + side * Math.Sin(a)) * height;
+                // Head straight for the goal (the point above a ground target, or a
+                // target in space) as soon as the line clears the planet.
+                Vector3D goal = below ? c + ut * r : to;
+                if (i > first && DistanceToSegment(c, point, goal) >= r - PlanetArcSag)
+                {
+                    if (below)
+                    {
+                        point = goal;
+                        AddPlanWaypoint(route, point);
+                    }
+                    return point;
+                }
+                point = ArcPoint(c, uf, side, angle * i / steps, r);
                 AddPlanWaypoint(route, point);
             }
             return point;
+        }
+
+        static Vector3D ArcPoint(Vector3D center, Vector3D from, Vector3D side, double angle, double radius)
+        {
+            return center + (from * Math.Cos(angle) + side * Math.Sin(angle)) * radius;
         }
 
         void AddPlanWaypoint(List<Vector3D> route, Vector3D point)

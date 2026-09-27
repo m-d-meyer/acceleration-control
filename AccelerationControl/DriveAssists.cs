@@ -422,7 +422,7 @@ namespace IngameScript
             _flipPlanned = _flipBraking;
             IMyShipController reference = _controller ?? _layoutController;
             if (_useBestThrust && !_probing && !_departing && OnLastLeg && _gyros.Count > 0 && reference != null
-                && _targetDistance > FlipMinDistance && !InGravity)
+                && _targetDistance > FlipMinDistance && !LevelFlight)
             {
                 Vector3D bestDirection;
                 double reverse, best = BestThrust(reference.WorldMatrix, reference.CalculateShipMass().PhysicalMass, out bestDirection, out reverse);

@@ -391,19 +391,23 @@ direct line would pass lower than the cruise height, the route:
    the ground under the ship and the target; for short hops a quarter of the
    distance, at least 200 m),
 2. follows the curvature of the planet at that height (waypoints at most 100 m below
-   the cruise sphere). Long flights go 500 m above the atmosphere instead if that is
+   the cruise sphere) and heads straight for the point above the target as soon as
+   that line clears the planet. Long flights go 500 m above the atmosphere instead if that is
    faster (climb and descent at `AtmosphereSpeed`, the rest at `MaxSpeed`). Coming
-   from higher up (e.g. after entering a planet zone in orbit) the arc descends
-   evenly to the cruise height,
+   from higher up (from space, or after entering a planet zone in orbit) the ship
+   flies straight to the farthest point of that arc it can see past the planet (a
+   tangent) instead of circling at its height,
 3. descends vertically above the target and stops `ApproachBuffer` plus the ship's
    radius above it. Targets high above the planet (above the atmosphere and more
    than 10 % of the radius above sea level, e.g. asteroids in a large gravity well)
    are flown to directly once the planet is out of the way.
 
-In gravity (above 0.5 m/s²) the ship stays level: its up side points against
-gravity and only the nose turns towards the flight direction. Climbs and descents
-use the up/down thrusters; flip-and-burn and turning the strongest thrusters along
-the flight are not used. Braking on a descent is planned with the upward thrust
+The ship flies level (its up side against gravity, only the nose turning towards
+the flight direction, no flip-and-burn or strongest-thruster orientation) inside
+an atmosphere, or where gravity is more than 30 % of what its weakest thrust side
+can push. In weaker gravity (e.g. high above a planet with a wide gravity well) it
+is flown like in space. Climbs and descents in level flight use the up/down
+thrusters. Braking on a descent is planned with the upward thrust
 minus gravity. If the collision guard sees terrain ahead, the route is planned again
 higher. Leaving a mine on a planet starts with a straight climb.
 

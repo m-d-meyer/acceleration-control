@@ -713,16 +713,17 @@ namespace IngameScript
             if (reference == null)
                 return 0.1;
             double mass = reference.CalculateShipMass().PhysicalMass, brake;
-            if (InGravity)
+            if (LevelFlight)
                 // Level flight: braking forward, or holding a descent against gravity.
                 brake = Math.Min(MaxAccel(2, 0, mass), MaxAccel(1, 0, mass) - _gravity.Length());
             else if (_useBestThrust && _gyros.Count > 0)
             {
                 Vector3D direction;
                 BestThrust(reference.WorldMatrix, mass, out direction, out brake);
+                brake -= _gravity.Length();     // weak gravity may still pull the wrong way
             }
             else
-                brake = MaxAccel(2, 0, mass);
+                brake = MaxAccel(2, 0, mass) - _gravity.Length();
             return Math.Max(brake * _brakeSafety, 0.1);
         }
 
@@ -978,7 +979,7 @@ namespace IngameScript
                 else
                 {
                     desired = toward;
-                    if (_useBestThrust && !_probing && !InGravity)
+                    if (_useBestThrust && !_probing && !LevelFlight)
                     {
                         // Point the strongest thrusters along the flight; for the
                         // final braking of a flip, against the velocity.
@@ -989,7 +990,7 @@ namespace IngameScript
                     }
                 }
             }
-            if (InGravity && _mode != Mode.Jump && desiredUp == Vector3D.Zero)
+            if (LevelFlight && _mode != Mode.Jump && desiredUp == Vector3D.Zero)
             {
                 // In gravity the ship stays level: its up against gravity, the nose
                 // turned only horizontally (climbs and descents use the up thrusters).
