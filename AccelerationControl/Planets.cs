@@ -149,6 +149,12 @@ namespace IngameScript
 
         void OnTeleport(bool zoneChanged)
         {
+            HandleTeleport(zoneChanged);
+            TeleportSpeedWarning();
+        }
+
+        void HandleTeleport(bool zoneChanged)
+        {
             _observerReady = false;
             _disturbance = Vector3D.Zero;
             _replanPending = false;
@@ -184,6 +190,22 @@ namespace IngameScript
             }
             _message = "Teleported (" + ZoneName(_zone) + ")" + (flying ? ", flight stopped" : "")
                 + (_zoneGoal ? ". " + _zoneGoalName + " is in another zone: fly there, the flight continues after the zone change" : "");
+        }
+
+        // The zone change can leave the ship falling towards the planet fast. The
+        // thrust control brakes at full thrust anyway; this only warns if the
+        // upward thrust cannot stop the fall above the ground.
+        void TeleportSpeedWarning()
+        {
+            IMyShipController c = _controller ?? _layoutController;
+            double altitude;
+            if (c == null || !InGravity || !c.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude))
+                return;
+            Vector3D down = Vector3D.Normalize(_gravity);
+            double falling = Vector3D.Dot(c.GetShipVelocities().LinearVelocity, down);
+            double brake = MaxAccel(1, 0, c.CalculateShipMass().PhysicalMass) - _gravity.Length();
+            if (falling > 0 && (brake <= 0 || falling * falling / (2 * brake) > altitude * 0.8))
+                _message = string.Format("WARNING: falling at {0:0} m/s, upward thrust cannot stop in {1}: brake now!", falling, FormatDistance(altitude));
         }
 
         // GO to an entry recorded in another zone. In a planet zone the ship

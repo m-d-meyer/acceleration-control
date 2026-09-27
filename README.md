@@ -415,7 +415,10 @@ the jump drive do not explain):
   see the moving proxy planets). As soon as the ship is in the target's zone, the
   flight continues automatically. The control page shows "Waiting for the zone of …".
 - The mod's zone change can change the ship's velocity (a planet "running into" a
-  resting ship). Keep dampeners on when entering a zone by hand.
+  resting ship). Keep dampeners on when entering a zone by hand. If the ship then
+  falls faster than its upward thrust can stop above the ground, the control page
+  shows a warning. Simulated: a ship with 1.5 g of upward thrust entering 60 km up at
+  1500 m/s cannot be saved; at 500 m/s, or with 3 g, all runs stopped safely.
 
 Zones switch on by themselves at the first teleport into or out of a planet zone.
 If the ship is already in a planet zone when the script is installed, set
