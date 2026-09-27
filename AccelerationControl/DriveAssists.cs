@@ -27,6 +27,9 @@ namespace IngameScript
     {
         const double ArrivalDistance = 2.0;         // m - approach is finished within this distance...
         const double ArrivalSpeed = 0.3;            // m/s - ...and below this speed
+        const double ArrivalTolerance = 10;         // m - the end of a flight only has to be hit roughly:
+        const double ArrivalRoughSpeed = 1.0;       // m/s - within max(ArrivalTolerance, ApproachBuffer / 4), slower than this
+        const double WaypointRadius = 50;           // m - intermediate waypoints count as reached within this
 
         enum Mode { Manual, Cruise, Approach, Jump, Dock }
         enum ScanPurpose { Approach, Mark }
@@ -332,6 +335,8 @@ namespace IngameScript
 
         // Velocity that brings the ship to the approach target and still lets it
         // stop in time: v = sqrt(2 * a_brake * distance), capped at MaxSpeed.
+        bool _settling;     // overshot the end point within the tolerance: only stopping
+
         bool ApproachVelocity(Vector3D velocity, out Vector3D targetVelocity)
         {
             targetVelocity = Vector3D.Zero;
@@ -341,7 +346,7 @@ namespace IngameScript
 
             // Intermediate waypoints are passed, not stopped at.
             double endSpeed = _probing ? 0 : CornerSpeed();
-            if (!_probing && !OnLastLeg && _targetDistance < Math.Max(50, _currentSpeed * 0.5))
+            if (!_probing && !OnLastLeg && WaypointReached(position))
             {
                 NextWaypoint();
                 toTarget = _approachTarget - position;
@@ -349,8 +354,20 @@ namespace IngameScript
                 endSpeed = CornerSpeed();
             }
 
-            if ((_probing || OnLastLeg) && _targetDistance < ArrivalDistance && velocity.Length() < ArrivalSpeed)
+            // The end of the flight is hit roughly: close enough and slow counts as
+            // arrived, and a ship that overshot within the tolerance just stops
+            // instead of turning back for the exact point.
+            bool atEnd = _probing || OnLastLeg;
+            // Before docking the ship moves to the approach point on its own, unscanned: stay close.
+            double tolerance = _dockAfterRoute ? ArrivalTolerance : Math.Max(ArrivalTolerance, _approachBuffer * 0.25);
+            bool inZone = atEnd && _targetDistance < tolerance;
+            if (inZone && Vector3D.Dot(velocity, toTarget) <= 0)
+                _settling = true;
+            else if (!inZone)
+                _settling = false;
+            if (inZone && (_currentSpeed < ArrivalRoughSpeed || (_targetDistance < ArrivalDistance && _currentSpeed < ArrivalSpeed)))
             {
+                _settling = false;
                 if (_departing)
                 {
                     // Clear of the rock: now plan and head off.
@@ -373,6 +390,14 @@ namespace IngameScript
                 _message = _probing ? "Nothing found along the line of sight" : "Arrived";
                 _probing = false;
                 return false;
+            }
+
+            if (_settling)
+            {
+                _approachPhase = "BRAKING";
+                _remainingDistance = _targetDistance;
+                _stopDistance = 0;
+                return true;    // target velocity zero: stop where the ship is
             }
 
             Vector3D direction = toTarget / Math.Max(_targetDistance, 1e-3);

@@ -225,7 +225,9 @@ Scripts cannot read the ore detector, so deposits get onto the map in two ways:
   **MARK** (or run `mark <ore>`). The camera scans in that direction and stores the
   point where it hits the asteroid, i.e. the surface above the ore.
 - **Automatic while mining**: when the drills are running and a new ore arrives in
-  the cargo, the drill position is logged. Entries of the same ore within
+  the cargo (containers, drills, O2/H2 generators) or in the drills, the drill
+  position is logged. Ice counts like any ore, even when the gas generators use it
+  up about as fast as it is mined. Entries of the same ore within
   `MergeDistance` are merged, so one deposit is not logged over and over.
 
 Every scan also stores the asteroid or planet it hit. In addition, all cameras of
@@ -303,6 +305,13 @@ length, delta-v and flight time. **GO** plans and flies it.
   even if the last waypoint is just before the target. The gyroscopes turn the ship so that its strongest
   thrusters push along the route (`UseStrongestThrusters`; otherwise the nose points
   along the route).
+- **Rough arrival**: waypoints only need to be hit roughly. A waypoint counts as
+  passed within 50 m (more at high speed) or as soon as the ship has crossed the
+  plane between its incoming and outgoing leg, so the ship never turns back for it.
+  The end of a flight counts as reached within 10 m or a quarter of
+  `ApproachBuffer` (whichever is larger; 10 m before docking) once the ship is
+  slower than 1 m/s. A ship that overshoots the end point within that distance
+  just stops where it is.
 - **Flip and burn**: if the side that would brake is much weaker than the strongest
   side, the ship turns around for the final braking and brakes with its strongest
   thrusters. The turn is given `FlipTime` seconds (default 30): braking starts earlier

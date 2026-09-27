@@ -63,6 +63,8 @@ namespace IngameScript
         readonly List<Deposit> _visibleDeposits = new List<Deposit>();
         readonly List<IMyShipDrill> _drills = new List<IMyShipDrill>();
         readonly Dictionary<string, double> _previousOre = new Dictionary<string, double>();
+        readonly Dictionary<string, double> _drillOre = new Dictionary<string, double>();
+        readonly Dictionary<string, double> _previousDrillOre = new Dictionary<string, double>();
         readonly List<string> _filterOptions = new List<string>();
 
         Deposit _selected;
@@ -175,13 +177,30 @@ namespace IngameScript
             _mapChanged = true;
         }
 
-        // Logs a deposit when new ore arrives while the drills are running.
+        // Logs a deposit when new ore arrives while the drills are running: the
+        // ship's total of that ore rose (cargo, drills, O2/H2 generators), or the
+        // drills themselves hold more of it than before. The drills are checked
+        // on their own because ice can be used up about as fast as it is mined
+        // (gas generators refilling the tanks), so the total barely changes.
         void AutoLogMining()
         {
             bool drilling = false;
+            _drillOre.Clear();
             foreach (IMyShipDrill d in _drills)
-                if (d.IsWorking)
-                    drilling = true;
+            {
+                if (!d.IsWorking)
+                    continue;
+                drilling = true;
+                _itemBuffer.Clear();
+                d.GetInventory(0).GetItems(_itemBuffer);
+                foreach (MyInventoryItem item in _itemBuffer)
+                    if (item.Type.TypeId == OreType)
+                    {
+                        double amount;
+                        _drillOre.TryGetValue(item.Type.SubtypeId, out amount);
+                        _drillOre[item.Type.SubtypeId] = amount + (float)item.Amount;
+                    }
+            }
 
             if (drilling && _autoLog && _oreBaseline)
             {
@@ -190,9 +209,11 @@ namespace IngameScript
                 {
                     if (ore.Key == "Stone" && !_logStone)
                         continue;
-                    double before;
+                    double before, inDrills, inDrillsBefore;
                     _previousOre.TryGetValue(ore.Key, out before);
-                    if (ore.Value > before + MinLoggedOre)
+                    _drillOre.TryGetValue(ore.Key, out inDrills);
+                    _previousDrillOre.TryGetValue(ore.Key, out inDrillsBefore);
+                    if (ore.Value > before + MinLoggedOre || inDrills > inDrillsBefore + MinLoggedOre)
                         AddDeposit(ore.Key, position, true);
                 }
             }
@@ -200,6 +221,9 @@ namespace IngameScript
             _previousOre.Clear();
             foreach (KeyValuePair<string, double> ore in _oreAmounts)
                 _previousOre[ore.Key] = ore.Value;
+            _previousDrillOre.Clear();
+            foreach (KeyValuePair<string, double> ore in _drillOre)
+                _previousDrillOre[ore.Key] = ore.Value;
             _oreBaseline = true;
         }
 

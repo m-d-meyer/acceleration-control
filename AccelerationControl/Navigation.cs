@@ -398,6 +398,7 @@ namespace IngameScript
         {
             _departing = _resumeGoal = _replanPending = _flipBraking = false;
             _routeIndex = 0;
+            _legStart = ReferencePosition();
             PlanCornerSpeeds();
             _approachTarget = _route[0];
             _targetName = name;
@@ -406,6 +407,26 @@ namespace IngameScript
             _mode = Mode.Approach;
             _previewRoute.Clear();
             _guardStep = 0;
+        }
+
+        Vector3D _legStart;     // where the current leg began (previous waypoint or start)
+
+        // An intermediate waypoint only has to be hit roughly: it counts as reached
+        // within a radius that grows with speed, or as soon as the ship has crossed
+        // the plane through the waypoint halfway between the incoming and the
+        // outgoing leg, so the ship never turns back to it. Collisions are the
+        // guard's job, and WidenDetours already allows for cut corners.
+        bool WaypointReached(Vector3D position)
+        {
+            if (_targetDistance < Math.Max(WaypointRadius, _currentSpeed * 0.5))
+                return true;
+            Vector3D incoming = _approachTarget - _legStart, outgoing = _route[_routeIndex + 1] - _approachTarget;
+            if (incoming.Length() < 1e-3 || outgoing.Length() < 1e-3)
+                return false;
+            Vector3D normal = Vector3D.Normalize(incoming) + Vector3D.Normalize(outgoing);
+            if (normal.Length() < 1e-3)
+                normal = Vector3D.Normalize(incoming);      // turning straight back
+            return Vector3D.Dot(position - _approachTarget, normal) > 0;
         }
 
         bool OnLastLeg
@@ -477,6 +498,7 @@ namespace IngameScript
 
         void NextWaypoint()
         {
+            _legStart = _route[_routeIndex];
             _routeIndex++;
             _approachTarget = _route[_routeIndex];
         }
@@ -488,6 +510,7 @@ namespace IngameScript
             if (PlanRoute(ReferencePosition(), target, _route))
             {
                 _routeIndex = 0;
+                _legStart = ReferencePosition();
                 _approachTarget = _route[0];
                 PlanCornerSpeeds();
             }
@@ -587,8 +610,14 @@ namespace IngameScript
             Vector3D final = _route[_route.Count - 1];
             if (OnLastLeg && rock != null && Vector3D.Distance(final, rock.Center) < rock.Radius + StopOffset)
             {
-                // Most likely the target rock itself: stop earlier.
-                double stop = Math.Max(along - StopOffset, 0);
+                // Most likely the target rock itself: stop earlier. Small corrections
+                // are ignored (the end point is only hit roughly anyway), and the new
+                // stop point is not put closer than the ship can brake while half the
+                // buffer is left, so it does not overshoot and come back.
+                double stop = Math.Max(along - StopOffset, Math.Min(stopDistance * 1.1, along - ShipRadius - _approachBuffer * 0.5));
+                stop = Math.Max(stop, 0);
+                if (stop > remaining - Math.Max(ArrivalTolerance, _approachBuffer * 0.25))
+                    return;
                 _approachTarget = position + direction * stop;
                 _route[_route.Count - 1] = _approachTarget;
                 _message = "Surface closer than scanned, stopping earlier";

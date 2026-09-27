@@ -66,7 +66,7 @@ namespace IngameScript
         void FindStatusBlocks()
         {
             GridTerminalSystem.GetBlocksOfType(_cargoBlocks, b => b.IsSameConstructAs(Me) && b.HasInventory
-                && (b is IMyCargoContainer || b is IMyShipConnector || b is IMyShipDrill));
+                && (b is IMyCargoContainer || b is IMyShipConnector || b is IMyShipDrill || b is IMyGasGenerator));
             GridTerminalSystem.GetBlocksOfType(_batteries, b => b.IsSameConstructAs(Me));
             GridTerminalSystem.GetBlocksOfType(_reactors, b => b.IsSameConstructAs(Me));
             GridTerminalSystem.GetBlocksOfType(_hydrogenTanks, b => b.IsSameConstructAs(Me)
@@ -163,9 +163,14 @@ namespace IngameScript
                 for (int i = 0; i < block.InventoryCount; i++)
                 {
                     IMyInventory inventory = block.GetInventory(i);
-                    _cargoVolume += (float)inventory.CurrentVolume;
-                    _cargoMaxVolume += (float)inventory.MaxVolume;
-                    _cargoMass += (float)inventory.CurrentMass;
+                    // O2/H2 generators pull mined ice straight from the drills, so their
+                    // ice counts for the ore amounts (and auto-logging), not for the cargo.
+                    if (!(block is IMyGasGenerator))
+                    {
+                        _cargoVolume += (float)inventory.CurrentVolume;
+                        _cargoMaxVolume += (float)inventory.MaxVolume;
+                        _cargoMass += (float)inventory.CurrentMass;
+                    }
 
                     _itemBuffer.Clear();
                     inventory.GetItems(_itemBuffer);

@@ -116,6 +116,14 @@ The README describes all commands and Custom Data options for players.
   the turning-space check is done and do not face the target before docking.
 - Docking path check: voxel hits count only 1 m inside the swept ship box (grids
   with 1.5 m margin), and only the part of the path still ahead.
+- Waypoints and flight end points are hit roughly (user's request, the guard
+  prevents collisions): intermediate waypoints switch within 50 m or after crossing
+  the bisector plane (`WaypointReached`); the end counts within
+  max(10 m, ApproachBuffer/4) below 1 m/s, and an overshoot within that just stops
+  (`_settling`). Before this the ship overshot and made several attempts.
+- Ice was not auto-logged while mining, though it showed in the containers. Auto-log
+  now also watches the drill inventories and counts gas generator inventories
+  (not verified in game which of these was the cause).
 - Screens: LCD textures are 512 px; the user found small fonts unreadable, so keep
   text scales around 0.55 or larger.
 
