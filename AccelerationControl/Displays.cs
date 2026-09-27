@@ -52,7 +52,7 @@ namespace IngameScript
 
             string control = BuildControlText(info);
             string status = BuildStatusText();
-            Echo(control + "\n" + status);
+            Echo(control + "\n" + status + "\n" + _mapScreenInfo);
 
             foreach (IMyTextPanel p in _controlPanels)
                 WriteSurface(p, control);

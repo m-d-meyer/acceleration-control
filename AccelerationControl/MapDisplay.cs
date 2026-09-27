@@ -32,13 +32,16 @@ namespace IngameScript
         const int RadarLabels = 5;          // labelled deposits besides the selection
         const int CircleSegments = 48;
 
-        static readonly Color BgColor = new Color(8, 18, 24);
-        static readonly Color PanelColor = new Color(14, 32, 42);
-        static readonly Color GridColor = new Color(32, 78, 96);
-        static readonly Color GridFaint = new Color(22, 52, 64);
-        static readonly Color Cyan = new Color(70, 205, 235);
-        static readonly Color TextColor = new Color(215, 240, 250);
-        static readonly Color DimColor = new Color(120, 160, 175);
+        // High contrast: the game adds glare and reflections on top of LCDs,
+        // which washes out dark greys and mid tones.
+        static readonly Color BgColor = new Color(0, 4, 8);
+        static readonly Color PanelColor = new Color(6, 20, 28);
+        static readonly Color GridColor = new Color(50, 125, 150);
+        static readonly Color GridFaint = new Color(34, 88, 108);
+        static readonly Color Cyan = new Color(90, 225, 255);
+        static readonly Color TextColor = new Color(245, 252, 255);
+        static readonly Color DimColor = new Color(170, 205, 220);
+        const float MinLinePixels = 1.6f;   // thinner lines blur away on low-resolution screens
         static readonly Color RouteColor = new Color(255, 190, 60);
         static readonly Color WarnColor = new Color(255, 110, 80);
         static readonly Color GravityColor = new Color(150, 90, 255);
@@ -53,6 +56,7 @@ namespace IngameScript
         float _u;                  // pixels per layout unit
         float _layoutWidth = 512;  // width of the layout in units (wide screens: more than 512)
         float _maxStem = MaxStem;
+        string _mapScreenInfo = "";
         bool _frameToggle;
 
         // A deposit or asteroid prepared for depth-sorted drawing.
@@ -66,6 +70,7 @@ namespace IngameScript
         void DrawMapSurface(IMyTextSurface surface, MapView view)
         {
             RectangleF viewport = BeginSprites(surface);
+            _mapScreenInfo = string.Format("Map screen: {0}x{1} px", surface.TextureSize.X, surface.TextureSize.Y);
             using (MySpriteDrawFrame frame = surface.DrawFrame())
             {
                 _frame = frame;
@@ -597,6 +602,7 @@ namespace IngameScript
 
         void Box(float x, float y, float w, float h, float t, Color color)
         {
+            t = Math.Max(t, MinLinePixels / _u);
             Rect(x, y, w, t, color);
             Rect(x, y + h - t, w, t, color);
             Rect(x, y, t, h, color);
@@ -610,7 +616,7 @@ namespace IngameScript
             if (length < 0.01f)
                 return;
             _frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", P((x1 + x2) / 2, (y1 + y2) / 2),
-                new Vector2(length, thickness) * _u, color, null, TextAlignment.CENTER, (float)Math.Atan2(d.Y, d.X)));
+                new Vector2(length * _u, Math.Max(thickness * _u, MinLinePixels)), color, null, TextAlignment.CENTER, (float)Math.Atan2(d.Y, d.X)));
         }
 
         void Dashed(float x1, float y1, float x2, float y2, float thickness, Color color)
@@ -675,7 +681,7 @@ namespace IngameScript
         void Text(string text, float x, float y, float scale, Color color,
             TextAlignment alignment = TextAlignment.LEFT, string font = "White")
         {
-            MySprite sprite = MySprite.CreateText(text, font, color, scale * _u, alignment);
+            MySprite sprite = MySprite.CreateText(text, font, color, TextPixelScale(scale), alignment);
             sprite.Position = P(x, y);
             _frame.Add(sprite);
         }
@@ -683,7 +689,13 @@ namespace IngameScript
         float MeasureText(string text, float scale, string font)
         {
             _measure.Clear().Append(text);
-            return _surface.MeasureStringInPixels(_measure, font, scale * _u).X / _u;
+            return _surface.MeasureStringInPixels(_measure, font, TextPixelScale(scale)).X / _u;
+        }
+
+        // Font scale on the surface, with ScreenTextScale from Custom Data applied.
+        float TextPixelScale(float scale)
+        {
+            return scale * _u * _screenTextScale;
         }
     }
 }

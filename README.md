@@ -133,6 +133,7 @@ first run. Edit them there and run `reload`.
 | `HydrogenThrustPerLiter` | `1400` | Start value for hydrogen efficiency (N·s per liter), calibrated in flight |
 | `UraniumMWhPerKg`    | `1`       | Start value for reactor fuel energy (MWh per kg), calibrated in flight |
 | `ElectricThrustPerMW`| `120000`  | Fallback for electric thrusters if their power use cannot be read |
+| `ScreenTextScale`    | `1`       | Text size on the sprite screens (map, list, status), 0.5 to 2; larger text may not fit everywhere |
 | `MapTag`             | `[Accel Map]` | LCD panels with this text show the ore map with buttons    |
 | `ListTag`            | `[Accel List]` | LCD panels with this text show the ore list               |
 | `MapCockpitSurface`  | `-1`      | Cockpit screen index for the ore map, `-1` = off               |

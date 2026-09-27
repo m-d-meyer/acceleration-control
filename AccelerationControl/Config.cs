@@ -82,6 +82,7 @@ namespace IngameScript
         bool _compensateWind = true;
         double _zoneEntrySpeed = 100;
         double _waterLevel = 0;
+        float _screenTextScale = 1;
         double _zoneRadiusGuess = 200000;
 
         // ---- state ----
@@ -155,6 +156,7 @@ namespace IngameScript
             _compensateWind = _ini.Get(IniSection, "CompensateWind").ToBoolean(_compensateWind);
             _zoneEntrySpeed = _ini.Get(IniSection, "ZoneEntrySpeed").ToDouble(_zoneEntrySpeed);
             _waterLevel = _ini.Get(IniSection, "WaterLevel").ToDouble(_waterLevel);
+            _screenTextScale = (float)MathHelper.Clamp(_ini.Get(IniSection, "ScreenTextScale").ToDouble(_screenTextScale), 0.5, 2);
             _zoneRadiusGuess = _ini.Get(IniSection, "ZoneRadiusGuess").ToDouble(_zoneRadiusGuess);
 
             // Write back so every option is visible and editable in Custom Data.
@@ -210,6 +212,7 @@ namespace IngameScript
             _ini.Set(IniSection, "CompensateWind", _compensateWind);
             _ini.Set(IniSection, "ZoneEntrySpeed", _zoneEntrySpeed);
             _ini.Set(IniSection, "WaterLevel", _waterLevel);
+            _ini.Set(IniSection, "ScreenTextScale", _screenTextScale);
             _ini.Set(IniSection, "ZoneRadiusGuess", _zoneRadiusGuess);
             _ini.SetSectionComment(IniSection,
                 " Accelerations in m/s² (1 g = 9.81 m/s²), speeds in m/s, distances in m.\n" +
