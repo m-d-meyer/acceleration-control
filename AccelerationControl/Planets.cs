@@ -401,7 +401,10 @@ namespace IngameScript
                 return _atmosphereSpeed;
             if (Vector3D.Distance(end, planet.Center) >= top)
                 return double.MaxValue;
-            return Math.Sqrt(_atmosphereSpeed * _atmosphereSpeed + 2 * Math.Max(brake, 0.1) * (r - top));
+            // Aim at 85 %: thruster and control lag let the speed trail the profile
+            // (simulated: up to 18 % over the limit when aiming at 100 %).
+            double entry = _atmosphereSpeed * 0.85;
+            return Math.Sqrt(entry * entry + 2 * Math.Max(brake, 0.1) * (r - top));
         }
 
         // -----------------------------------------------------------------
