@@ -408,8 +408,9 @@ namespace IngameScript
         }
 
         // Speed limit from the atmosphere: AtmosphereSpeed inside it, and above
-        // it (when the flight goes down into it) slow enough to brake to that
-        // speed before entering.
+        // it (when the current leg ends inside it) slow enough to brake to that
+        // speed before entering. The radial distance to the atmosphere is used,
+        // which is shorter than the way along a slanted leg (safe side).
         double AtmosphereSpeedLimit(Vector3D position, Vector3D end, double brake)
         {
             Obstacle planet = _planet ?? PlanetAt(position);

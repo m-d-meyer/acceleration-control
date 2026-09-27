@@ -446,7 +446,8 @@ namespace IngameScript
             if (endSpeed <= 0)
                 speed = Math.Min(speed, distance * _velocityGain * 0.5);
             // Atmosphere: limited speed inside, braked in time before entering.
-            speed = Math.Min(speed, AtmosphereSpeedLimit(position, _route[_route.Count - 1], brake));
+            // Only the leg that goes down into it counts (routes above the atmosphere keep their speed).
+            speed = Math.Min(speed, AtmosphereSpeedLimit(position, _approachTarget, brake));
             targetVelocity = direction * speed;
 
             // For the display: stopping distance, distance to the end of the route and flight phase.
