@@ -3,6 +3,7 @@
 //
 // Opens and closes gates when a ship with Acceleration Control docks or undocks
 // (requests over the antennas). See "Gates" in README.md.
+// MIT License, see LICENSE in the repository.
 
 // ---- Program.cs ----
 const string Tag = "AccelDock";

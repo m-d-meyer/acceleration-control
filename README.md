@@ -807,3 +807,20 @@ with the C# compiler (needs the .NET SDK):
 **Check code** in the game remains the final check.
 
 Always rebuild `dist/` after changing the source files.
+
+## Credits
+
+- Written with [Claude](https://claude.ai) (Anthropic's AI assistant, via Claude
+  Code) following the author's design decisions and in-game tests. No code was
+  taken from other scripts.
+- Recording the way into a dock and replaying it is a well-known idea from
+  dedicated docking scripts such as *Automatic Docking 2.0*; the implementation
+  here is independent.
+- Project structure: [MDK2](https://github.com/malforge/mdk2) by Malforge.
+- The API checks in `tools/` use the API documentation of the
+  [MDK-SE wiki](https://github.com/malware-dev/MDK-SE/wiki) (not part of the
+  script) and the [Roslyn](https://github.com/dotnet/roslyn) C# compiler.
+
+## License
+
+[MIT](LICENSE)
