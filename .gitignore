@@ -1,0 +1,6 @@
+bin/
+obj/
+mdk.local.ini
+*.user
+.vs/
+.idea/
