@@ -131,7 +131,10 @@ The README describes all commands and Custom Data options for players.
   now also watches the drill inventories and counts gas generator inventories
   (not verified in game which of these was the cause).
 - Screens: LCD textures are 512 px; the user found small fonts unreadable, so keep
-  text scales around 0.55 or larger.
+  text scales around 0.55 or larger. A wide cockpit screen looked small and blurry
+  with the square layout: radar has a wide layout (>= 1.5:1, 300 units high), the
+  palette is high contrast (game glare washes out mid tones), lines >= 1.6 px,
+  `ScreenTextScale` option; the PB detail info shows the map texture size.
 
 - Real Solar Systems (user's save): proxy planets move, real planets are static and
   far away; near a proxy the ship is teleported into the planet's zone with its own
