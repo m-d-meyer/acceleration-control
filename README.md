@@ -449,6 +449,8 @@ list, but they can be given samples:
 
 1. GO/dock to the base (or any entry on the planet) while in space: the script waits
    for the zone change.
+   The mod's setting `EnablePlanetGPSAll` (or `EnablePlanetGPSUnlocking`, a GPS
+   when a zone is entered for the first time) gives every planet such a GPS.
 2. Copy the planet's moving GPS (e.g. the proxy copy of your base GPS) and run
    `track GPS:...` with it. Do it again 10-30 s later (a third time improves the
    prediction on curved orbits).
@@ -464,6 +466,10 @@ Simulated (planet on a circular orbit, 3 samples 15 s apart): entry at about
 100 m/s relative to the planet when the zone is smaller than `ZoneRadiusGuess`, but
 340 m/s when the real zone was 150 km and the guess 100 km, hence the generous
 default. The prediction was off by less than 3 km after hours of flight.
+
+The control page shows any measurable gravity, also in space without a real planet
+("no planet"), and while following a GPS the angle between gravity and the GPS
+direction. That shows whether the proxy planets have a gravity scripts can see.
 
 Pasting the GPS again during the flight refreshes the prediction (the oldest sample
 is dropped). If the planet moves faster than `MaxSpeed`, the ship cannot match its

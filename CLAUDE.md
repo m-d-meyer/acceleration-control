@@ -159,6 +159,12 @@ The README describes all commands and Custom Data options for players.
   the zone edge (`ZoneRadiusGuess`, learned per zone at the first entry, stored in
   `ZoneRadii`). Simulated: ~100 m/s entry if the guess >= real zone, 340-450 m/s if
   the zone is larger than guessed (hence default 200 km).
+- RSS config (user): real planets spawn 900,000-9,000,000 km from the origin;
+  `EnablePlanetGPSAll`/`EnablePlanetGPSUnlocking` create planet GPS (moving copies
+  usable for `track`); `EnableGridRotationOnZoneTransition` rotates grids at the
+  surface zone edge. Open question: do proxies have script-visible gravity? The
+  status page shows any gravity > 0.001 m/s² ("no planet" in proxy space) to find
+  out; if yes, a gravity-based homing without GPS pasting could be added.
 - Aerodynamic Physics mod (DraygoKorvan, mod id 571920453) offers wind/drag only via
   mod-to-mod messages (`RemoteDragSettings.cs`), not to PB scripts: the disturbance
   observer is the only way. Water mod: raycasts do not see water; the sea floor can

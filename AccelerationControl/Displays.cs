@@ -142,9 +142,18 @@ namespace IngameScript
                 _text.AppendFormat("Planet moves {0:0} m/s, closing {1:0} m/s\n", _trackVelocity.Length(),
                     Vector3D.Dot(reference.GetShipVelocities().LinearVelocity - _trackVelocity,
                         Vector3D.Normalize(_approachTarget - ReferencePosition())));
-            if (_planet == null && !InGravity)
+            // Any measurable gravity is shown, also without a real planet (e.g. a
+            // Real Solar Systems proxy), with its direction relative to a followed GPS.
+            if (_planet == null && _gravity.LengthSquared() < 1e-6)
                 return;
-            _text.AppendFormat("Gravity {0:0.00} g", _gravity.Length() / 9.81);
+            _text.AppendFormat("Gravity {0:0.000} g", _gravity.Length() / 9.81);
+            if (_planet == null)
+            {
+                _text.Append("  no planet");
+                if (_tracking && _mode == Mode.Approach)
+                    _text.AppendFormat("  {0:0}° off GPS", MathHelper.ToDegrees(Math.Acos(MathHelper.Clamp(Vector3D.Dot(
+                        Vector3D.Normalize(_gravity), Vector3D.Normalize(_approachTarget - ReferencePosition())), -1, 1))));
+            }
             if (_planet != null)
                 _text.Append("  alt " + FormatDistance(Vector3D.Distance(ReferencePosition(), _planet.Center) - _planet.Radius));
             if (_air >= 0)
