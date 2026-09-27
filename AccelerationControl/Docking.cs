@@ -354,7 +354,7 @@ namespace IngameScript
         // it reports whether something blocks the way. Points no camera can see
         // are skipped. Only hits inside the checked space count: within the
         // ship's turning radius (other ships and players), or in the path into
-        // the dock. Parts of the base never count.
+        // the dock. Parts of the base count only in the space to turn in.
         int DockScanStep()
         {
             if (_dockScanIndex >= _dockScanPoints.Count)
@@ -378,7 +378,9 @@ namespace IngameScript
                     continue;
                 MyDetectedEntityInfo hit = camera.Raycast(point);
                 _dockScanSeen++;
-                if (!hit.IsEmpty() && hit.HitPosition.HasValue && !IsBaseGrid(hit.EntityId) && !IsOwnHit(hit))
+                // The base itself never blocks the way in, but it does count in the
+                // space to turn in (wind turbines, antennas and the like stick out).
+                if (!hit.IsEmpty() && hit.HitPosition.HasValue && (_dockScanAround || !IsBaseGrid(hit.EntityId)) && !IsOwnHit(hit))
                 {
                     Vector3D at = hit.HitPosition.Value;
                     bool voxel = hit.Type == MyDetectedEntityType.Asteroid || hit.Type == MyDetectedEntityType.Planet;

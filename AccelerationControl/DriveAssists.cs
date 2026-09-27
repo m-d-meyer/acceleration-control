@@ -329,33 +329,45 @@ namespace IngameScript
             return top / accel + coast + top / brake + Math.Max(distance - used, 0) / Math.Max(top, 0.01);
         }
 
-        // Estimated time to the end of the route: accelerate from the current speed,
-        // cruise at MaxSpeed (AtmosphereSpeed in air), brake as planned; plus the
-        // turn of a planned flip. -1 when not flying.
+        // Estimated time to the end of the route, leg by leg with the planned
+        // waypoint speeds (e.g. nearly stopping at the top of a climb before the
+        // turn): accelerate, cruise at MaxSpeed (AtmosphereSpeed in air), brake as
+        // planned; plus the turn of a planned flip. -1 when not flying.
         double EtaSeconds()
         {
             IMyShipController c = _controller ?? _layoutController;
-            double d = _remainingDistance;
-            if (_mode != Mode.Approach || c == null || d <= 0)
+            if (_mode != Mode.Approach || c == null || _route.Count == 0)
                 return -1;
             double mass = c.CalculateShipMass().PhysicalMass, reverse;
             Vector3D direction;
-            double a = Math.Max(_useBestThrust && _gyros.Count > 0 && !LevelFlight
-                ? BestThrust(c.WorldMatrix, mass, out direction, out reverse) : MaxAccel(2, 1, mass), 0.1);
+            double a = _useBestThrust && _gyros.Count > 0 && !LevelFlight
+                ? BestThrust(c.WorldMatrix, mass, out direction, out reverse) : MaxAccel(2, 1, mass);
+            if (LevelFlight)
+                a = Math.Min(a, MaxAccel(1, 0, mass) - _gravity.Length());     // climbs are slower
+            a = Math.Max(a, 0.1);
             double b = Math.Max(PlanningBrake(), 0.1);
             double top = InAtmosphere && _atmosphereSpeed > 0 ? Math.Min(_maxSpeed, _atmosphereSpeed) : _maxSpeed;
-            double v = Math.Min(_currentSpeed, top);
-            double peak = Math.Sqrt((v * v / (2 * a) + d) / (1 / (2 * a) + 1 / (2 * b)));
-            double t;
-            if (peak <= v)
-                t = 2 * d / Math.Max(v, 0.1);       // already braking
-            else
+            double v = Math.Min(_currentSpeed, top), t = 0;
+            Vector3D from = ReferencePosition();
+            for (int i = _tracking ? _route.Count - 1 : _routeIndex; i < _route.Count; i++)
             {
-                peak = Math.Min(peak, top);
-                double along = (peak * peak - v * v) / (2 * a) + peak * peak / (2 * b);
-                t = (peak - v) / a + peak / b + Math.Max(d - along, 0) / peak;
+                double end = i < _route.Count - 1 && i < _cornerLimits.Count ? Math.Min(_cornerLimits[i], top) : 0;
+                t += LegTime(Vector3D.Distance(from, _route[i]), v, end, a, b, top);
+                v = end;
+                from = _route[i];
             }
             return _flipPlanned && !_flipBraking ? t + _flipTime : t;
+        }
+
+        // Time for a straight leg from speed v0 to v1: accelerate, cruise at 'top', brake.
+        static double LegTime(double length, double v0, double v1, double a, double b, double top)
+        {
+            double peak = Math.Sqrt((v0 * v0 / (2 * a) + v1 * v1 / (2 * b) + length) / (1 / (2 * a) + 1 / (2 * b)));
+            if (peak <= Math.Max(v0, v1))
+                return 2 * length / Math.Max(v0 + v1, 0.1);
+            peak = Math.Min(peak, top);
+            double along = (peak * peak - v0 * v0) / (2 * a) + (peak * peak - v1 * v1) / (2 * b);
+            return (peak - v0) / a + (peak - v1) / b + Math.Max(length - along, 0) / peak;
         }
 
         string EtaText()

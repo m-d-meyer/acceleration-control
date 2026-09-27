@@ -201,6 +201,14 @@ The README describes all commands and Custom Data options for players.
   farthest visible arc point (tangent). Level flight only in an atmosphere or when
   g > 30 % of the weakest thrust side (user: strongest thrusters point down;
   weak gravity far out is flown like space).
+- Atmospheric miner test: 7 km hop climbed 1.5 km (cruise = 25 % of the distance,
+  capped by PlanetCruiseHeight; user fine with it). Returning to dock it hit the
+  blades of a wind turbine on the base: the docking turn check ignored all base
+  grids (now counted in the "around" scan), and the guard's rays towards the look
+  point miss thin things beside the path (every other guard scan is now a ray
+  parallel to the path from a camera facing the way). ETA stood still while
+  climbing (it ignored the stop at the top of the climb): now leg by leg with
+  `_cornerLimits`.
 - Planet obstacles: raycast hits on a known planet (center within 1 km) only store the
   entity id; `UpdatePlanet` measures radius/well (duplicates caused replanning loops).
 

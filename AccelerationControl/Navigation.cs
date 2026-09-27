@@ -58,6 +58,7 @@ namespace IngameScript
         Vector3D _gyroEvidence;
         bool[] _gyroCalibrated = new bool[3];
         int _guardStep;
+        bool _guardParallel;
         int _guardCamera;
 
         double ShipRadius
@@ -782,6 +783,28 @@ namespace IngameScript
             double brake = Math.Max(BrakeAccel(direction), 0.1);
             double look = Math.Min(remaining + _approachBuffer * 2,
                 Math.Max(_currentSpeed * _currentSpeed / (2 * brake) * 1.5 + _approachBuffer * 2, ProbeMinRange));
+
+            // Every other scan: a ray parallel to the path from a camera facing the
+            // way (cameras sit anywhere on the hull, so these rays cover the space
+            // the hull sweeps through; thin things beside the centre line, e.g. wind
+            // turbine blades, slip between the rays towards the look point).
+            _guardParallel = !_guardParallel;
+            if (_guardParallel)
+                for (int i = 0; i < _cameras.Count; i++)
+                {
+                    IMyCameraBlock camera = _cameras[(_guardCamera + i) % _cameras.Count];
+                    if (!camera.IsWorking || Vector3D.Dot(camera.WorldMatrix.Forward, direction) < 0.75)
+                        continue;
+                    camera.EnableRaycast = true;
+                    Vector3D target = camera.GetPosition() + direction * look;
+                    if (!camera.CanScan(target))
+                        continue;
+                    _guardCamera = (_guardCamera + i + 1) % _cameras.Count;
+                    MyDetectedEntityInfo parallel = camera.Raycast(target);
+                    if (!parallel.IsEmpty() && parallel.HitPosition.HasValue && !IsOwnHit(parallel))
+                        HandleGuardHit(parallel, position, direction, remaining);
+                    return;
+                }
 
             // Ring point for this step (step 0 = center)
             int step = _guardStep % GuardPattern;
