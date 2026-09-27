@@ -72,6 +72,11 @@ The README describes all commands and Custom Data options for players.
   to dock by hand again.
 - Jump: the gyros settle at about 0.6 degrees of heading error; alignment
   tolerances must not be tighter than that (now 2 degrees).
+- `ApplyAction(name)` throws (NullReferenceException) if the block does not offer
+  that action to scripts; use `GetActionWithName` and check for null. The jump
+  drive's "Jump" action apparently is not available to scripts.
+- `Main` wraps everything in try/catch and releases all overrides on errors, so a
+  crash never leaves thrusters or gyroscopes overridden.
 - Screens: LCD textures are 512 px; the user found small fonts unreadable, so keep
   text scales around 0.55 or larger.
 

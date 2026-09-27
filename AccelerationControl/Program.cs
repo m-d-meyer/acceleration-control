@@ -51,6 +51,7 @@ namespace IngameScript
             LoadState();
             RefreshBlocks();
             ReleaseAll(true); // clear overrides left behind by a previous run
+            ReleaseGyros(true);
             Runtime.UpdateFrequency = UpdateFrequency.Update1;
         }
 
@@ -60,6 +61,25 @@ namespace IngameScript
         }
 
         public void Main(string argument, UpdateType updateSource)
+        {
+            // Safety net: an unexpected error must not leave thrusters and
+            // gyroscopes overridden. Hand control back, show the error, keep running.
+            try
+            {
+                Run(argument, updateSource);
+            }
+            catch (Exception e)
+            {
+                ReleaseAll(true);
+                ReleaseGyros(true);
+                _mode = Mode.Manual;
+                _scanPending = false;
+                _message = "Error: " + e.Message + " (control handed back)";
+                Echo(_message + "\n" + e.StackTrace);
+            }
+        }
+
+        void Run(string argument, UpdateType updateSource)
         {
             if ((updateSource & (UpdateType.Trigger | UpdateType.Terminal | UpdateType.Script)) != 0
                 && !string.IsNullOrWhiteSpace(argument))

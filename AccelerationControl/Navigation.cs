@@ -514,9 +514,9 @@ namespace IngameScript
             }
         }
 
-        void ReleaseGyros()
+        void ReleaseGyros(bool force = false)
         {
-            if (!_gyrosActive)
+            if (!_gyrosActive && !force)
                 return;
             foreach (IMyGyro gyro in _gyros)
             {

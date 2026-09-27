@@ -307,7 +307,7 @@ length, delta-v and flight time. **GO** plans and flies it.
 
 For targets further away than `JumpMinDistance` (and outside gravity), GO first
 jumps: the ship stops, sets the jump distance, waits until a jump drive is ready,
-turns its nose to the target (within 2 degrees, or for at most 20 seconds) and
+turns its nose to the target (within 2 degrees; after 20 seconds within 5) and
 jumps ("blind jump" along the nose). You can also press Jump yourself at any time
 during this; the script notices the jump and continues. The jump ends
 `JumpArrival` meters before the target, at a point at least `JumpClearance` away

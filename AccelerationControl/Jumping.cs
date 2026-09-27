@@ -30,7 +30,8 @@ namespace IngameScript
     partial class Program
     {
         const double JumpAlignTolerance = 0.035;    // rad (2 degrees: about 700 m off after 20 km, corrected afterwards)
-        const int JumpAlignTicks = 60 * 20;         // jump anyway after aligning this long
+        const int JumpAlignTicks = 60 * 20;         // after aligning this long, a looser tolerance is accepted
+        const double JumpLooseTolerance = 0.087;    // rad (5 degrees)
         const double JumpDetected = 1000;           // m moved at once = the jump happened
         const int JumpTimeoutTicks = 60 * 90;
         const int JumpManualTicks = 60 * 3;         // no jump after this: ask the pilot to press Jump
@@ -140,17 +141,21 @@ namespace IngameScript
             // Ready: align (good enough within JumpAlignTolerance, or after
             // JumpAlignTicks at the latest), then jump.
             _jumpTicks++;
-            bool aligned = _gyrosActive && _alignError < JumpAlignTolerance && _currentSpeed < 1;
-            if (!_jumpTriggered && !aligned && _jumpTicks < JumpAlignTicks)
+            double tolerance = _jumpTicks < JumpAlignTicks ? JumpAlignTolerance : JumpLooseTolerance;
+            bool aligned = _gyrosActive && _alignError < tolerance && _currentSpeed < 1;
+            if (!_jumpTriggered && !aligned)
             {
                 _jumpState = "aligning";
                 return;
             }
             if (!_jumpTriggered)
             {
-                ready.ApplyAction("Jump");
+                // The game may not offer the Jump action to scripts; then the pilot jumps.
+                ITerminalAction jump = ready.GetActionWithName("Jump");
+                if (jump != null)
+                    jump.Apply(ready);
                 _jumpTriggered = true;
-                _jumpTriggerTick = _jumpTicks;
+                _jumpTriggerTick = jump != null ? _jumpTicks : _jumpTicks - JumpManualTicks + 1;
                 _jumpState = "jumping";
             }
             else if (_jumpTicks - _jumpTriggerTick == JumpManualTicks)
