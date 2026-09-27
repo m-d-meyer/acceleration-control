@@ -243,6 +243,32 @@ namespace IngameScript
             return best;
         }
 
+        // Weakest sideways acceleration, i.e. across the direction the ship flies in:
+        // across its strongest side when flights use the strongest thrusters,
+        // across the nose otherwise.
+        double SideAccel()
+        {
+            IMyShipController reference = _controller ?? _layoutController;
+            if (reference == null)
+                return 0;
+            double mass = reference.CalculateShipMass().PhysicalMass, best = -1;
+            int flightAxis = 2;
+            if (_useBestThrust && _gyros.Count > 0)
+                for (int a = 0; a < 3; a++)
+                    for (int s = 0; s < 2; s++)
+                        if (MaxAccel(a, s, mass) > best)
+                        {
+                            best = MaxAccel(a, s, mass);
+                            flightAxis = a;
+                        }
+            double side = double.MaxValue;
+            for (int a = 0; a < 3; a++)
+                if (a != flightAxis)
+                    for (int s = 0; s < 2; s++)
+                        side = Math.Min(side, MaxAccel(a, s, mass));
+            return side == double.MaxValue ? 0 : side;
+        }
+
         // Highest acceleration the thrusters can produce along a world direction.
         double MaxAccelAlong(Vector3D worldDir)
         {

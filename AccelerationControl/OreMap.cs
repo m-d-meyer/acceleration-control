@@ -26,7 +26,8 @@ namespace IngameScript
     // for the map screens.
     partial class Program
     {
-        const double AsteroidRadiusFactor = 0.75;   // asteroid voxel boxes are larger than the rock itself
+        const double AsteroidRadiusFactor = 1.0;    // start estimate: half the voxel box size; grows with observed surface points
+        const double SurfaceMargin = 10;            // m added around observed surface points
         const double GravityCutoff = 0.05 * 9.81;   // m/s^2 - roughly where planet gravity ends
         const double MinLoggedOre = 1.0;            // kg of new ore needed to log a deposit
         const string MapSection = "Map";
@@ -255,6 +256,14 @@ namespace IngameScript
         //  Obstacles and gravity wells
         // -----------------------------------------------------------------
 
+        Obstacle FindObstacle(long entityId)
+        {
+            foreach (Obstacle o in _obstacles)
+                if (o.EntityId == entityId)
+                    return o;
+            return null;
+        }
+
         // Returns true if the obstacle was not known before.
         bool RegisterObstacle(MyDetectedEntityInfo hit)
         {
@@ -279,10 +288,18 @@ namespace IngameScript
             }
 
             obstacle.Center = planet ? hit.Position : box.Center;
-            obstacle.Radius = planet ? halfSize : halfSize * AsteroidRadiusFactor;
+            // Asteroids are irregular: every surface point a ray hits is known to be
+            // rock, so the obstacle sphere grows to include it. It never shrinks.
+            double radius = planet ? halfSize : halfSize * AsteroidRadiusFactor;
+            if (!planet && hit.HitPosition.HasValue)
+                radius = Math.Max(radius, Vector3D.Distance(hit.HitPosition.Value, obstacle.Center) + SurfaceMargin);
+            bool grew = !added && radius > obstacle.Radius + 1;
+            obstacle.Radius = added || planet ? radius : Math.Max(obstacle.Radius, radius);
             if (planet && obstacle.GravityRadius <= 0)
                 obstacle.GravityRadius = obstacle.Radius * _gravityWellFactor;
-            if (added)
+            if (grew)
+                _mapChanged = true;
+            if (added || grew)
                 CheckRouteAfterNewObstacle();
             return added;
         }

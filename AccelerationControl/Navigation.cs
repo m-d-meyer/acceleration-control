@@ -43,6 +43,9 @@ namespace IngameScript
 
         int _routeIndex;
         readonly List<double> _cornerLimits = new List<double>();
+        readonly List<double> _limitBuffer = new List<double>();
+        readonly List<Obstacle> _planOwners = new List<Obstacle>();    // obstacle each planned waypoint goes around
+        const double MaxDetourWiden = 5000;         // m - detour waypoints are moved out at most this far
         const double BrakeShare = 0.7;              // share of the braking planned for routes with turns
         Vector3D _goalTarget;
         string _goalName = "";
@@ -71,10 +74,53 @@ namespace IngameScript
         bool PlanRoute(Vector3D from, Vector3D to, List<Vector3D> route)
         {
             route.Clear();
+            _planOwners.Clear();
             bool ok = PlanSegment(from, to, route, 0, true, true);
             route.Add(to);
+            _planOwners.Add(null);
+            if (ok)
+                WidenDetours(from, route);
             EstimateRoute(from, route);
             return ok;
+        }
+
+        // Moves detour waypoints further out if the ship cannot make the turn
+        // there within the planned distance to the rock. The drift in a turn is
+        // estimated from the planned corner speed and the ship's actual weakest
+        // sideways acceleration, plus the corner the ship cuts when it switches
+        // to the next waypoint early. Moving the waypoint out keeps the speed.
+        void WidenDetours(Vector3D from, List<Vector3D> route)
+        {
+            double side = Math.Max(SideAccel() * _brakeSafety, 0.05), brake = PlanningBrake();
+            Vector3D target = route[route.Count - 1];
+            for (int iteration = 0; iteration < 3; iteration++)
+            {
+                ComputeCornerLimits(from, route, _limitBuffer, brake);
+                bool moved = false;
+                for (int i = 0; i < route.Count - 1; i++)
+                {
+                    Obstacle o = _planOwners[i];
+                    if (o == null)
+                        continue;
+                    Vector3D a = route[i] - (i > 0 ? route[i - 1] : from), b = route[i + 1] - route[i];
+                    double la = a.Length(), lb = b.Length();
+                    if (la < 1 || lb < 1)
+                        continue;
+                    double cos = MathHelper.Clamp(Vector3D.Dot(a, b) / (la * lb), -1, 1), sin = Math.Sqrt(1 - cos * cos);
+                    double v = _limitBuffer[i];
+                    double drift = v * sin * v * sin / (2 * side) + 0.5 * v * Math.Sqrt((1 - cos) / 2);
+                    double margin = Vector3D.Distance(route[i], o.Center) - Clearance(o, target);
+                    double need = Math.Min(drift + _approachBuffer * 0.5 - margin, MaxDetourWiden - margin);
+                    Vector3D widened = route[i] + Vector3D.Normalize(route[i] - o.Center) * need;
+                    if (need > 1 && IsFree(widened, target))
+                    {
+                        route[i] = widened;
+                        moved = true;
+                    }
+                }
+                if (!moved)
+                    break;
+            }
         }
 
         // Splits a blocked segment at a detour point and plans both halves.
@@ -90,6 +136,7 @@ namespace IngameScript
             Vector3D detour = DetourPoint(o, a, b);
             bool ok = PlanSegment(a, detour, route, depth + 1, atStart, false);
             route.Add(detour);
+            _planOwners.Add(o);
             return PlanSegment(detour, b, route, depth + 1, false, atTarget) && ok;
         }
 
@@ -374,19 +421,22 @@ namespace IngameScript
         // Simulated with thousands of random routes ending in turns.
         void PlanCornerSpeeds()
         {
-            _cornerLimits.Clear();
-            for (int i = 0; i < _route.Count; i++)
-                _cornerLimits.Add(0);
-            double brake = PlanningBrake();
-            Vector3D start = ReferencePosition();
-            for (int i = _route.Count - 2; i >= 0; i--)
+            ComputeCornerLimits(ReferencePosition(), _route, _cornerLimits, PlanningBrake());
+        }
+
+        void ComputeCornerLimits(Vector3D start, List<Vector3D> route, List<double> limits, double brake)
+        {
+            limits.Clear();
+            for (int i = 0; i < route.Count; i++)
+                limits.Add(0);
+            for (int i = route.Count - 2; i >= 0; i--)
             {
-                Vector3D previous = i > 0 ? _route[i - 1] : start;
-                Vector3D a = _route[i] - previous, b = _route[i + 1] - _route[i];
+                Vector3D previous = i > 0 ? route[i - 1] : start;
+                Vector3D a = route[i] - previous, b = route[i + 1] - route[i];
                 double la = a.Length(), lb = b.Length();
                 double c = la > 1e-3 && lb > 1e-3 ? Math.Max(Vector3D.Dot(a, b) / (la * lb), 0) : 0;
-                double next = _cornerLimits[i + 1];
-                _cornerLimits[i] = Math.Min(_maxSpeed * Math.Max(c, 0.1), Math.Sqrt(next * next + 2 * brake * BrakeShare * lb) * c * c);
+                double next = limits[i + 1];
+                limits[i] = Math.Min(_maxSpeed * Math.Max(c, 0.1), Math.Sqrt(next * next + 2 * brake * BrakeShare * lb) * c * c);
             }
         }
 
@@ -515,7 +565,11 @@ namespace IngameScript
             if (voxel)
                 RegisterObstacle(hit);
 
-            if (OnLastLeg && voxel)
+            // The rock the target lies on: stop earlier. Any other rock (e.g. one the
+            // route goes around, larger than known) is an obstacle.
+            Obstacle rock = voxel ? FindObstacle(hit.EntityId) : null;
+            Vector3D final = _route[_route.Count - 1];
+            if (OnLastLeg && rock != null && Vector3D.Distance(final, rock.Center) < rock.Radius + StopOffset)
             {
                 // Most likely the target rock itself: stop earlier.
                 double stop = Math.Max(along - StopOffset, 0);

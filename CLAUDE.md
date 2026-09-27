@@ -65,7 +65,15 @@ The README describes all commands and Custom Data options for players.
 
 - Camera raycasts often miss asteroids farther than about 6 km (physics not loaded).
 - Thrust direction of a thruster: `WorldMatrix.Backward` (confirmed in game).
-- Asteroid obstacle radius is estimated as 0.75 of half the voxel box size.
+- Asteroid obstacle radius: starts at half the voxel box size and grows with every
+  observed surface point (hits outside the sphere). An underestimated, irregular rock
+  caused a collision on a detour; simulations showed that collisions with rocks
+  larger than estimated happen on straight legs, not in turns.
+- Detour waypoints are moved outwards (`WidenDetours`, user's preference over slowing
+  down) when the estimated turn drift (corner speed, weakest sideways thrust, corner
+  cutting) exceeds the margin to the rock.
+- The collision guard treats a rock hit on the last leg as the target rock only if
+  the final stop point lies on that rock; other rocks are obstacles.
 - The game only calls `Save()` on world save, so the script writes `Storage` whenever
   the map changes.
 - Docking data format changed once (grid pose added); after such changes the user has

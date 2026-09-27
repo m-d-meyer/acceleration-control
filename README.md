@@ -289,7 +289,12 @@ length, delta-v and flight time. **GO** plans and flies it.
   or jump.
 - **Planning**: if a known asteroid (or a planet's gravity well) is in the way, the
   route gets a waypoint beside it, keeping the ship's radius plus `ApproachBuffer`
-  of distance. Several obstacles give several waypoints. If no complete route is
+  of distance. If the ship would drift too far in the turn at that waypoint (from
+  the planned speed and its actual weakest sideways thrust), the waypoint is moved
+  further out instead of slowing down (up to 5 km).
+- **Asteroid size**: asteroids are irregular. Their size starts as half the size of
+  their voxel box and grows whenever a camera ray hits rock outside it (background
+  survey, collision guard, scans), so the known size only ever gets more accurate. Several obstacles give several waypoints. If no complete route is
   found (very dense fields), GO refuses instead of flying a risky path.
 - **Flying**: full thrust up to `MaxSpeed`. Waypoints are passed without stopping.
   Their speeds are planned backwards from the end of the route: each waypoint is
