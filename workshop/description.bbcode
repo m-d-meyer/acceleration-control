@@ -1,0 +1,86 @@
+[b]Disclaimer: the code of this script was written 100% by Claude Opus 5.5 (an AI by Anthropic). It was tested in game by me.[/b]
+
+[h1]Acceleration Control[/h1]
+Smooth, predictable flying - and a ship that can find its way around, dock itself and remember where the ore is.
+
+Vanilla thrusters always fire at 100 %: an empty miner jumps around, a full one barely moves. This script takes over while you hold W/A/S/D/Space/C and accelerates at the rate you choose, in m/s² or g, whatever the cargo. Around that it grew a complete flight assistant.
+
+[img]https://raw.githubusercontent.com/m-d-meyer/acceleration-control/main/workshop/images/accel.png[/img]
+
+[h2]Features[/h2]
+[list]
+[*][b]Acceleration limit[/b] in all six directions, mass and gravity compensated, optional limited dampeners
+[*][b]Cruise[/b]: constant forward speed for drilling, cancels drift
+[*][b]Approach[/b]: aim at an asteroid, the ship flies there and stops a set distance before the surface
+[*][b]Ship status[/b] screen: cargo and ores, battery, uranium, hydrogen, jump charge, delta-v and trips left
+[*][b]Ore map[/b]: mark deposits with a camera scan or log them automatically while mining; 3D radar and list with buttons, GPS export, map sharing over antennas
+[*][b]Navigation[/b]: GO to any map entry or GPS. Routes around known asteroids, cameras scan ahead (collision guard), braking planned for every corner, jump drive for long legs, ETA on screen
+[*][b]Docking[/b]: dock once by hand, then [i]dock[/i] replays your own way in - also into tight hangars. One dock per base, gates open over the antenna
+[*][b]Planets[/b]: climb, fly at cruise height, descend vertically, level flight in atmosphere, wind and drag compensated
+[*][b]Real Solar Systems[/b] mod support: zone changes, a map per zone, following a moving planet
+[*]Flights go on when you leave the cockpit
+[/list]
+
+[img]https://raw.githubusercontent.com/m-d-meyer/acceleration-control/main/workshop/images/map.png[/img]
+
+[h2]Setup[/h2]
+[olist]
+[*]Load the script into a programmable block on your ship.
+[*]Put the block on your cockpit toolbar with [b]Run[/b] and the arguments [i]up[/i] and [i]down[/i] (the limit).
+[*]Build cameras - at least one facing forward, more in other directions make the ship see more.
+[*]Optional screens: add a tag to an LCD name - [i][Accel][/i] flight page, [i][Accel Status][/i] ship status, [i][Accel Map][/i] map with buttons, [i][Accel List][/i] ore list. Cockpit screens are set in the Custom Data.
+[*]For the map buttons add a toolbar slot with the argument [i]ui[/i]: the movement keys then operate the menu.
+[/olist]
+All options are in the Custom Data; run [i]reload[/i] after editing.
+
+[h2]Most used commands[/h2]
+[table]
+[tr][th]Argument[/th][th]Effect[/th][/tr]
+[tr][td]up / down / set 0.5g[/td][td]change the acceleration limit[/td][/tr]
+[tr][td]cruise / cruise 0.5[/td][td]constant speed for drilling[/td][/tr]
+[tr][td]approach[/td][td]fly to what the camera points at[/td][/tr]
+[tr][td]mark iron / mark iron here[/td][td]put a deposit on the map[/td][/tr]
+[tr][td]goto / goto GPS:...[/td][td]fly to the selected entry or a GPS[/td][/tr]
+[tr][td]dock / undock[/td][td]dock at the nearest known dock / leave it[/td][/tr]
+[tr][td]stop[/td][td]cancel the current flight[/td][/tr]
+[tr][td]map send[/td][td]share the map with other ships[/td][/tr]
+[/table]
+Full list: see the GitHub page below.
+
+[img]https://raw.githubusercontent.com/m-d-meyer/acceleration-control/main/workshop/images/route.png[/img]
+
+[h2]Docking and gates[/h2]
+Dock by hand once with the script running. The last 300 m of your approach (position and orientation) are stored relative to the base. From then on [i]dock[/i] (nearest known dock within 20 km) or GO on the base in the map flies to the start of that way and follows it slowly into the connector; [i]undock[/i] takes the same way out. Every base keeps its own dock.
+
+Hangar doors, pistons, rotors or lights can be operated for the ship: put the small [b]DockGate[/b] companion script (link below) on the base and build two timer blocks named [i]Dock Open[/i] and [i]Dock Close[/i]. The ship asks the base over the antenna and waits until the gate is open.
+
+[img]https://raw.githubusercontent.com/m-d-meyer/acceleration-control/main/workshop/images/docking.png[/img]
+
+[h2]Planets[/h2]
+Flights on planets climb, follow the curvature at a cruise height above terrain (and water, if you tell the script where it is) and descend vertically over the target, braking for gravity. In atmosphere the ship stays level and keeps to an atmosphere speed limit. Wind, drag and lift (e.g. Aerodynamic Physics) are measured from how the ship reacts and compensated.
+
+[img]https://raw.githubusercontent.com/m-d-meyer/acceleration-control/main/workshop/images/planet.png[/img]
+
+[img]https://raw.githubusercontent.com/m-d-meyer/acceleration-control/main/workshop/images/status.png[/img]
+
+[h2]Limitations - please read[/h2]
+[list]
+[*]Tested in single player only. Planet flights and Real Solar Systems support were tested only briefly; multiplayer and dedicated servers never.
+[*]The script only knows what its cameras have hit. Raycasts often miss asteroids beyond ~6 km, asteroids are treated as spheres, ships and stations are only seen ahead of the ship. Few cameras = less protection.
+[*]Bases must stand still while docking. A moved base is found again when a camera sees it, a moving one cannot be followed.
+[*]The game may refuse a jump started by a script: then press Jump yourself when asked, the script continues afterwards.
+[*]It sets thruster and gyroscope overrides - do not combine it with scripts that do the same.
+[*]The script is close to the 100,000 character limit and minified; the readable source is on GitHub.
+[/list]
+No mod is required. Speed mods, Real Solar Systems, Aerodynamic Physics and water mods are supported when present.
+
+[h2]Links[/h2]
+[list]
+[*]Source code, full command list and all options: [url=https://github.com/m-d-meyer/acceleration-control]github.com/m-d-meyer/acceleration-control[/url]
+[*]DockGate companion script for bases: [i](link to the DockGate Workshop item)[/i]
+[/list]
+
+[h2]Credits[/h2]
+Code: Claude Opus 5.5 (Anthropic), tested in game by me. Recording the way into a dock is a well-known idea from docking scripts such as Automatic Docking 2.0; no code was taken from them. Project structure: MDK2 by Malforge. MIT License.
+
+If you like it, a rating helps others find it. Feedback and bug reports (with a screenshot of the programmable block's text) are welcome!

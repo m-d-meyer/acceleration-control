@@ -88,7 +88,7 @@ Run the programmable block with one of these arguments:
 | `route`             | Plan a route to the selected entry and show it on the map |
 | `goto`              | Fly to the selected entry along a planned route (stops `ApproachBuffer` before it); long distances start with a jump |
 | `goto GPS:name:x:y:z:` | Fly to GPS coordinates (paste a GPS from the game's GPS list); stops in front of the surface if the point is inside a rock |
-| `dock`              | Fly to the base and dock (after docking there once by hand) |
+| `dock`              | Fly to the nearest known dock (within 20 km) and dock; a dock is learned by docking there once by hand |
 | `track GPS:name:x:y:z:` | Real Solar Systems: a sample of a planet's moving GPS; after two samples the ship follows the moving planet into its zone (see Planets) |
 | `track` / `track clear` | Follow again with the samples known / forget them        |
 | `water here` / `water off` | Store the ship's height as this planet's water surface (water mod) / forget it |

@@ -1,0 +1,21 @@
+[b]Disclaimer: the code of this script was written 100% by Claude Opus 5.5 (an AI by Anthropic). It was tested in game by me.[/b]
+
+[h1]Dock Gate - companion for Acceleration Control[/h1]
+Put this script on your [b]base[/b]. When a ship running [i]Acceleration Control[/i] (link below) docks or undocks, it asks the base over the antenna to open the way in; this script triggers your timer blocks and tells the ship when the gate is open.
+
+[h2]Setup[/h2]
+[olist]
+[*]Load the script into a programmable block on the base. Base and ship need antennas in range (relays work).
+[*]Build a timer block named [b]Dock Open[/b] whose toolbar opens the way in (hangar doors, pistons, rotors, lights - anything), and one named [b]Dock Close[/b] that closes it.
+[*]Optional: name the moving parts [b]Dock Gate[/b] or put them in a group of that name. The base then reports "ready" only when all of them have stopped (doors open, pistons and rotors at rest).
+[*]Dock by hand once with the ship, so it knows which connector to ask for.
+[/olist]
+
+[h2]Several docks on one base[/h2]
+Add a part of the connector's name: timers [i]Dock Open Hangar A[/i] / [i]Dock Close Hangar A[/i] and group [i]Dock Gate Hangar A[/i] belong to the connector [i]Connector Hangar A[/i]. Names without such a part belong to every connector - then the gate also opens when a ship docks at another connector.
+
+Run the block with [i]open[/i] or [i]close[/i] to test the timers by hand.
+
+[h2]Links[/h2]
+Acceleration Control: [i](link to the Workshop item)[/i]
+Source: [url=https://github.com/m-d-meyer/acceleration-control]github.com/m-d-meyer/acceleration-control[/url] - MIT License
