@@ -32,13 +32,16 @@ namespace IngameScript
         const int RadarLabels = 5;          // labelled deposits besides the selection
         const int CircleSegments = 48;
 
-        static readonly Color BgColor = new Color(8, 18, 24);
-        static readonly Color PanelColor = new Color(14, 32, 42);
-        static readonly Color GridColor = new Color(32, 78, 96);
-        static readonly Color GridFaint = new Color(22, 52, 64);
-        static readonly Color Cyan = new Color(70, 205, 235);
-        static readonly Color TextColor = new Color(215, 240, 250);
-        static readonly Color DimColor = new Color(120, 160, 175);
+        // High contrast: the game adds glare and reflections on top of LCDs,
+        // which washes out dark greys and mid tones.
+        static readonly Color BgColor = new Color(0, 4, 8);
+        static readonly Color PanelColor = new Color(6, 20, 28);
+        static readonly Color GridColor = new Color(50, 125, 150);
+        static readonly Color GridFaint = new Color(34, 88, 108);
+        static readonly Color Cyan = new Color(90, 225, 255);
+        static readonly Color TextColor = new Color(245, 252, 255);
+        static readonly Color DimColor = new Color(170, 205, 220);
+        const float MinLinePixels = 1.6f;   // thinner lines blur away on low-resolution screens
         static readonly Color RouteColor = new Color(255, 190, 60);
         static readonly Color WarnColor = new Color(255, 110, 80);
         static readonly Color GravityColor = new Color(150, 90, 255);
@@ -51,6 +54,12 @@ namespace IngameScript
         IMyTextSurface _surface;
         Vector2 _origin;
         float _u;                  // pixels per layout unit
+        float _layoutWidth = 512;  // width of the layout in units (wide screens: more than 512)
+        float _layoutHeight = 512;
+        float _maxStem = MaxStem;
+        bool _compact;              // low-resolution wide screen
+        const float CompactPixels = 200;    // wide screens lower than this (px) get the compact layout
+        string _mapScreenInfo = "";
         bool _frameToggle;
 
         // A deposit or asteroid prepared for depth-sorted drawing.
@@ -64,6 +73,8 @@ namespace IngameScript
         void DrawMapSurface(IMyTextSurface surface, MapView view)
         {
             RectangleF viewport = BeginSprites(surface);
+            _mapScreenInfo = string.Format("Map screen: texture {0}x{1} px, used {2}x{3} px", surface.TextureSize.X, surface.TextureSize.Y,
+                surface.SurfaceSize.X, surface.SurfaceSize.Y);
             using (MySpriteDrawFrame frame = surface.DrawFrame())
             {
                 _frame = frame;
@@ -73,12 +84,48 @@ namespace IngameScript
 
                 float width = viewport.Width, height = viewport.Height;
                 bool active = view == _view;
-                if (view == MapView.Radar)
+                _layoutWidth = 512;
+                _compact = false;
+                if (view == MapView.Radar && width >= height * 1.5f && height < CompactPixels)
+                {
+                    // Wide and low resolution (e.g. cockpit screens with a 256 px texture):
+                    // 200 units high, fewer and larger texts, only the selection labelled.
+                    _compact = true;
+                    _u = height / 200f;
+                    _layoutHeight = 200;
+                    _origin = viewport.Position;
+                    float w = _layoutWidth = width / _u;
+                    float radarWidth = Math.Min(200, w - 190), x = radarWidth + 6, panelWidth = w - x - 6;
+                    DrawRadar(radarWidth / 2, 36 + (200 - 36) / 2f + 6, Math.Min(radarWidth / 2 - 6, 90), true);
+                    Rect(x - 4, 37, w - x + 4, 163, BgColor);
+                    DrawCompactPanel(x, 40, panelWidth, 80);
+                    DrawButtons(RadarButtons, x, 126, panelWidth, 3, 34, active);
+                    if (active)
+                        DrawDialog(200);
+                }
+                else if (view == MapView.Radar && width >= height * 1.5f)
+                {
+                    // Wide screen: 300 units high, radar left, info and buttons right,
+                    // so everything is drawn larger than the square layout fitted in.
+                    _u = height / 300f;
+                    _layoutHeight = 300;
+                    _origin = viewport.Position;
+                    float w = _layoutWidth = width / _u;
+                    float radarWidth = Math.Min(300, w - 250), x = radarWidth + 6, panelWidth = w - x - 6;
+                    DrawRadar(radarWidth / 2, 44 + (300 - 44) / 2f + 10, Math.Min(radarWidth / 2 - 10, 130), true);
+                    Rect(x - 4, 45, w - x + 4, 255, BgColor);
+                    DrawSelectionPanel(x, 50, panelWidth, 158);
+                    DrawButtons(RadarButtons, x, 213, panelWidth, 3, 40, active);
+                    if (active)
+                        DrawDialog(300);
+                }
+                else if (view == MapView.Radar)
                 {
                     _u = Math.Min(width, height) / 512f;
+                    _layoutHeight = 512;
                     _origin = viewport.Position + new Vector2((width - 512 * _u) / 2, (height - 512 * _u) / 2);
-                    DrawRadar();
-                    DrawButtons(RadarButtons, 452, active);
+                    DrawRadar(256, 180, RadarRadius, false);
+                    DrawButtons(RadarButtons, 4, 452, 504, RadarButtons.Length, 52, active);
                     if (active)
                         DrawDialog(512);
                 }
@@ -88,7 +135,7 @@ namespace IngameScript
                     _origin = viewport.Position;
                     float h = height / _u;
                     DrawList(h);
-                    DrawButtons(ListButtons, h - 56, active);
+                    DrawButtons(ListButtons, 4, h - 56, 504, ListButtons.Length, 52, active);
                     if (active)
                         DrawDialog(h);
                 }
@@ -97,9 +144,9 @@ namespace IngameScript
 
         void DrawHeader(float height, string right)
         {
-            Rect(0, 0, 512, height, PanelColor);
+            Rect(0, 0, _layoutWidth, height, PanelColor);
             Text("ORE MAP", 12, height / 2 - 15, 0.95f, Cyan);
-            float x = 500;
+            float x = _layoutWidth - 12;
             if (_uiMode)
             {
                 float w = MeasureText("UI MODE", 0.6f, "White") + 14;
@@ -114,11 +161,13 @@ namespace IngameScript
         //  Radar view
         // -----------------------------------------------------------------
 
-        void DrawRadar()
+        // cx, cy, radius: where the radar plane is drawn (layout units). Wide screens
+        // put the info panel beside the radar instead of below it.
+        void DrawRadar(float cx, float cy, float radius, bool wide)
         {
             IMyShipController reference = _controller ?? _layoutController;
-            float cx = 256, cy = 180;
-            float scale = RadarRadius / (float)MapRange;       // units per meter
+            _maxStem = radius * MaxStem / RadarRadius;
+            float scale = radius / (float)MapRange;       // units per meter
             MatrixD ship = reference != null ? reference.WorldMatrix : Me.WorldMatrix;
             Vector3D shipPos = ReferencePosition();
             bool inGravity = false;
@@ -148,20 +197,23 @@ namespace IngameScript
                     toShip = new Vector2(toShip.X / rx, toShip.Y / ry);
                     toShip.Normalize();
                     Vector2 edge = center + new Vector2(toShip.X * rx, toShip.Y * ry);
-                    if (Math.Abs(edge.X - cx) < RadarRadius && Math.Abs(edge.Y - cy) < RadarRadius * PlaneTilt + 20)
+                    if (Math.Abs(edge.X - cx) < radius && Math.Abs(edge.Y - cy) < radius * PlaneTilt + 20)
                         Text("GRAVITY " + FormatDistance(Vector3D.Distance(o.Center, shipPos) - o.GravityRadius),
                             edge.X, edge.Y + 4, 0.55f, GravityColor, TextAlignment.CENTER);
                 }
             }
 
             // Range rings and axes
-            EllipseOutline(cx, cy, RadarRadius, RadarRadius * PlaneTilt, 1.5f, GridColor, false);
-            EllipseOutline(cx, cy, RadarRadius / 2, RadarRadius / 2 * PlaneTilt, 1, GridFaint, false);
-            EllipseOutline(cx, cy, RadarRadius / 4, RadarRadius / 4 * PlaneTilt, 1, GridFaint, false);
-            Line(cx - RadarRadius, cy, cx + RadarRadius, cy, 1, GridFaint);
-            Line(cx, cy - RadarRadius * PlaneTilt, cx, cy + RadarRadius * PlaneTilt, 1, GridFaint);
-            Text(FormatDistance(MapRange), cx + RadarRadius * 0.74f, cy - RadarRadius * PlaneTilt * 0.74f - 20, 0.5f, DimColor, TextAlignment.LEFT);
-            Text(FormatDistance(MapRange / 2), cx + RadarRadius * 0.37f, cy - RadarRadius * PlaneTilt * 0.37f - 18, 0.45f, DimColor, TextAlignment.LEFT);
+            EllipseOutline(cx, cy, radius, radius * PlaneTilt, 1.5f, GridColor, false);
+            EllipseOutline(cx, cy, radius / 2, radius / 2 * PlaneTilt, 1, GridFaint, false);
+            EllipseOutline(cx, cy, radius / 4, radius / 4 * PlaneTilt, 1, GridFaint, false);
+            Line(cx - radius, cy, cx + radius, cy, 1, GridFaint);
+            Line(cx, cy - radius * PlaneTilt, cx, cy + radius * PlaneTilt, 1, GridFaint);
+            if (!_compact)      // the header shows the range; small texts would be unreadable there
+            {
+                Text(FormatDistance(MapRange), cx + radius * 0.74f, cy - radius * PlaneTilt * 0.74f - 20, 0.5f, DimColor, TextAlignment.LEFT);
+                Text(FormatDistance(MapRange / 2), cx + radius * 0.37f, cy - radius * PlaneTilt * 0.37f - 18, 0.45f, DimColor, TextAlignment.LEFT);
+            }
 
             // Asteroids and deposits, far ones first
             _mapItems.Clear();
@@ -169,20 +221,28 @@ namespace IngameScript
                 if (!o.Planet)
                     _mapItems.Add(new MapItem { Rock = o, Local = ToLocal(o.Center, shipPos, ship) });
             foreach (Deposit d in _visibleDeposits)
-                _mapItems.Add(new MapItem { Deposit = d, Local = ToLocal(d.Position, shipPos, ship) });
+                if (d.Zone == _zone)
+                    _mapItems.Add(new MapItem { Deposit = d, Local = ToLocal(d.Position, shipPos, ship) });
             _mapItems.Sort((a, b) => b.Local.Z.CompareTo(a.Local.Z));
 
             // Active route (or the previewed one) as a dashed line with waypoints
             bool flying = _mode == Mode.Approach;
             List<Vector3D> route = flying ? _route : _previewRoute;
+            // Legs are clipped to the screen: waypoints thousands of km away
+            // would otherwise produce endless dashes ("Script Too Complex").
             float px = cx, py = cy;
             for (int i = flying ? _routeIndex : 0; i < route.Count; i++)
             {
                 Vector2 point = ProjectedPoint(ToLocal(route[i], shipPos, ship), cx, cy, scale);
-                Dashed(px, py, point.X, point.Y, 3, flying ? RouteColor : RouteColor * 0.7f);
-                DiamondOutline(point.X, point.Y, 8, RouteColor);
-                if (i < route.Count - 1)
-                    Text("W" + (i + 1), point.X - 12, point.Y - 8, 0.55f, RouteColor, TextAlignment.RIGHT);
+                float ax = px, ay = py, bx = point.X, by = point.Y;
+                if (ClipToLayout(ref ax, ref ay, ref bx, ref by))
+                    Dashed(ax, ay, bx, by, 3, flying ? RouteColor : RouteColor * 0.7f);
+                if (point.X > 0 && point.X < _layoutWidth && point.Y > 0 && point.Y < _layoutHeight)
+                {
+                    DiamondOutline(point.X, point.Y, 8, RouteColor);
+                    if (i < route.Count - 1 && i < (flying ? _routeIndex : 0) + 4)     // planet routes have many
+                        Text("W" + (i + 1), point.X - 12, point.Y - 8, 0.55f, RouteColor, TextAlignment.RIGHT);
+                }
                 px = point.X;
                 py = point.Y;
             }
@@ -200,7 +260,9 @@ namespace IngameScript
 
             // Header and info panel are drawn last so they cover anything that
             // sticks out of the radar area.
-            DrawHeader(44, (inGravity ? "IN GRAVITY  " : "") + FormatDistance(MapRange) + "  " + (_filter ?? "all"));
+            DrawHeader(_compact ? 34 : 44, (inGravity ? "IN GRAVITY  " : "") + FormatDistance(MapRange) + "  " + (_filter ?? "all"));
+            if (wide)
+                return;
             Rect(0, 294, 512, 218, BgColor);
             DrawSelectionPanel(8, 298, 496, 146);
         }
@@ -249,7 +311,7 @@ namespace IngameScript
             }
 
             // Labels only for the selection and the nearest deposits, so they stay readable.
-            if (!selected && _visibleDeposits.IndexOf(d) >= RadarLabels)
+            if (!selected && (_compact || _visibleDeposits.IndexOf(d) >= RadarLabels))
                 return;
             string name = d.Number > 0 ? ShortOre(d.Ore) + d.Number : d.Ore.Length > 10 ? d.Ore.Substring(0, 10) : d.Ore;
             string distance = FormatDistance(d.Distance);
@@ -271,10 +333,10 @@ namespace IngameScript
             Box(x, y, width, height, 1, GridColor);
             float left = x + 12, right = x + width - 12;
 
-            if (_mode == Mode.Jump || _mode == Mode.Dock)
+            if (_mode == Mode.Jump || _mode == Mode.Dock || _mode == Mode.Path)
             {
                 bool jump = _mode == Mode.Jump;
-                Text(jump ? "JUMP  " + FormatDistance(_jumpDistance) : "DOCKING", left, y + 6, 0.8f, jump ? JumpColor : Cyan);
+                Text(jump ? "JUMP  " + FormatDistance(_jumpDistance) : DockTitle, left, y + 6, 0.8f, jump ? JumpColor : Cyan);
                 Text(jump ? _jumpState : DockPhaseText(),
                     left, y + 40, 0.65f, TextColor);
                 Text(string.Format("heading error {0:0.0}°", MathHelper.ToDegrees((float)_alignError)), left, y + 68, 0.55f, DimColor);
@@ -295,10 +357,13 @@ namespace IngameScript
             {
                 Text(_selected.Label, left, y + 6, 0.8f, RouteColor);
                 Text(FormatDistance(_selected.Distance), right, y + 10, 0.7f, TextColor, TextAlignment.RIGHT);
-                Text(DirectionText(_selected.Position, false), left, y + 40, 0.6f, DimColor);
+                Text(_selected.Zone == _zone ? DirectionText(_selected.Position, false) : "GO: flight via the zone change",
+                    left, y + 40, 0.6f, DimColor);
 
+                bool narrow = width < 400;     // info panel beside the radar on wide screens
                 if (_previewRoute.Count > 0 && _previewName == _selected.Label)
-                    Text(string.Format("Route {0} legs  {1}  {2:0} m/s  {3}", _previewRoute.Count, FormatDistance(_routeLength),
+                    Text(narrow ? string.Format("{0} legs  {1}  {2}", _previewRoute.Count, FormatDistance(_routeLength), FormatTime(_routeTime))
+                        : string.Format("Route {0} legs  {1}  {2:0} m/s  {3}", _previewRoute.Count, FormatDistance(_routeLength),
                         _routeDeltaV, FormatTime(_routeTime)), left, y + 64, 0.6f, RouteColor);
                 else
                 {
@@ -311,12 +376,13 @@ namespace IngameScript
                 double total = _deltaVHydrogen + _deltaVElectric;
                 if (total > 0)
                 {
-                    float barW = width - 230;
+                    // Narrow: the numbers go below the bar.
+                    float barW = narrow ? width - 60 : width - 230;
                     Text("dv", left, y + 90, 0.6f, TextColor);
                     Box(left + 32, y + 94, barW, 14, 1, GridColor);
                     double needed = _previewRoute.Count > 0 && _previewName == _selected.Label ? _routeDeltaV : TripDeltaV();
                     Rect(left + 33, y + 95, (barW - 2) * (float)Math.Min(needed / total, 1), 12, needed > total ? WarnColor : RouteColor);
-                    Text(string.Format("{0:0} / {1:0} m/s", needed, total), right, y + 90, 0.55f, TextColor, TextAlignment.RIGHT);
+                    Text(string.Format("{0:0} / {1:0} m/s", needed, total), right, y + (narrow ? 110 : 90), 0.55f, TextColor, TextAlignment.RIGHT);
                 }
             }
 
@@ -324,14 +390,70 @@ namespace IngameScript
                 Text(_message, left, y + height - 26, 0.52f, DimColor);
         }
 
+        // Three large lines for low-resolution screens: what is selected or flown
+        // to, the most important detail, and the last message.
+        void DrawCompactPanel(float x, float y, float width, float height)
+        {
+            Rect(x, y, width, height, PanelColor);
+            Box(x, y, width, height, 1, GridColor);
+            float left = x + 8, right = x + width - 8;
+            string title = "", detail = "";
+            Color color = RouteColor;
+            if (_mode == Mode.Jump)
+            {
+                title = "JUMP " + FormatDistance(_jumpDistance);
+                detail = _jumpState;
+                color = JumpColor;
+            }
+            else if (_mode == Mode.Dock || _mode == Mode.Path)
+            {
+                title = DockTitle;
+                detail = DockPhaseText();
+                color = Cyan;
+            }
+            else if (_mode == Mode.Approach)
+            {
+                title = "> " + _targetName;
+                detail = FormatDistance(_remainingDistance) + "  " + EtaText() + "  " + _currentSpeed.ToString("0") + " m/s";
+            }
+            else if (_selected != null)
+            {
+                title = _selected.Label;
+                detail = FormatDistance(_selected.Distance) + "  " + (_selected.Zone == _zone ? DirectionText(_selected.Position, true) : "");
+            }
+            else
+                title = "No entries";
+            TextFit(title, left, y + 4, 0.85f, right - left, color);
+            TextFit(detail, left, y + 32, 0.68f, right - left, TextColor);
+            if (_message.Length > 0)
+                TextFit(_message, left, y + 56, 0.56f, right - left, DimColor);
+        }
+
+        // Text shrunk to fit a width (down to 75 %), then shortened.
+        void TextFit(string text, float x, float y, float scale, float width, Color color)
+        {
+            float measured = MeasureText(text, scale, "White");
+            if (measured > width)
+            {
+                float fitted = Math.Max(scale * width / measured, scale * 0.75f);
+                string shown = text;
+                for (int n = text.Length - 1; n > 3 && MeasureText(shown, fitted, "White") > width; n--)
+                    shown = text.Substring(0, n) + "..";
+                text = shown;
+                scale = fitted;
+            }
+            Text(text, x, y, scale, color);
+        }
+
         // Distance to the target with the stopping distance marked: braking
         // starts when the orange mark reaches the end of the bar.
         void DrawApproachGauge(float x, float y, float width)
         {
             bool braking = _approachPhase == "BRAKING";
-            Text(_approachPhase, x, y, 0.6f, braking ? RouteColor : Cyan);
+            float scale = width < 380 ? 0.5f : 0.6f;       // narrow panel beside the radar
+            Text(_approachPhase, x, y, scale, braking ? RouteColor : Cyan);
             Text("stop " + FormatDistance(_stopDistance) + " / " + FormatDistance(_remainingDistance),
-                x + width, y, 0.6f, TextColor, TextAlignment.RIGHT);
+                x + width, y, scale, TextColor, TextAlignment.RIGHT);
             float by = y + 26, bh = 18;
             double full = Math.Max(Math.Max(_remainingDistance, _stopDistance), 1);
             Box(x, by, width, bh, 1, GridColor);
@@ -340,6 +462,8 @@ namespace IngameScript
             Rect(stop - 2, by - 4, 4, bh + 8, RouteColor);
             if (_probing)
                 Text("searching ahead, nothing found yet", x, by + bh + 4, 0.5f, DimColor);
+            else
+                Text(EtaText(), x, by + bh + 4, scale, TextColor);
         }
 
         // -----------------------------------------------------------------
@@ -375,6 +499,11 @@ namespace IngameScript
                 Text(FormatDistance(d.Distance), 322, ty + 2, 0.66f, TextColor, TextAlignment.RIGHT);
 
                 // Direction indicator: where the entry is relative to the nose.
+                if (d.Zone != _zone)
+                {
+                    y += ListRowHeight;
+                    continue;
+                }
                 Vector3D local = ToLocal(d.Position, shipPos, ship);
                 double yaw = Math.Atan2(local.X, local.Z), pitch = Math.Atan2(local.Y, new Vector2D(local.X, local.Z).Length());
                 bool behind = Math.Abs(yaw) > Math.PI / 2;
@@ -399,8 +528,8 @@ namespace IngameScript
             Line(6, fy, 506, fy, 1, GridColor);
             if (_mode == Mode.Jump)
                 Text("JUMP " + FormatDistance(_jumpDistance) + "  " + _jumpState, 10, fy + 6, 0.66f, JumpColor);
-            else if (_mode == Mode.Dock)
-                Text("DOCKING  " + DockPhaseText(), 10, fy + 6, 0.66f, Cyan);
+            else if (_mode == Mode.Dock || _mode == Mode.Path)
+                Text(DockTitle + "  " + DockPhaseText(), 10, fy + 6, 0.66f, Cyan);
             else if (_mode == Mode.Approach)
             {
                 Text(_approachPhase + "  " + FormatDistance(_remainingDistance), 10, fy + 6, 0.66f, _approachPhase == "BRAKING" ? RouteColor : Cyan);
@@ -421,16 +550,18 @@ namespace IngameScript
         //  Buttons and dialogs
         // -----------------------------------------------------------------
 
-        void DrawButtons(string[] buttons, float y, bool active)
+        // Buttons in rows of 'columns'; labels shrink if a button is too narrow.
+        void DrawButtons(string[] buttons, float left, float top, float totalWidth, int columns, float height, bool active)
         {
-            float gap = 5, width = (504 - gap * (buttons.Length - 1)) / buttons.Length;
+            float gap = 5, width = (totalWidth - gap * (columns - 1)) / columns;
             for (int i = 0; i < buttons.Length; i++)
             {
-                float x = 4 + i * (width + gap);
+                float x = left + i % columns * (width + gap), y = top + i / columns * (height + gap);
                 bool highlighted = active && i == _button && _dialog == Dialog.None;
-                Rect(x, y, width, 52, highlighted ? Cyan : PanelColor);
-                Box(x, y, width, 52, 1.5f, active ? Cyan : GridColor);
-                Text(buttons[i], x + width / 2, y + 12, 0.72f, highlighted ? BgColor : active ? Cyan : DimColor, TextAlignment.CENTER);
+                Rect(x, y, width, height, highlighted ? Cyan : PanelColor);
+                Box(x, y, width, height, 1.5f, active ? Cyan : GridColor);
+                float scale = Math.Min(0.72f, 0.72f * (width - 10) / Math.Max(MeasureText(buttons[i], 0.72f, "White"), 1));
+                Text(buttons[i], x + width / 2, y + height / 2 - 19 * scale, scale, highlighted ? BgColor : active ? Cyan : DimColor, TextAlignment.CENTER);
             }
         }
 
@@ -438,7 +569,7 @@ namespace IngameScript
         {
             if (_dialog == Dialog.None)
                 return;
-            float x = 40, w = 432, y = 48;
+            float w = Math.Min(432, _layoutWidth - 16), x = (_layoutWidth - w) / 2, y = 48;
             if (_dialog == Dialog.ConfirmDelete)
             {
                 float h = 110;
@@ -487,9 +618,9 @@ namespace IngameScript
             return new Vector2(cx + (float)local.X * scale, cy - (float)local.Z * scale * PlaneTilt);
         }
 
-        static Vector2 ProjectedPoint(Vector3D local, float cx, float cy, float scale)
+        Vector2 ProjectedPoint(Vector3D local, float cx, float cy, float scale)
         {
-            float height = MathHelper.Clamp((float)local.Y * scale * HeightScale, -MaxStem, MaxStem);
+            float height = MathHelper.Clamp((float)local.Y * scale * HeightScale, -_maxStem, _maxStem);
             Vector2 plane = PlanePoint(local, cx, cy, scale);
             return new Vector2(plane.X, plane.Y - height);
         }
@@ -550,18 +681,26 @@ namespace IngameScript
         //  Sprite helpers (coordinates in layout units)
         // -----------------------------------------------------------------
 
+        // Snapped to whole pixels: screens whose used area is not a whole number of
+        // pixels (e.g. 256 x 153.6) otherwise put every edge between two pixels,
+        // which blurs the whole picture.
         Vector2 P(float x, float y)
         {
-            return _origin + new Vector2(x, y) * _u;
+            Vector2 p = _origin + new Vector2(x, y) * _u;
+            return new Vector2((float)Math.Round(p.X), (float)Math.Round(p.Y));
         }
 
         void Rect(float x, float y, float w, float h, Color color)
         {
-            _frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", P(x + w / 2, y + h / 2), new Vector2(w, h) * _u, color));
+            // From the snapped corners, so all four edges lie on pixel borders.
+            Vector2 a = P(x, y), b = P(x + w, y + h);
+            Vector2 size = new Vector2(Math.Max(b.X - a.X, 1), Math.Max(b.Y - a.Y, 1));
+            _frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", a + size / 2, size, color));
         }
 
         void Box(float x, float y, float w, float h, float t, Color color)
         {
+            t = Math.Max(t, MinLinePixels / _u);
             Rect(x, y, w, t, color);
             Rect(x, y + h - t, w, t, color);
             Rect(x, y, t, h, color);
@@ -574,14 +713,46 @@ namespace IngameScript
             float length = d.Length();
             if (length < 0.01f)
                 return;
-            _frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", P((x1 + x2) / 2, (y1 + y2) / 2),
-                new Vector2(length, thickness) * _u, color, null, TextAlignment.CENTER, (float)Math.Atan2(d.Y, d.X)));
+            // Slanted segments are not snapped to pixels: that makes curves look stepped.
+            bool straight = Math.Abs(d.X) < 0.01f || Math.Abs(d.Y) < 0.01f;
+            Vector2 center = straight ? P((x1 + x2) / 2, (y1 + y2) / 2) : _origin + new Vector2(x1 + x2, y1 + y2) * 0.5f * _u;
+            _frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", center,
+                new Vector2(length * _u, Math.Max(thickness * _u, MinLinePixels)), color, null, TextAlignment.CENTER, (float)Math.Atan2(d.Y, d.X)));
+        }
+
+        // Cuts a line to the layout area. False if it lies completely outside.
+        bool ClipToLayout(ref float x1, ref float y1, ref float x2, ref float y2)
+        {
+            float t0 = 0, t1 = 1, dx = x2 - x1, dy = y2 - y1;
+            float[] p = { -dx, dx, -dy, dy }, q = { x1, _layoutWidth - x1, y1, _layoutHeight - y1 };
+            for (int i = 0; i < 4; i++)
+            {
+                if (Math.Abs(p[i]) < 1e-6f)
+                {
+                    if (q[i] < 0)
+                        return false;
+                    continue;
+                }
+                float t = q[i] / p[i];
+                if (p[i] < 0)
+                    t0 = Math.Max(t0, t);
+                else
+                    t1 = Math.Min(t1, t);
+                if (t0 > t1)
+                    return false;
+            }
+            float sx = x1, sy = y1;
+            x1 = sx + dx * t0;
+            y1 = sy + dy * t0;
+            x2 = sx + dx * t1;
+            y2 = sy + dy * t1;
+            return true;
         }
 
         void Dashed(float x1, float y1, float x2, float y2, float thickness, Color color)
         {
             float length = new Vector2(x2 - x1, y2 - y1).Length();
-            int dashes = Math.Max(1, (int)(length / 12));
+            int dashes = MathHelper.Clamp((int)(length / 12), 1, 60);
             for (int i = 0; i < dashes; i++)
             {
                 float t0 = (float)i / dashes, t1 = t0 + 0.5f / dashes;
@@ -640,15 +811,38 @@ namespace IngameScript
         void Text(string text, float x, float y, float scale, Color color,
             TextAlignment alignment = TextAlignment.LEFT, string font = "White")
         {
-            MySprite sprite = MySprite.CreateText(text, font, color, scale * _u, alignment);
-            sprite.Position = P(x, y);
+            // Aligned here instead of by the game, so the text starts on a whole pixel.
+            float pixelScale = TextPixelScale(scale);
+            Vector2 position = P(x, y);
+            if (alignment != TextAlignment.LEFT)
+            {
+                _measure.Clear().Append(text);
+                float width = _surface.MeasureStringInPixels(_measure, font, pixelScale).X;
+                position.X = (float)Math.Round(position.X - (alignment == TextAlignment.CENTER ? width / 2 : width));
+            }
+            MySprite sprite = MySprite.CreateText(text, font, color, pixelScale, TextAlignment.LEFT);
+            sprite.Position = position;
             _frame.Add(sprite);
         }
 
         float MeasureText(string text, float scale, string font)
         {
             _measure.Clear().Append(text);
-            return _surface.MeasureStringInPixels(_measure, font, scale * _u).X / _u;
+            return _surface.MeasureStringInPixels(_measure, font, TextPixelScale(scale)).X / _u;
         }
+
+        // Font scale on the surface, with ScreenTextScale from Custom Data applied.
+        // Rounded so the line height is a whole number of pixels.
+        float TextPixelScale(float scale)
+        {
+            if (_fontHeight <= 0)
+            {
+                _measure.Clear().Append("A");
+                _fontHeight = Math.Max(_surface.MeasureStringInPixels(_measure, "White", 1).Y, 1);
+            }
+            return Math.Max(1, (float)Math.Round(scale * _u * _screenTextScale * _fontHeight)) / _fontHeight;
+        }
+
+        float _fontHeight;      // line height of the font at scale 1 (px)
     }
 }

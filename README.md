@@ -28,6 +28,10 @@ acceleration instead — in m/s², independent of cargo mass.
   number of trips it allows
 - **Ore map**: deposits marked with a camera scan or logged automatically while mining,
   shown as a 3D radar and as a list, with GPS export and toolbar-driven buttons
+- **Planets**: flights on and around planets (climb, follow the curvature, descend
+  above the target, ship kept level), atmosphere speed limit, wind/drag/lift
+  compensation, and support for the Real Solar Systems mod (planet zones with their
+  own coordinates, flights across zone changes)
 - Settings survive saving/reloading the world
 
 ## Setup
@@ -85,6 +89,9 @@ Run the programmable block with one of these arguments:
 | `goto`              | Fly to the selected entry along a planned route (stops `ApproachBuffer` before it); long distances start with a jump |
 | `goto GPS:name:x:y:z:` | Fly to GPS coordinates (paste a GPS from the game's GPS list); stops in front of the surface if the point is inside a rock |
 | `dock`              | Fly to the base and dock (after docking there once by hand) |
+| `track GPS:name:x:y:z:` | Real Solar Systems: a sample of a planet's moving GPS; after two samples the ship follows the moving planet into its zone (see Planets) |
+| `track` / `track clear` | Follow again with the samples known / forget them        |
+| `water here` / `water off` | Store the ship's height as this planet's water surface (water mod) / forget it |
 | `undock`            | Disconnect and back off from the base                    |
 | `delete`            | Delete the selected deposit                              |
 | `filter [<ore>/all]`| Show only one ore; without argument: next ore            |
@@ -126,6 +133,7 @@ first run. Edit them there and run `reload`.
 | `HydrogenThrustPerLiter` | `1400` | Start value for hydrogen efficiency (N·s per liter), calibrated in flight |
 | `UraniumMWhPerKg`    | `1`       | Start value for reactor fuel energy (MWh per kg), calibrated in flight |
 | `ElectricThrustPerMW`| `120000`  | Fallback for electric thrusters if their power use cannot be read |
+| `ScreenTextScale`    | `1`       | Text size on the sprite screens (map, list, status), 0.5 to 2; larger text may not fit everywhere |
 | `MapTag`             | `[Accel Map]` | LCD panels with this text show the ore map with buttons    |
 | `ListTag`            | `[Accel List]` | LCD panels with this text show the ore list               |
 | `MapCockpitSurface`  | `-1`      | Cockpit screen index for the ore map, `-1` = off               |
@@ -134,7 +142,7 @@ first run. Edit them there and run `reload`.
 | `LogStone`           | `false`   | Also log stone                                                 |
 | `MergeDistance`      | `150`     | Entries of the same ore closer than this are treated as one (m) |
 | `GravityWellFactor`  | `1.7`     | Gravity well size relative to a scanned planet's radius        |
-| `Survey`             | `true`    | Cameras scan the surroundings in the background for asteroids   |
+| `Survey`             | `true`    | Cameras scan the surroundings in the background for asteroids (not while docked) |
 | `SurveyRange`        | `6000`    | Range of the background scans (m)                              |
 | `SearchRange`        | `50000`   | How far an approach searches along the line of sight (m)       |
 | `AlignShip`          | `true`    | Turn the ship along its route with the gyroscopes              |
@@ -148,6 +156,15 @@ first run. Edit them there and run `reload`.
 | `DockApproach`       | `30`      | Distance in front of the base connector where docking starts (m, plus ship radius) |
 | `UseStrongestThrusters` | `true` | Turn the ship so its strongest thrusters push along the flight, and flip for braking if worth it |
 | `FlipTime`           | `30`      | Seconds planned for turning around before braking                 |
+| `PlanetZones`        | `false`   | Real Solar Systems: each planet zone has its own coordinates (switches on by itself at the first teleport into or out of a planet zone) |
+| `PlanetCruiseHeight` | `1500`    | Height above the ground (start, target, terrain seen) for flights on a planet (m); short hops fly lower |
+| `AtmosphereHeight`   | `12000`   | Assumed top of the atmosphere above sea level until the ship has measured it (m) |
+| `AtmosphereSpeed`    | `100`     | Speed limit inside an atmosphere (m/s); the ship brakes to it before entering, `0` = off |
+| `GravityFalloff`     | `7`       | Gravity falloff exponent until measured (vanilla planets: 7; mods may use less) |
+| `CompensateWind`     | `true`    | Measure wind, drag and lift and compensate them during flights |
+| `WaterLevel`         | `0`       | Water surface above sea level (water mod); planet routes cruise at least 200 m above it (m) |
+| `ZoneEntrySpeed`     | `100`     | Speed relative to a followed planet when entering its zone (m/s) |
+| `ZoneRadiusGuess`    | `200000`  | Assumed zone radius around a followed planet's GPS until the first entry has measured it (m); better too large than too small |
 
 ## Drive assists
 
@@ -239,17 +256,37 @@ gravity wells, and **GO** refuses to fly straight through a known asteroid.
 The **base** is marked like an ore: choose *Base* in the MARK list, or run
 `mark base here` while docked. It is shown as a square.
 
+**Recorded way to a deposit.** While the ship moves, the script keeps its recent
+poses (position and orientation). `mark <ore> here` and the first automatic log of
+a mining session store the last 300 m of the way in with the deposit. **GO** on such
+a deposit flies to the start of that way and then follows it slowly (8 m/s) in the
+recorded orientation, so the ship arrives on the right side of the asteroid, facing
+it as when mining, and stops about 5 m before the recorded end. The cameras look
+ahead along the way; if something blocks it for 10 seconds, the ship stops and asks
+the pilot to take over (useful for very jagged asteroids). Deposits logged before
+this feature have no way stored; they are approached as before.
+
 ### Screens
 
 - **Radar** (`[Accel Map]`): a plane through the ship that turns with it, forward is up.
   Deposits sit on stems that show how far above or below the ship they are. Grey
   spheres are known asteroids, violet areas are gravity wells. Deposits beyond the
-  range appear as small markers on the edge.
+  range appear as small markers on the edge. On wide screens (1.5:1 or wider) the
+  radar is on the left and the info panel and buttons on the right, drawn about
+  twice as large as the square layout would be. Wide screens with a low resolution
+  (below 200 px high, e.g. cockpit screens that only have a 256 px texture) get a
+  compact layout: three large lines about the selection or the flight, and only the
+  selected entry labelled on the radar. The programmable block's detail info shows
+  the screen's resolution.
 - **List** (`[Accel List]`, or the `[Accel Map]` screen after pressing LIST): deposits
   sorted by distance, with the direction relative to the ship's nose (degrees
   left/right and up/down, plus a small indicator).
 - Both show the selected deposit, whether the direct path is clear and the delta-v
-  of the trip.
+  of the trip; during a flight the remaining distance, stopping distance and an ETA
+  (leg by leg with the planned waypoint speeds, `MaxSpeed` or `AtmosphereSpeed` in
+  air, planned braking and the turn of a flip; climbs in gravity count the weight).
+- The status screen shows the current acceleration limit (`up`/`down`) in the title
+  line of the power card.
 - The Custom Data of every map screen contains all deposits as GPS lines. Copy them
   and use **Paste from clipboard** in the game's GPS menu to get HUD markers.
 
@@ -285,10 +322,32 @@ movement keys. The actions are also available as commands (`ui left`, `ui right`
 **ROUTE** plans a route to the selected entry and draws it on the radar, with its
 length, delta-v and flight time. **GO** plans and flies it.
 
+- **Leaving a hangar**: before a flight turns the ship (towards the route or to
+  align for a jump), the cameras check a sphere around it (ship radius + 5 m). Hangar
+  walls and other ships are not on the map, so this is the only way to know. If
+  something is inside, the ship first moves straight out without turning, in the
+  ship direction that the cameras see clear for three ship radii plus
+  `ApproachBuffer`, preferably backwards, and checks again afterwards. If no
+  camera sees a direction clear, the way the ship came in is used; otherwise the
+  flight stops with "fly out by hand". Rear and side cameras make this work in
+  every direction.
 - **Leaving a rock**: if the ship is next to an asteroid or a deposit (e.g. after
-  mining), it first moves straight out at 10 m/s without turning, backwards (the way
-  it came in) if that leads away from the rock. Only then does it turn, plan and fly
-  or jump.
+  mining), it first moves straight out at 10 m/s without turning: backwards if that
+  leads away from the rock, else directly away or along another ship axis. The way
+  must be clear on the map (another rock may be right behind the ship) and seen
+  clear by the cameras. If no camera looks that way, only the way the ship came in
+  is used (it just passed there, e.g. backing out of a mine it drilled forward
+  into); otherwise the flight stops and asks to move away by hand. Only then does
+  it turn, plan and fly or jump.
+- **Charged cameras**: a camera that looks the right way but has not charged enough
+  range yet (the background survey uses it up) makes the ship wait a second and look
+  again, up to ten times, instead of moving without seeing. The survey pauses
+  meanwhile. Landed on a planet with only the ground close by, the way out is
+  straight up, also without a camera looking up.
+- **Camera checks for straight moves**: every camera facing the way looks straight
+  along it from where it sits on the hull (cameras offset to the sides are fine), plus
+  rays to the ship's centre line and four lines around it. One camera facing the way
+  that sees it clear is enough.
 - **Planning**: if a known asteroid (or a planet's gravity well) is in the way, the
   route gets a waypoint beside it, keeping the ship's radius plus `ApproachBuffer`
   of distance. If the ship would drift too far in the turn at that waypoint (from
@@ -340,7 +399,152 @@ length, delta-v and flight time. **GO** plans and flies it.
   done (usually within the first second of the first turn), it turns slowly.
   `calibrate reset` repeats this.
 
+## Planets
+
+### Flying on a planet
+
+When the start or the target of a flight lies in a planet's gravity well and the
+direct line would pass lower than the cruise height, the route:
+
+1. climbs straight up to the cruise height (`PlanetCruiseHeight` above the higher of
+   the ground under the ship and the target; for short hops a quarter of the
+   distance, at least 200 m),
+2. follows the curvature of the planet at that height (waypoints at most 100 m below
+   the cruise sphere) and heads straight for the point above the target as soon as
+   that line clears the planet. Long flights go 500 m above the atmosphere instead if that is
+   faster (climb and descent at `AtmosphereSpeed`, the rest at `MaxSpeed`). Coming
+   from higher up (from space, or after entering a planet zone in orbit) the ship
+   flies straight to the farthest point of that arc it can see past the planet (a
+   tangent) instead of circling at its height,
+3. descends vertically above the target and stops `ApproachBuffer` plus the ship's
+   radius above it. Targets high above the planet (above the atmosphere and more
+   than 10 % of the radius above sea level, e.g. asteroids in a large gravity well)
+   are flown to directly once the planet is out of the way.
+
+The ship flies level (its up side against gravity, only the nose turning towards
+the flight direction, no flip-and-burn or strongest-thruster orientation) inside
+an atmosphere, or where gravity is more than 30 % of what its weakest thrust side
+can push. In weaker gravity (e.g. high above a planet with a wide gravity well) it
+is flown like in space. Climbs and descents in level flight use the up/down
+thrusters. Braking on a descent is planned with the upward thrust
+minus gravity. If the collision guard sees terrain ahead, the route is planned again
+higher. Leaving a mine on a planet starts with a straight climb.
+
+All planet heights are geodetic: distances from the planet's center, which the game
+reports exactly together with the sea level radius. The cruise height is a sphere
+around the center, so a deep sea floor under the route does not pull it down: it is
+at least `PlanetCruiseHeight` (short hops: a quarter of the distance, min. 200 m)
+above the highest of
+
+- the ground under the ship at the start and the target point (its distance from
+  the center),
+- terrain the collision guard has seen on this flight,
+- the water surface (water mod; raycasts do not see water): per planet with
+  `water here` (float on the water or hover just above it and run it once), else
+  `WaterLevel` above sea level.
+
+Final descents end above the target.
+
+Flights in gravity only start if the ship's upward thrusters give at least 1.1 times
+the local gravity. Locked landing gear is unlocked while a flight is under way, so
+the ship does not pull against it (and auto-lock does not catch the ground again).
+
+### Atmosphere
+
+Inside the atmosphere the speed is limited to `AtmosphereSpeed`; above it, a flight
+that goes down into the atmosphere slows down in time to enter at that speed. The
+top of the atmosphere is measured with the ship's atmospheric thrusters (they gain
+thrust in air) or ion thrusters (they lose thrust) and stored per planet. Until then `AtmosphereHeight` above sea level is assumed.
+
+### Wind, drag and lift
+
+During flights the script measures the ship's acceleration and subtracts what the
+thrusters (their actual output) and gravity explain. The rest is the external
+acceleration: wind, aerodynamic drag, lift from wings. It is filtered (1 s) and
+compensated like gravity, so the ship holds course and speed in wind and the
+thrusters only add what the wings do not carry. Not used while cruising: drilling
+pushes back, and compensating that would push the ship into the rock when the drills
+break through. The control page shows it as
+"Wind/drag". `CompensateWind=false` turns it off.
+
+### Real Solar Systems
+
+With this mod the planets you see move, but the real planets are static and far
+away; approaching a planet teleports the ship into that planet's zone, which has its
+own coordinates. The script detects teleports (a position jump that the velocity and
+the jump drive do not explain):
+
+- Map entries, obstacles and the base remember the zone they were recorded in. The
+  radar shows only the current zone; the list shows entries of other zones with
+  "other zone" instead of a distance. GPS export only contains the current zone.
+- A teleport ends the current flight. Within the same planet zone (e.g. between
+  orbit and surface) the route is simply planned again.
+- GO/dock to an entry in another zone: in a planet zone the ship climbs straight up
+  until the zone changes. In space the script cannot see the moving proxy planets
+  itself, so either fly there yourself or let it follow the planet (below). As soon
+  as the ship is in the target's zone, the flight continues automatically. The
+  control page shows "Waiting for the zone of …".
+- The mod's zone change can change the ship's velocity (a planet "running into" a
+  resting ship). Keep dampeners on when entering a zone by hand. If the ship then
+  falls faster than its upward thrust can stop above the ground, the control page
+  shows a warning. Simulated: a ship with 1.5 g of upward thrust entering 60 km up at
+  1500 m/s cannot be saved; at 500 m/s, or with 3 g, all runs stopped safely.
+
+**Following a moving planet.** The mod keeps a moving copy of every GPS placed on
+a planet (marked `PROXY_DO_NOT_EDIT`), e.g. of your base. Scripts cannot read the GPS
+list, but they can be given samples:
+
+1. GO/dock to the base (or any entry on the planet) while in space: the script waits
+   for the zone change.
+   The mod's setting `EnablePlanetGPSAll` (or `EnablePlanetGPSUnlocking`, a GPS
+   when a zone is entered for the first time) gives every planet such a GPS.
+2. Copy the planet's moving GPS (e.g. the proxy copy of your base GPS) and run
+   `track GPS:...` with it. Do it again 10-30 s later (a third time improves the
+   prediction on curved orbits).
+3. From two samples the script knows where the GPS is and how it moves (from three
+   also how its path curves) and follows it: it matches the planet's velocity and
+   closes in, braking to `ZoneEntrySpeed` relative to the planet before the zone
+   edge, because the zone change keeps that relative speed. The first time the zone
+   edge is not known (`ZoneRadiusGuess`); at the zone change its distance is
+   measured and stored per planet, so later approaches brake at the right place.
+4. After the zone change the flight continues to the base on the planet.
+
+Simulated (planet on a circular orbit, 3 samples 15 s apart): entry at about
+100 m/s relative to the planet when the zone is smaller than `ZoneRadiusGuess`, but
+340 m/s when the real zone was 150 km and the guess 100 km, hence the generous
+default. The prediction was off by less than 3 km after hours of flight.
+
+The control page shows any measurable gravity, also in space without a real planet
+("no planet"), and while following a GPS the angle between gravity and the GPS
+direction. That shows whether the proxy planets have a gravity scripts can see.
+
+Pasting the GPS again during the flight refreshes the prediction (the oldest sample
+is dropped). If the planet moves faster than `MaxSpeed`, the ship cannot match its
+velocity; the script says so. The collision guard stops the ship in front of
+obstacles; steer past and run `track` to continue.
+
+The zone of a planet reaches farther out than its gravity. A teleport outside
+gravity is assigned to the nearest known planet (within 1.5 times its gravity
+radius plus 50 km), e.g. a base in space near the Moon belongs to the Moon's zone.
+If no planet is known yet, entries recorded there are marked provisionally and
+relabelled as soon as the ship reaches that planet's gravity without another
+teleport. If the base was recorded in the wrong zone by an earlier version, dock by
+hand once more.
+
+Zones switch on by themselves at the first teleport into or out of a planet zone.
+If the ship is already in a planet zone when the script is installed, set
+`PlanetZones=true`, otherwise entries recorded before the first teleport count as
+space. The gravity falloff of the mod's planets is measured in flight
+(`GravityFalloff` is only the start value), so the size of the gravity wells that
+routes avoid in space is estimated correctly.
+
 ## Jump drive
+
+During a flight the script jumps as soon as it can: when the ship leaves a planet's
+gravity (no jumps inside it) or the target changes, and the current leg is at least
+`JumpMinDistance` long and would take more than two minutes to fly, it stops, aligns
+and jumps (drive charged). A jump is recognised by the sudden position change, so it
+also works when the ship was still moving when the jump was planned.
 
 If the first leg of the planned route is longer than `JumpMinDistance` (and the
 ship is outside gravity), GO first jumps along that leg, which is known to be clear: the ship stops, sets the jump distance, waits until a jump drive is ready,
@@ -364,7 +568,8 @@ script does not know; if no jump happens within 90 seconds, the flight stops.
    dock pose: where the connector was, how the ship was oriented and where its
    grid was, plus all grids belonging to the base (including rotor and piston
    parts). The base entry on the
-   map is set to that position.
+   map is set to that position. The last 300 m of the way in are stored too,
+   relative to the base grid (see *Recorded way in* below).
 2. From then on, **GO** on the base (or `dock`) flies there, jumping if far, and
    stops at an approach point in front of the connector (twice the ship's radius
    plus `DockApproach`), far enough out to turn without touching the base.
@@ -393,7 +598,68 @@ towards the connector side of the ship make them more complete. Sensors with
 `[Accel]` in their name are also used during the final approach (set their range
 yourself). Parts of the base never count as obstacles.
 
-This works for bases that do not move. Movement keys cancel docking at any time.
+**Several bases.** Every base keeps its own dock: docking by hand at another base
+adds (or updates) a base entry on the map with that dock, its recorded way in and
+its gate connector, and the others are kept. **GO** on a base entry docks there;
+`dock` takes the nearest base with a dock in the current zone within 20 km; if
+there is none, it refuses (teach the dock by hand first, or use GO on a base entry
+for a far base). `undock` uses the dock the ship is at. One dock per base entry:
+docking by hand at another connector of the same base replaces that base's dock.
+
+**Recorded way in.** If the dock was recorded with a way in (the ship came at
+least 20 m while the script ran), steps 2-7 are replaced: the ship flies to the
+start of the recorded way and follows it in the recorded orientation, slowly, as you
+flew it (1.5 m/s near the connector), which also works in tight hangars and from the
+right side. It turns into each recorded pose before moving on, scans ahead along the
+way and waits while something is in it; after 10 seconds blocked it stops and asks
+you to take over. `undock` follows the same way backwards out. Docks recorded before
+this feature have no way in: dock by hand once more to record it. The way is
+recorded only while the script runs (the last 300 m before the connector locks, at
+least 20 m); the message after docking says "Dock position and the way in saved".
+Reloading the world or the script while docked keeps the recorded way. Only
+connections made while this ship is piloted (or docking by script) count as docking:
+a small ship docked onto this one is carried along, not taken for the base, and its
+grid is ignored by the cameras. Connections that exist when the script starts count
+as docked only at the known dock. Without a
+way in, `dock` shows "No recorded way in" and uses the point in front of the
+connector, which is wrong for hangars whose connector does not face the entrance.
+
+On the last meters the ship moves its connector to the recorded place (slightly
+into the other connector) until it locks; if it has not locked after 15 seconds,
+the ship stops and says so. While the way into or out of the dock is blocked by a
+part of the base (e.g. a gate that a sensor opens), the ship waits up to a minute.
+
+### Gates
+
+A base can open a gate, hangar door, pistons, rotors or lights for the ship. Put the
+companion script `dist/DockGate.cs` into a programmable block on the base; ship and
+base need antennas in range of each other (relays work).
+
+1. Build a timer block named **Dock Open** whose toolbar opens the way in (any
+   actions: hangar doors, pistons, rotors, lights), and one named **Dock Close**
+   that closes it again.
+2. Optional: name the moving parts **Dock Gate** (or put them in a group of that
+   name). The base answers "ready" once all of them have stopped moving (doors open,
+   pistons and rotors at rest); without them it answers right away.
+3. Several docks on one base: add a part of the connector's name, e.g. timers
+   `Dock Open Hangar A` / `Dock Close Hangar A` and group `Dock Gate Hangar A`
+   belong to the connector `Connector Hangar A`. Names without such a part belong
+   to every connector.
+
+`dock` asks the base to open when the flight starts and again before following
+the way in; the ship waits at the start of the way until the base reports the gate
+open (at most a minute; without an answer within two seconds it just goes on).
+When the ship is docked it asks the base to close. `undock` opens the gate before
+moving out and closes it at the end of the way out. Running the base PB with `open`
+or `close` triggers the timers by hand. The gate stays open if a dock flight is
+cancelled. Dock by hand once with this version, so the ship knows the base
+connector to ask for.
+
+**Base position.** All dock data is stored relative to the base grid. Whenever a
+camera ray hits the base grid (background survey, collision guard, docking scans),
+its current position and orientation are taken from the hit, so the dock is found
+even when the base appears in other coordinates (e.g. another Real Solar Systems
+zone frame) or has moved. Movement keys cancel docking at any time.
 
 ## GPS coordinates and waypoints
 
@@ -424,6 +690,10 @@ This works for bases that do not move. Movement keys cancel docking at any time.
 Entries that are already known (same ore within `MergeDistance`, same asteroid) are
 not added twice.
 
+With planet zones in use (Real Solar Systems) the export starts with a `ZONE:` line,
+so the receiving ship files the entries under the right zone even if it is somewhere
+else. GPS lines without it count as the current zone.
+
 ## How it works
 
 Every tick the script reads the movement input of the controlled cockpit. For
@@ -442,6 +712,10 @@ at the limit until the ship is almost stopped.
 
 ## Notes
 
+- Flights (approach, GO/goto, docking, cruise) go on when you leave the seat: the
+  script then uses any cockpit or remote control of the ship as reference. The
+  acceleration limit itself needs a pilot. A jump still waits for someone to press
+  Jump if the game refuses the script's jump (cancelled after 90 s).
 - If the limit is higher than what your thrusters can deliver, the thrusters
   simply run at 100 %, as in vanilla.
 - Turning the programmable block **off** while flying can leave thruster
@@ -449,6 +723,42 @@ at the limit until the ship is almost stopped.
 - The script overrides the thrusters on its own construct (including thrusters
   on rotor/piston subgrids that are aligned with the cockpit). Do not combine it
   with other scripts that also set thruster overrides.
+
+## Limitations
+
+Good to know before relying on the script. "Tested" below means flown in a single
+player game; everything else was checked with the compiler and simulations only.
+
+**Not or only briefly tested in game**
+- Planet flights (climb, arc, descent, atmosphere limit, wind compensation) were
+  developed with simulations and flown only a few times.
+- Real Solar Systems support (zones, `track`) is built for that mod's behaviour as
+  described by its author; it was tried in one save.
+- Multiplayer and dedicated servers were never tried.
+
+**Bases and docking**
+- Bases must stand still while the ship docks. A base that was moved is found again
+  once a camera ray hits it, but the ship does not follow a moving base.
+- One dock per base entry on the map. The way in is recorded only while the script
+  runs (last 300 m, at least 20 m flown by hand) and is replayed slowly (8 m/s);
+  the ship does not steer around something new on it, it waits and then hands over.
+- Gates need the `DockGate` script on the base and antennas in range.
+
+**Sensing**
+- The script only knows what its cameras have hit. Camera rays often miss asteroids
+  farther than about 6 km, asteroids are approximated by spheres, and ships and
+  stations are not on the map: the collision guard sees them only ahead of the ship.
+  Few or badly placed cameras mean less protection.
+- Scripts cannot see water (water mod) or read wind; wind, drag and lift are
+  estimated from how the ship reacts.
+
+**Game limits**
+- The game may refuse a jump started by a script: the pilot then has to press Jump.
+- The script runs every tick and does a lot of work; many known asteroids cost
+  instructions. It sets thruster and gyroscope overrides, so do not combine it with
+  other scripts that do the same.
+- The paste-ready script is minified to fit the 100,000 character limit (about 98k
+  used); the readable source is in this repository.
 
 ## Development
 
@@ -468,8 +778,13 @@ The script is an [MDK2](https://github.com/malforge/mdk2) project in
 | `Navigation.cs`    | Route planning, gyroscopes, collision guard     |
 | `Jumping.cs`       | Jump drive                                      |
 | `Docking.cs`       | Automatic docking at the base                   |
+| `Paths.cs`         | Recorded ways (docking, deposits), base pose, gates |
+| `Planets.cs`       | Planet flights, atmosphere, Real Solar Systems  |
 | `StatusDisplay.cs` | Graphical ship status page                      |
 | `Config.cs`        | Custom Data configuration and saved state       |
+
+[`DockGate/`](DockGate) is the small companion script for bases (gates, see
+*Docking*), built into [`dist/DockGate.cs`](dist/DockGate.cs).
 
 With Space Engineers installed, the project can be opened in Visual Studio or Rider
 with MDK2 for full compiler checks and IntelliSense.
@@ -492,3 +807,20 @@ with the C# compiler (needs the .NET SDK):
 **Check code** in the game remains the final check.
 
 Always rebuild `dist/` after changing the source files.
+
+## Credits
+
+- Written with [Claude](https://claude.ai) (Anthropic's AI assistant, via Claude
+  Code) following the author's design decisions and in-game tests. No code was
+  taken from other scripts.
+- Recording the way into a dock and replaying it is a well-known idea from
+  dedicated docking scripts such as *Automatic Docking 2.0*; the implementation
+  here is independent.
+- Project structure: [MDK2](https://github.com/malforge/mdk2) by Malforge.
+- The API checks in `tools/` use the API documentation of the
+  [MDK-SE wiki](https://github.com/malware-dev/MDK-SE/wiki) (not part of the
+  script) and the [Roslyn](https://github.com/dotnet/roslyn) C# compiler.
+
+## License
+
+[MIT](LICENSE)

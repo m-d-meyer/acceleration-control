@@ -67,12 +67,12 @@ namespace IngameScript
         {
             GridTerminalSystem.GetBlocksOfType(_cargoBlocks, b => b.IsSameConstructAs(Me) && b.HasInventory
                 && (b is IMyCargoContainer || b is IMyShipConnector || b is IMyShipDrill || b is IMyGasGenerator));
-            GridTerminalSystem.GetBlocksOfType(_batteries, b => b.IsSameConstructAs(Me));
-            GridTerminalSystem.GetBlocksOfType(_reactors, b => b.IsSameConstructAs(Me));
+            OwnBlocks(_batteries);
+            OwnBlocks(_reactors);
             GridTerminalSystem.GetBlocksOfType(_hydrogenTanks, b => b.IsSameConstructAs(Me)
                 && b.BlockDefinition.SubtypeId.Contains("Hydrogen"));
-            GridTerminalSystem.GetBlocksOfType(_jumpDrives, b => b.IsSameConstructAs(Me));
-            GridTerminalSystem.GetBlocksOfType(_drills, b => b.IsSameConstructAs(Me));
+            OwnBlocks(_jumpDrives);
+            OwnBlocks(_drills);
 
             _hydrogenThrusters.Clear();
             _electricThrusters.Clear();
@@ -132,6 +132,8 @@ namespace IngameScript
             ReadPower();
             AutoLogMining();
             UpdatePlanet();
+            UpdateAir();
+            UpdateWeakestAccel();
             CheckDocking();
 
             double hydrogenUsed = _previousHydrogen >= 0 ? _previousHydrogen - _hydrogen : -1;

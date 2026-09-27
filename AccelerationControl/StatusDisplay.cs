@@ -122,6 +122,11 @@ namespace IngameScript
         void DrawPowerCard(float x, float y, float w, float h)
         {
             Card(x, y, w, h, "POWER & FUEL");
+            // Acceleration limit (up/down commands) in the card's title line.
+            string limit = _enabled ? string.Format("limit {0:0.0} m/s² {1:0.00}g", _limit, _limit / 9.81) : "limit OFF";
+            float room = w - 30 - MeasureText("POWER & FUEL", 0.55f, "White");
+            float scale = Math.Min(0.55f, 0.55f * room / Math.Max(MeasureText(limit, 0.55f, "White"), 1));
+            Text(limit, x + w - 10, y + 7, Math.Max(scale, 0.4f), _enabled ? Cyan : DimColor, TextAlignment.RIGHT);
             float ry = y + 34, bottom = y + h - 62;
 
             if (_batteryMax > 0 && ry < bottom)

@@ -52,7 +52,7 @@ namespace IngameScript
 
             string control = BuildControlText(info);
             string status = BuildStatusText();
-            Echo(control + "\n" + status);
+            Echo(control + "\n" + status + "\n" + _mapScreenInfo);
 
             foreach (IMyTextPanel p in _controlPanels)
                 WriteSurface(p, control);
@@ -113,6 +113,7 @@ namespace IngameScript
             _text.AppendFormat("Limit: {0:0.00} m/s² ({1:0.00} g)\n", _limit, _limit / 9.81);
             _text.AppendLine("Dampeners: " + (_limitDampeners ? "limited" : "full thrust"));
             AppendModeStatus();
+            AppendPlanetStatus();
 
             if (mass > 0)
             {
@@ -131,6 +132,37 @@ namespace IngameScript
             return _text.ToString();
         }
 
+        // Gravity, height, air and the measured wind while near a planet.
+        void AppendPlanetStatus()
+        {
+            if (_zoneGoal)
+                _text.AppendLine("Waiting for the zone of " + _zoneGoalName);
+            IMyShipController reference = _controller ?? _layoutController;
+            if (_tracking && _mode == Mode.Approach && reference != null)
+                _text.AppendFormat("Planet moves {0:0} m/s, closing {1:0} m/s\n", _trackVelocity.Length(),
+                    Vector3D.Dot(reference.GetShipVelocities().LinearVelocity - _trackVelocity,
+                        Vector3D.Normalize(_approachTarget - ReferencePosition())));
+            // Any measurable gravity is shown, also without a real planet (e.g. a
+            // Real Solar Systems proxy), with its direction relative to a followed GPS.
+            if (_planet == null && _gravity.LengthSquared() < 1e-6)
+                return;
+            _text.AppendFormat("Gravity {0:0.000} g", _gravity.Length() / 9.81);
+            if (_planet == null)
+            {
+                _text.Append("  no planet");
+                if (_tracking && _mode == Mode.Approach)
+                    _text.AppendFormat("  {0:0}° off GPS", MathHelper.ToDegrees(Math.Acos(MathHelper.Clamp(Vector3D.Dot(
+                        Vector3D.Normalize(_gravity), Vector3D.Normalize(_approachTarget - ReferencePosition())), -1, 1))));
+            }
+            if (_planet != null)
+                _text.Append("  alt " + FormatDistance(Vector3D.Distance(ReferencePosition(), _planet.Center) - _planet.Radius));
+            if (_air >= 0)
+                _text.AppendFormat("  air {0:0}%", _air * 100);
+            _text.AppendLine();
+            if (_disturbance.LengthSquared() > 0.01)
+                _text.AppendFormat("Wind/drag {0:0.0} m/s² compensated\n", _disturbance.Length());
+        }
+
         void AppendModeStatus()
         {
             if (_scanPending)
@@ -144,11 +176,12 @@ namespace IngameScript
                     _text.AppendFormat("Jump {0}: {1}\n", FormatDistance(_jumpDistance), _jumpState);
                     break;
                 case Mode.Dock:
-                    _text.AppendLine("Docking: " + DockPhaseText());
+                case Mode.Path:
+                    _text.AppendLine(DockTitle + ": " + DockPhaseText());
                     break;
                 case Mode.Approach:
                     _text.AppendFormat("Approach {0}: {1}, {2:0} m/s\n", _targetName, FormatDistance(_remainingDistance), _currentSpeed);
-                    _text.AppendFormat("{0}, stopping distance {1}\n", _approachPhase, FormatDistance(_stopDistance));
+                    _text.AppendFormat("{0}, stopping distance {1}, {2}\n", _approachPhase, FormatDistance(_stopDistance), EtaText());
                     break;
                 default:
                     _text.AppendFormat("Cruise speed: {0:0.00} m/s (off)\n", _cruiseSpeed);
@@ -242,6 +275,8 @@ namespace IngameScript
 
         string FormatDistance(double meters)
         {
+            if (meters == double.MaxValue)
+                return "other zone";    // entry recorded in another planet zone
             return meters >= 1000 ? (meters / 1000).ToString("0.00") + " km" : meters.ToString("0") + " m";
         }
 

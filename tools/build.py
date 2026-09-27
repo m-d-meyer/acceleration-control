@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge the MDK2 project into one paste-ready programmable block script.
+"""Merge each MDK2 project into one paste-ready programmable block script.
 
 The programmable block expects only the body of the Program class. This script
 takes the body of every `partial class Program` file in the project, joins them
@@ -19,9 +19,7 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROJECT = "AccelerationControl"
-PROJECT_DIR = os.path.join(ROOT, PROJECT)
-OUTPUT = os.path.join(ROOT, "dist", PROJECT + ".cs")
+PROJECTS = ["AccelerationControl", "DockGate"]    # the ship script and the base companion
 CHAR_LIMIT = 100000
 CLASS_RE = re.compile(r"^\s*(public\s+)?partial\s+class\s+Program\b")
 
@@ -94,6 +92,15 @@ def full_minify(body):
 
 
 def main():
+    result = 0
+    for project in PROJECTS:
+        result = build(project) or result
+    return result
+
+
+def build(project):
+    PROJECT_DIR = os.path.join(ROOT, project)
+    OUTPUT = os.path.join(ROOT, "dist", project + ".cs")
     files = sorted(f for f in os.listdir(PROJECT_DIR) if f.endswith(".cs"))
     files.sort(key=lambda f: f != "Program.cs")
 

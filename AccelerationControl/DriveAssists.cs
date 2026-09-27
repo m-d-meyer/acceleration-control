@@ -31,7 +31,7 @@ namespace IngameScript
         const double ArrivalRoughSpeed = 1.0;       // m/s - within max(ArrivalTolerance, ApproachBuffer / 4), slower than this
         const double WaypointRadius = 50;           // m - intermediate waypoints count as reached within this
 
-        enum Mode { Manual, Cruise, Approach, Jump, Dock }
+        enum Mode { Manual, Cruise, Approach, Jump, Dock, Path }
         enum ScanPurpose { Approach, Mark }
 
         readonly List<IMyCameraBlock> _cameras = new List<IMyCameraBlock>();
@@ -76,11 +76,16 @@ namespace IngameScript
                 return true;
             }
 
+            if (_pendingStart && move.LengthSquared() > InputDeadzone * InputDeadzone)
+            {
+                _pendingStart = false;
+                _message = "Start cancelled";
+            }
             if (_mode != Mode.Manual && _mode != Mode.Cruise && move.LengthSquared() > InputDeadzone * InputDeadzone)
             {
-                _message = _mode == Mode.Jump ? "Jump cancelled" : _mode == Mode.Dock ? "Docking cancelled" : "Approach cancelled";
+                _message = _mode == Mode.Jump ? "Jump cancelled" : _mode == Mode.Dock || _mode == Mode.Path ? "Docking cancelled" : "Approach cancelled";
                 _mode = Mode.Manual;
-                _dockAfterRoute = _departing = _resumeGoal = false;
+                _dockAfterRoute = _departing = _resumeGoal = _zoneGoal = _pendingStart = _pathAfterRoute = false;
                 return false;
             }
 
@@ -96,8 +101,15 @@ namespace IngameScript
                 return DockVelocity(out targetVelocity);
             }
 
+            if (_mode == Mode.Path)
+            {
+                maxAccel = Math.Min(_limit, 3);
+                return PathVelocity(out targetVelocity);
+            }
+
             if (_mode == Mode.Approach)
             {
+                UnlockLandingGear();    // auto-lock could catch the ground again right after the start
                 if (_approachFullThrust)
                     maxAccel = double.MaxValue;
                 return ApproachVelocity(velocity, out targetVelocity);
@@ -190,6 +202,7 @@ namespace IngameScript
             Vector3D origin = _camera.GetPosition();
             Vector3D direction = _camera.WorldMatrix.Forward;
             MyDetectedEntityInfo hit = _camera.Raycast(range);
+            NoteHit(hit);
             if (!hit.IsEmpty() && IsOwnHit(hit))
             {
                 _message = "The scan hit the own ship: point the camera (" + _camera.CustomName + ") away from the hull";
@@ -248,7 +261,7 @@ namespace IngameScript
             if (!_camera.CanScan(lookTarget))
                 return;
 
-            MyDetectedEntityInfo hit = _camera.Raycast(lookTarget);
+            MyDetectedEntityInfo hit = Cast(_camera, lookTarget);
             if (!hit.IsEmpty() && IsOwnHit(hit))
                 return;     // the view ahead is blocked by the own hull: no information
             if (!hit.IsEmpty() && hit.HitPosition.HasValue)
@@ -276,10 +289,12 @@ namespace IngameScript
                 _message = "Target is closer than " + FormatDistance(StopOffset);
                 return false;
             }
+            if (!CanHover())
+                return false;
             _route.Clear();
             _route.Add(surfacePoint - ray / distance * StopOffset);
             _temporaryObstacles.Clear();
-            _dockAfterRoute = false;
+            _dockAfterRoute = _zoneGoal = false;
             StartRoute(name);
             return true;
         }
@@ -326,11 +341,61 @@ namespace IngameScript
             return top / accel + coast + top / brake + Math.Max(distance - used, 0) / Math.Max(top, 0.01);
         }
 
+        // Estimated time to the end of the route, leg by leg with the planned
+        // waypoint speeds (e.g. nearly stopping at the top of a climb before the
+        // turn): accelerate, cruise at MaxSpeed (AtmosphereSpeed in air), brake as
+        // planned; plus the turn of a planned flip. -1 when not flying.
+        double EtaSeconds()
+        {
+            IMyShipController c = _controller ?? _layoutController;
+            if (_mode != Mode.Approach || c == null || _route.Count == 0)
+                return -1;
+            double mass = c.CalculateShipMass().PhysicalMass, reverse;
+            Vector3D direction;
+            double a = _useBestThrust && _gyros.Count > 0 && !LevelFlight
+                ? BestThrust(c.WorldMatrix, mass, out direction, out reverse) : MaxAccel(2, 1, mass);
+            if (LevelFlight)
+                a = Math.Min(a, MaxAccel(1, 0, mass) - _gravity.Length());     // climbs are slower
+            a = Math.Max(a, 0.1);
+            double b = Math.Max(PlanningBrake(), 0.1);
+            double top = InAtmosphere && _atmosphereSpeed > 0 ? Math.Min(_maxSpeed, _atmosphereSpeed) : _maxSpeed;
+            double v = Math.Min(_currentSpeed, top), t = 0;
+            Vector3D from = ReferencePosition();
+            for (int i = _tracking ? _route.Count - 1 : _routeIndex; i < _route.Count; i++)
+            {
+                double end = i < _route.Count - 1 && i < _cornerLimits.Count ? Math.Min(_cornerLimits[i], top) : 0;
+                t += LegTime(Vector3D.Distance(from, _route[i]), v, end, a, b, top);
+                v = end;
+                from = _route[i];
+            }
+            return _flipPlanned && !_flipBraking ? t + _flipTime : t;
+        }
+
+        // Time for a straight leg from speed v0 to v1: accelerate, cruise at 'top', brake.
+        static double LegTime(double length, double v0, double v1, double a, double b, double top)
+        {
+            double peak = Math.Sqrt((v0 * v0 / (2 * a) + v1 * v1 / (2 * b) + length) / (1 / (2 * a) + 1 / (2 * b)));
+            if (peak <= Math.Max(v0, v1))
+                return 2 * length / Math.Max(v0 + v1, 0.1);
+            peak = Math.Min(peak, top);
+            double along = (peak * peak - v0 * v0) / (2 * a) + (peak * peak - v1 * v1) / (2 * b);
+            return (peak - v0) / a + (peak - v1) / b + Math.Max(length - along, 0) / peak;
+        }
+
+        string EtaText()
+        {
+            double eta = EtaSeconds();
+            return eta < 0 ? "" : "ETA " + FormatTime(eta);
+        }
+
         // Deceleration the approach plans with when moving along a direction.
+        // Gravity pulling along the direction (descending) takes its share.
         double BrakeAccel(Vector3D direction)
         {
             double brake = MaxAccelAlong(-direction) * _brakeSafety;
-            return _approachFullThrust ? brake : Math.Min(brake, _limit * _brakeSafety);
+            if (!_approachFullThrust)
+                brake = Math.Min(brake, _limit * _brakeSafety);
+            return Math.Max(brake - Math.Max(Vector3D.Dot(_gravity, direction), 0), 0.05);
         }
 
         // Velocity that brings the ship to the approach target and still lets it
@@ -339,6 +404,8 @@ namespace IngameScript
 
         bool ApproachVelocity(Vector3D velocity, out Vector3D targetVelocity)
         {
+            if (_tracking)
+                return TrackVelocity(velocity, out targetVelocity);
             targetVelocity = Vector3D.Zero;
             Vector3D position = ReferencePosition();
             Vector3D toTarget = _approachTarget - position;
@@ -370,15 +437,24 @@ namespace IngameScript
                 _settling = false;
                 if (_departing)
                 {
-                    // Clear of the rock: now plan and head off.
+                    // Clear of the rock or out of the hangar: check again, then plan and head off.
                     _departing = false;
-                    ContinueGoal();
+                    int confined = TryLeaveConfined();
+                    if (confined == 0)
+                        ContinueGoal();
+                    else if (confined == 2)
+                        WaitForCameras();
                     return false;
                 }
                 if (_resumeGoal)
                 {
                     // Stopped in front of an obstacle: start over from here.
                     StartGoal(_goalTarget, _goalName, _goalDock, true);
+                    return false;
+                }
+                if (_pathAfterRoute)
+                {
+                    StartPathFollow(0);
                     return false;
                 }
                 if (_dockAfterRoute)
@@ -413,7 +489,7 @@ namespace IngameScript
             _flipPlanned = _flipBraking;
             IMyShipController reference = _controller ?? _layoutController;
             if (_useBestThrust && !_probing && !_departing && OnLastLeg && _gyros.Count > 0 && reference != null
-                && _targetDistance > FlipMinDistance)
+                && _targetDistance > FlipMinDistance && !LevelFlight)
             {
                 Vector3D bestDirection;
                 double reverse, best = BestThrust(reference.WorldMatrix, reference.CalculateShipMass().PhysicalMass, out bestDirection, out reverse);
@@ -439,6 +515,9 @@ namespace IngameScript
             // Close in: approach proportionally so the ship settles instead of oscillating.
             if (endSpeed <= 0)
                 speed = Math.Min(speed, distance * _velocityGain * 0.5);
+            // Atmosphere: limited speed inside, braked in time before entering.
+            // Only the leg that goes down into it counts (routes above the atmosphere keep their speed).
+            speed = Math.Min(speed, AtmosphereSpeedLimit(position, _approachTarget, brake));
             targetVelocity = direction * speed;
 
             // For the display: stopping distance, distance to the end of the route and flight phase.

@@ -44,7 +44,10 @@ namespace IngameScript
             public int Number;
             public Vector3D Position;
             public bool Mined;          // logged while drilling (otherwise marked by scan)
-            public double Distance;     // from the ship, updated for display
+            public double Distance;     // from the ship, updated for display (MaxValue: other zone)
+            public string Zone = "";    // coordinate zone it was recorded in (see Planets.cs)
+            public List<PathPoint> Path;    // the way the ship came to it when mining started (see Paths.cs)
+            public MyIni Dock;              // base entries: their dock, when not the active one (see Docking.cs)
             // Number 0: a waypoint with its own name (e.g. imported GPS "Asteroid 12")
             public string Label { get { return Number > 0 ? Ore + " #" + Number : Ore; } }
         }
@@ -56,6 +59,10 @@ namespace IngameScript
             public Vector3D Center;
             public double Radius;
             public double GravityRadius; // planets: approximate extent of the gravity well
+            public string Zone = "";
+            public double AtmosphereRadius;             // planets: highest point where air was measured
+            public double WaterRadius;                  // planets: water surface (water mod), set with 'water here'
+            public double SampleDistance, SampleGravity, Falloff;  // planets: learning the gravity falloff
         }
 
         readonly List<Deposit> _deposits = new List<Deposit>();
@@ -72,6 +79,7 @@ namespace IngameScript
         string _pendingMarkOre = "";
         bool _mapChanged = true;        // GPS export pending
         bool _oreBaseline;              // _previousOre holds a reading to compare with
+        bool _drillingLogged;           // a deposit was logged since the drills started
         int _surveyCamera;
         int _surveyStep;
 
@@ -90,7 +98,10 @@ namespace IngameScript
             }
             string ore = NormalizeOre(parts[1]);
             if (parts.Length > 2 && parts[2].ToLowerInvariant() == "here")
-                AddDeposit(ore, DrillPosition(), false);
+            {
+                Deposit d = AddDeposit(ore, DrillPosition(), false);
+                d.Path = RecentPath() ?? d.Path;
+            }
             else
                 MarkByScan(ore);
         }
@@ -114,6 +125,7 @@ namespace IngameScript
             {
                 _deposits.Clear();
                 _obstacles.Clear();
+                _otherObstacles.Clear();
                 _selected = null;
                 _mapChanged = true;
                 _message = "Map cleared";
@@ -139,12 +151,13 @@ namespace IngameScript
         //  Deposits
         // -----------------------------------------------------------------
 
-        Deposit AddDeposit(string ore, Vector3D position, bool mined, bool waypoint = false)
+        Deposit AddDeposit(string ore, Vector3D position, bool mined, bool waypoint = false, string zone = null)
         {
+            zone = zone ?? _zone;
             int number = 0;
             foreach (Deposit d in _deposits)
             {
-                if (d.Ore != ore)
+                if (d.Ore != ore || d.Zone != zone)
                     continue;
                 if (Vector3D.DistanceSquared(d.Position, position) < _mergeDistance * _mergeDistance)
                 {
@@ -155,7 +168,7 @@ namespace IngameScript
                 number = Math.Max(number, d.Number);
             }
 
-            var deposit = new Deposit { Ore = ore, Number = waypoint ? 0 : number + 1, Position = position, Mined = mined };
+            var deposit = new Deposit { Ore = ore, Number = waypoint ? 0 : number + 1, Position = position, Mined = mined, Zone = zone };
             _deposits.Add(deposit);
             if (!mined)
                 _selected = deposit;   // logging while mining must not move the menu selection
@@ -202,6 +215,7 @@ namespace IngameScript
                     }
             }
 
+            bool logged = false;
             if (drilling && _autoLog && _oreBaseline)
             {
                 Vector3D position = DrillPosition();
@@ -214,10 +228,19 @@ namespace IngameScript
                     _drillOre.TryGetValue(ore.Key, out inDrills);
                     _previousDrillOre.TryGetValue(ore.Key, out inDrillsBefore);
                     if (ore.Value > before + MinLoggedOre || inDrills > inDrillsBefore + MinLoggedOre)
-                        AddDeposit(ore.Key, position, true);
+                    {
+                        // The way here, recorded when this drilling started: GO follows it
+                        // later to the same side of the rock in the same orientation.
+                        Deposit d = AddDeposit(ore.Key, position, true);
+                        if (!_drillingLogged || d.Path == null)
+                            d.Path = RecentPath() ?? d.Path;
+                        logged = true;
+                    }
                 }
             }
 
+            // One path per drilling session: later logs of the same session keep it.
+            _drillingLogged = drilling && (_drillingLogged || logged);
             _previousOre.Clear();
             foreach (KeyValuePair<string, double> ore in _oreAmounts)
                 _previousOre[ore.Key] = ore.Value;
@@ -251,7 +274,8 @@ namespace IngameScript
         // The approach camera is left alone while it is needed.
         void UpdateSurvey()
         {
-            if (!_survey || _cameras.Count == 0)
+            // Docked (connector connected): nothing to survey, save the raycasts.
+            if (!_survey || _cameras.Count == 0 || _wasConnected || _pendingStart || _departing || _mode == Mode.Path)
                 return;
             for (int i = 0; i < _cameras.Count; i++)
             {
@@ -268,6 +292,7 @@ namespace IngameScript
                 double radius = Math.Sqrt((step + 0.5) / SurveyPattern) * Math.Min(camera.RaycastConeLimit, 45);
                 double angle = step * 2.39996;
                 MyDetectedEntityInfo hit = camera.Raycast(_surveyRange, (float)(radius * Math.Sin(angle)), (float)(radius * Math.Cos(angle)));
+                NoteHit(hit);
                 if (!hit.IsEmpty() && RegisterObstacle(hit))
                     _message = "Found " + (hit.Type == MyDetectedEntityType.Planet ? "planet" : "asteroid")
                         + " at " + FormatDistance(Vector3D.Distance(hit.Position, ReferencePosition()));
@@ -301,12 +326,18 @@ namespace IngameScript
 
             Obstacle obstacle = null;
             foreach (Obstacle o in _obstacles)
-                if (o.EntityId == hit.EntityId)
+                if (o.EntityId == hit.EntityId || (planet && o.Planet && Vector3D.DistanceSquared(o.Center, hit.Position) < 1e6))
                     obstacle = o;
+            if (planet && obstacle != null)
+            {
+                // Known planet (maybe measured in its gravity): only remember the entity.
+                obstacle.EntityId = hit.EntityId;
+                return false;
+            }
             bool added = obstacle == null;
             if (added)
             {
-                obstacle = new Obstacle { EntityId = hit.EntityId, Planet = planet };
+                obstacle = new Obstacle { EntityId = hit.EntityId, Planet = planet, Zone = _zone };
                 _obstacles.Add(obstacle);
                 _mapChanged = true;
             }
@@ -329,8 +360,11 @@ namespace IngameScript
         }
 
         // In gravity, measure the planet's position and gravity well directly.
+        // The gravity falloff is learned from readings at different distances
+        // (vanilla planets: distance^-7; mods may use a gentler falloff).
         void UpdatePlanet()
         {
+            _planet = null;
             IMyShipController reference = _controller ?? _layoutController;
             if (reference == null)
                 return;
@@ -343,22 +377,35 @@ namespace IngameScript
             double elevation;
             double radius = reference.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out elevation)
                 ? distance - elevation : distance;
-            // Planet gravity falls off with distance^7 outside the surface.
-            double wellRadius = distance * Math.Pow(gravity / GravityCutoff, 1.0 / 7);
 
             Obstacle planet = null;
             foreach (Obstacle o in _obstacles)
-                if (o.Planet && Vector3D.DistanceSquared(o.Center, center) < 1e6)
+                if (o.Planet && Vector3D.DistanceSquared(o.Center, center) < 1e6 && (planet == null || o.EntityId == 0))
                     planet = o;
             if (planet == null)
             {
-                planet = new Obstacle { Planet = true };
+                planet = new Obstacle { Planet = true, Zone = _zone };
                 _obstacles.Add(planet);
                 _mapChanged = true;
             }
+            if (planet.SampleDistance <= 0)
+            {
+                planet.SampleDistance = distance;
+                planet.SampleGravity = gravity;
+            }
+            else if (Math.Abs(distance - planet.SampleDistance) > distance * 0.03)
+            {
+                double n = Math.Log(planet.SampleGravity / gravity) / Math.Log(distance / planet.SampleDistance);
+                if (n > 0.5 && n < 12)
+                    planet.Falloff = planet.Falloff > 0 ? planet.Falloff * 0.7 + n * 0.3 : n;
+                planet.SampleDistance = distance;
+                planet.SampleGravity = gravity;
+            }
+            double falloff = planet.Falloff > 0 ? planet.Falloff : _gravityFalloff;
             planet.Center = center;
             planet.Radius = radius;
-            planet.GravityRadius = wellRadius;
+            planet.GravityRadius = distance * Math.Pow(gravity / GravityCutoff, 1.0 / Math.Max(falloff, 0.5));
+            _planet = planet;
         }
 
         static double DistanceToSegment(Vector3D point, Vector3D a, Vector3D b)
@@ -380,7 +427,7 @@ namespace IngameScript
             _visibleDeposits.Clear();
             foreach (Deposit d in _deposits)
             {
-                d.Distance = Vector3D.Distance(position, d.Position);
+                d.Distance = d.Zone == _zone ? Vector3D.Distance(position, d.Position) : double.MaxValue;
                 if (_filter == null || d.Ore == _filter)
                     _visibleDeposits.Add(d);
             }
@@ -421,14 +468,19 @@ namespace IngameScript
             for (int i = 0; i < _deposits.Count; i++)
             {
                 Deposit d = _deposits[i];
+                if (d.Path != null)
+                    state.Set(MapSection, "DP" + i, PathText(d.Path));
+                if (d.Dock != null)
+                    CopySection(d.Dock, "D", state, "Dock" + i);
                 state.Set(MapSection, "D" + i, string.Join(";", d.Ore, d.Number.ToString(),
-                    Num(d.Position.X), Num(d.Position.Y), Num(d.Position.Z), d.Mined ? "1" : "0"));
+                    Num(d.Position.X), Num(d.Position.Y), Num(d.Position.Z), d.Mined ? "1" : "0", d.Zone));
             }
-            for (int i = 0; i < _obstacles.Count; i++)
+            for (int i = 0; i < _obstacles.Count + _otherObstacles.Count; i++)
             {
-                Obstacle o = _obstacles[i];
+                Obstacle o = i < _obstacles.Count ? _obstacles[i] : _otherObstacles[i - _obstacles.Count];
                 state.Set(MapSection, "O" + i, string.Join(";", o.Planet ? "P" : "A", o.EntityId.ToString(),
-                    Num(o.Center.X), Num(o.Center.Y), Num(o.Center.Z), Num(o.Radius), Num(o.GravityRadius)));
+                    Num(o.Center.X), Num(o.Center.Y), Num(o.Center.Z), Num(o.Radius), Num(o.GravityRadius), o.Zone, Num(o.AtmosphereRadius),
+                    Num(o.WaterRadius)));
             }
         }
 
@@ -436,6 +488,7 @@ namespace IngameScript
         {
             _deposits.Clear();
             _obstacles.Clear();
+            _otherObstacles.Clear();
             for (int i = 0; ; i++)
             {
                 string[] p = state.Get(MapSection, "D" + i).ToString("").Split(';');
@@ -444,7 +497,13 @@ namespace IngameScript
                 if (p.Length < 6 || !int.TryParse(p[1], out number) || !TryParseNumber(p[2], out x)
                     || !TryParseNumber(p[3], out y) || !TryParseNumber(p[4], out z))
                     break;
-                _deposits.Add(new Deposit { Ore = p[0], Number = number, Position = new Vector3D(x, y, z), Mined = p[5] == "1" });
+                var deposit = new Deposit { Ore = p[0], Number = number, Position = new Vector3D(x, y, z), Mined = p[5] == "1", Zone = p.Length > 6 ? p[6] : "" };
+                string path = state.Get(MapSection, "DP" + i).ToString("");
+                if (path.Length > 0)
+                    deposit.Path = ParsePath(path);
+                if (state.ContainsSection("Dock" + i))
+                    CopySection(state, "Dock" + i, deposit.Dock = new MyIni(), "D");
+                _deposits.Add(deposit);
             }
             for (int i = 0; ; i++)
             {
@@ -454,7 +513,14 @@ namespace IngameScript
                 if (p.Length < 7 || !long.TryParse(p[1], out id) || !TryParseNumber(p[2], out x) || !TryParseNumber(p[3], out y)
                     || !TryParseNumber(p[4], out z) || !TryParseNumber(p[5], out r) || !TryParseNumber(p[6], out g))
                     break;
-                _obstacles.Add(new Obstacle { Planet = p[0] == "P", EntityId = id, Center = new Vector3D(x, y, z), Radius = r, GravityRadius = g });
+                double atmosphere = 0, water = 0;
+                if (p.Length > 8)
+                    TryParseNumber(p[8], out atmosphere);
+                if (p.Length > 9)
+                    TryParseNumber(p[9], out water);
+                var o = new Obstacle { Planet = p[0] == "P", EntityId = id, Center = new Vector3D(x, y, z), Radius = r, GravityRadius = g,
+                    Zone = p.Length > 7 ? p[7] : "", AtmosphereRadius = atmosphere, WaterRadius = water };
+                (o.Zone == _zone ? _obstacles : _otherObstacles).Add(o);
             }
             _mapChanged = true;
         }
@@ -467,8 +533,12 @@ namespace IngameScript
         {
             var sb = new StringBuilder();
             var culture = System.Globalization.CultureInfo.InvariantCulture;
+            if (PlanetZones)
+                sb.Append("ZONE:" + _zone + "\n");     // the zone the coordinates below belong to
             foreach (Deposit d in _deposits)
             {
+                if (d.Zone != _zone)
+                    continue;       // coordinates of other zones mean nothing here
                 Color c = OreColor(d.Ore);
                 sb.AppendFormat(culture, "GPS:{0}:{1:0.0}:{2:0.0}:{3:0.0}:#{4:X2}{5:X2}{6:X2}:\n", d.Label,
                     d.Position.X, d.Position.Y, d.Position.Z, c.R, c.G, c.B);
@@ -483,18 +553,21 @@ namespace IngameScript
         int ImportMap(string text)
         {
             int added = 0;
+            string zone = _zone;
             foreach (string raw in text.Split('\n'))
             {
                 string[] p = raw.Trim().Split(':');
                 double x, y, z, r, g;
-                if (p.Length >= 5 && p[0] == "GPS" && TryParseNumber(p[2], out x) && TryParseNumber(p[3], out y) && TryParseNumber(p[4], out z))
+                if (p.Length == 2 && p[0] == "ZONE")
+                    zone = p[1];
+                else if (p.Length >= 5 && p[0] == "GPS" && TryParseNumber(p[2], out x) && TryParseNumber(p[3], out y) && TryParseNumber(p[4], out z))
                 {
                     // "Iron #2" -> Iron; other names become waypoints with that name
                     int hash = p[1].LastIndexOf(" #");
                     string ore = hash > 0 ? p[1].Substring(0, hash) : p[1];
                     bool known = ore == BaseName || Array.IndexOf(StandardOres, ore) >= 0 || _oreAmounts.ContainsKey(ore);
                     int before = _deposits.Count;
-                    AddDeposit(known ? ore : p[1], new Vector3D(x, y, z), false, !known);
+                    AddDeposit(known ? ore : p[1], new Vector3D(x, y, z), false, !known, zone);
                     added += _deposits.Count - before;
                 }
                 else if (p.Length >= 8 && p[0] == "MAP" && TryParseNumber(p[3], out x) && TryParseNumber(p[4], out y)
@@ -504,12 +577,13 @@ namespace IngameScript
                     long.TryParse(p[2], out id);
                     Vector3D center = new Vector3D(x, y, z);
                     bool known = false;
-                    foreach (Obstacle o in _obstacles)
-                        if ((id != 0 && o.EntityId == id) || Vector3D.DistanceSquared(o.Center, center) < 1)
+                    List<Obstacle> list = zone == _zone ? _obstacles : _otherObstacles;
+                    foreach (Obstacle o in list)
+                        if (o.Zone == zone && ((id != 0 && o.EntityId == id) || Vector3D.DistanceSquared(o.Center, center) < 1))
                             known = true;
                     if (!known)
                     {
-                        _obstacles.Add(new Obstacle { Planet = p[1] == "P", EntityId = id, Center = center, Radius = r, GravityRadius = g });
+                        list.Add(new Obstacle { Planet = p[1] == "P", EntityId = id, Center = center, Radius = r, GravityRadius = g, Zone = zone });
                         added++;
                     }
                 }

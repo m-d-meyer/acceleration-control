@@ -43,6 +43,7 @@ namespace IngameScript
         readonly List<IMyTerminalBlock> _blockBuffer = new List<IMyTerminalBlock>();
 
         bool _dockKnown;
+        string _dockZone = "";          // coordinate zone of the base (see Planets.cs)
         Vector3D _dockPosition, _dockAxis, _dockForward, _dockUp;
         long _dockConnectorId, _dockGridId;
         bool _wasConnected;
@@ -53,19 +54,47 @@ namespace IngameScript
         string _dockScanBlocker;
         Vector3D _dockGridPosition, _dockGridForward, _dockGridUp;   // ship grid pose when docked
 
-        // Records the docking pose when a connector gets connected.
+        // Connections that are not a dock: a ship docked onto this one (its
+        // pilot docked, not ours), or connected before the script started to
+        // something other than the known base. Own connector id -> other grid id.
+        readonly Dictionary<long, long> _carried = new Dictionary<long, long>();
+        readonly HashSet<long> _connectedIds = new HashSet<long>();
+        bool _dockChecked;
+
+        // Records the docking pose when this ship docks somewhere.
         void CheckDocking()
         {
-            bool connected = false;
+            bool docked = false;
+            var now = new HashSet<long>();
             foreach (IMyShipConnector c in _connectors)
             {
                 if (c.Status != MyShipConnectorStatus.Connected || c.OtherConnector == null)
                     continue;
-                connected = true;
-                if (!_wasConnected)
-                    RecordDock(c);
+                long id = c.EntityId, other = c.OtherConnector.CubeGrid.EntityId;
+                now.Add(id);
+                if (!_dockChecked && other != _dockGridId)
+                    foreach (Deposit d in _deposits)
+                        if (d.Dock != null && d.Dock.Get("D", "Dock").ToString("").Contains(";" + other + ";"))
+                            ActivateDock(d);
+                if (!_connectedIds.Contains(id))
+                {
+                    bool ours = _dockChecked ? _mode == Mode.Dock || _mode == Mode.Path || FindActiveController() != null
+                        : _dockKnown && other == _dockGridId && _dockZone == _zone && Vector3D.Distance(c.OtherConnector.GetPosition(), _dockPosition) < 5;
+                    if (ours && !docked && !_wasConnected)
+                        RecordDock(c);
+                    else if (!ours)
+                        _carried[id] = other;
+                }
+                if (!_carried.ContainsKey(id))
+                    docked = true;
             }
-            _wasConnected = connected;
+            foreach (long id in new List<long>(_carried.Keys))
+                if (!now.Contains(id))
+                    _carried.Remove(id);
+            _connectedIds.Clear();
+            _connectedIds.UnionWith(now);
+            _dockChecked = true;
+            _wasConnected = docked;
         }
 
         void RecordDock(IMyShipConnector connector)
@@ -73,6 +102,8 @@ namespace IngameScript
             IMyShipController reference = _controller ?? _layoutController;
             if (reference == null)
                 return;
+            if (connector.OtherConnector.CubeGrid.EntityId != _dockGridId)
+                StoreDock();        // another base: keep the old dock with its entry
             _dockPosition = connector.GetPosition();
             _dockAxis = -connector.WorldMatrix.Forward;     // from the base towards the ship
             _dockForward = reference.WorldMatrix.Forward;
@@ -83,7 +114,11 @@ namespace IngameScript
             _dockGridUp = grid.Up;
             _dockConnectorId = connector.EntityId;
             _dockGridId = connector.OtherConnector.CubeGrid.EntityId;
+            _dockBaseConnectorId = connector.OtherConnector.EntityId;
             _dockKnown = true;
+            _dockZone = _zone;
+            _dockProvisional = _zoneProvisional;
+            RecordBase(connector.OtherConnector.CubeGrid);
 
             // All grids of the base (including rotor and piston parts), so the
             // docking checks do not treat them as other ships.
@@ -93,9 +128,48 @@ namespace IngameScript
                 _baseGrids.Add(b.CubeGrid.EntityId);
             if (_mode == Mode.Dock)
                 _mode = Mode.Manual;
-            AddDeposit(BaseName, _dockPosition, false);
+            _dockEntry = AddDeposit(BaseName, _dockPosition, false);
             _mapChanged = true;
-            _message = "Docked. Dock position saved for 'dock'";
+            _message = HasDockPath ? "Docked. Dock position and the way in saved for 'dock'" : "Docked. Dock position saved, but no way in: the script saw less than 20 m of it. Fly out and dock by hand again";
+        }
+
+        // One dock per base: the active one is in the fields above, the others
+        // are kept with their base entries on the map.
+        Deposit _dockEntry;
+
+        void StoreDock()
+        {
+            if (_dockKnown && _dockEntry != null)
+                WriteDock(_dockEntry.Dock = new MyIni(), "D");
+        }
+
+        void ActivateDock(Deposit d)
+        {
+            if (d == _dockEntry || d.Dock == null)
+                return;
+            StoreDock();
+            ReadDock(d.Dock, "D");
+            _dockEntry = d;
+        }
+
+        // 'dock': the nearest base with a dock in this zone, within DockRange.
+        // None: refuse (a far base is flown to with GO on its map entry).
+        const double DockRange = 20000;
+
+        bool ChooseDock()
+        {
+            Deposit best = null;
+            foreach (Deposit d in _deposits)
+                if ((d.Dock != null || d == _dockEntry) && d.Zone == _zone && (best == null
+                    || Vector3D.DistanceSquared(d.Position, ReferencePosition()) < Vector3D.DistanceSquared(best.Position, ReferencePosition())))
+                    best = d;
+            if (best == null || Vector3D.Distance(best.Position, ReferencePosition()) > DockRange)
+            {
+                _message = "No known dock within 20 km: dock by hand once to teach it, or GO on a base entry";
+                return false;
+            }
+            ActivateDock(best);
+            return true;
         }
 
         IMyShipConnector DockConnector()
@@ -103,7 +177,10 @@ namespace IngameScript
             foreach (IMyShipConnector c in _connectors)
                 if (c.EntityId == _dockConnectorId)
                     return c;
-            return _connectors.Count > 0 ? _connectors[0] : null;
+            foreach (IMyShipConnector c in _connectors)
+                if (!_carried.ContainsKey(c.EntityId))
+                    return c;
+            return null;
         }
 
         Vector3D DockApproachPoint
@@ -125,9 +202,22 @@ namespace IngameScript
                 _message = "No connector on this ship";
                 return;
             }
+            if (_dockZone != _zone)
+            {
+                StartZoneGoal(DockTarget, BaseName, _dockZone, true);
+                return;
+            }
+            if (HasDockPath)
+            {
+                // The recorded way in: to its start, then along it into the dock.
+                LoadDockPath(false);
+                StartPathGoal(_path, BaseName, true);
+                Gate("open");      // early, so the gate opens during the flight
+                return;
+            }
             StartGoal(DockApproachPoint, BaseName, true);
             if (_mode == Mode.Approach && !_departing)
-                _message = "Flying to the base to dock";
+                _message = "No recorded way in: flying to the point in front of the connector";
         }
 
         // Is the connector close to the approach point or inside the path into the dock?
@@ -164,6 +254,17 @@ namespace IngameScript
             }
             Vector3D axis = -connector.WorldMatrix.Forward;
             connector.Disconnect();
+            if (HasDockPath)
+            {
+                Gate("open");
+                // Out the way the ship came in, backwards along the recorded poses.
+                LoadDockPath(true);
+                _pathDock = false;
+                _pathReverseDock = true;
+                _pathName = "the way out";
+                StartPathFollow(0);
+                return;
+            }
             _route.Clear();
             _route.Add(ReferencePosition() + axis * (ShipRadius + _dockApproach));
             _temporaryObstacles.Clear();
@@ -347,7 +448,7 @@ namespace IngameScript
         // it reports whether something blocks the way. Points no camera can see
         // are skipped. Only hits inside the checked space count: within the
         // ship's turning radius (other ships and players), or in the path into
-        // the dock. Parts of the base never count.
+        // the dock. Parts of the base count only in the space to turn in.
         int DockScanStep()
         {
             if (_dockScanIndex >= _dockScanPoints.Count)
@@ -369,9 +470,11 @@ namespace IngameScript
                 camera.EnableRaycast = true;
                 if (!camera.CanScan(point))
                     continue;
-                MyDetectedEntityInfo hit = camera.Raycast(point);
+                MyDetectedEntityInfo hit = Cast(camera, point);
                 _dockScanSeen++;
-                if (!hit.IsEmpty() && hit.HitPosition.HasValue && !IsBaseGrid(hit.EntityId) && !IsOwnHit(hit))
+                // The base itself never blocks the way in, but it does count in the
+                // space to turn in (wind turbines, antennas and the like stick out).
+                if (!hit.IsEmpty() && hit.HitPosition.HasValue && (_dockScanAround || !IsBaseGrid(hit.EntityId)) && !IsOwnHit(hit))
                 {
                     Vector3D at = hit.HitPosition.Value;
                     bool voxel = hit.Type == MyDetectedEntityType.Asteroid || hit.Type == MyDetectedEntityType.Planet;
@@ -419,8 +522,15 @@ namespace IngameScript
             return rock != null && Vector3D.Distance(_dockPosition, rock.Center) < rock.Radius + 50;
         }
 
+        string DockTitle
+        {
+            get { return _mode == Mode.Path && !_pathDock ? "TO " + _pathName : "DOCKING"; }
+        }
+
         string DockPhaseText()
         {
+            if (_mode == Mode.Path)
+                return PathStateText();
             switch (_dockPhase)
             {
                 case DockPhase.Clearance: return "checking space to turn";

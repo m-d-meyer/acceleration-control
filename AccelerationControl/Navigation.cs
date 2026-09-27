@@ -49,7 +49,7 @@ namespace IngameScript
         const double BrakeShare = 0.7;              // share of the braking planned for routes with turns
         Vector3D _goalTarget;
         string _goalName = "";
-        bool _goalDock, _departing, _resumeGoal, _replanPending;
+        bool _goalDock, _goalExact, _departing, _resumeGoal, _replanPending;
         const double DepartureSpeed = 10;           // m/s while moving away from a rock
         string _previewName;
         double _routeDeltaV, _routeLength, _routeTime;
@@ -58,6 +58,7 @@ namespace IngameScript
         Vector3D _gyroEvidence;
         bool[] _gyroCalibrated = new bool[3];
         int _guardStep;
+        bool _guardParallel;
         int _guardCamera;
 
         double ShipRadius
@@ -71,11 +72,18 @@ namespace IngameScript
 
         // Plans from -> to around known obstacles. Returns false if a detour
         // could not be found within the depth limit.
+        // Near a planet the route climbs to a cruise height, follows the
+        // curvature and ends above the target (see Planets.cs).
         bool PlanRoute(Vector3D from, Vector3D to, List<Vector3D> route)
         {
             route.Clear();
             _planOwners.Clear();
-            bool ok = PlanSegment(from, to, route, 0, true, true);
+            if (InGravity)
+                UpdatePlanet();
+            double cruise;
+            Obstacle planet = PlanetOnRoute(from, to, out cruise);
+            Vector3D start = planet != null ? PlanPlanetArc(planet, cruise, from, to, route) : from;
+            bool ok = PlanSegment(start, to, route, 0, true, true);
             route.Add(to);
             _planOwners.Add(null);
             if (ok)
@@ -261,7 +269,20 @@ namespace IngameScript
                 _message = "No entry selected";
                 return;
             }
-            if (_selected.Ore == BaseName && _dockKnown && Vector3D.Distance(_selected.Position, _dockPosition) < _mergeDistance * 2)
+            bool dock = _selected.Ore == BaseName && (_selected.Dock != null || _selected == _dockEntry);
+            if (dock)
+                ActivateDock(_selected);
+            if (_selected.Zone != _zone)
+            {
+                StartZoneGoal(dock ? DockTarget : _selected.Position, _selected.Label, _selected.Zone, dock);
+                return;
+            }
+            if (_selected.Path != null && _selected.Path.Count >= 2 && _selected.Ore != BaseName)
+            {
+                StartPathGoal(_selected.Path, _selected.Label, false);
+                return;
+            }
+            if (dock)
             {
                 StartDocking();
                 return;
@@ -282,15 +303,27 @@ namespace IngameScript
         //     turning (backwards, the way the ship came in, if possible).
         //  2. Plan the route around known obstacles.
         //  3. Jump along the first leg if it is long enough, else fly it.
-        void StartGoal(Vector3D target, string name, bool dock, bool resume = false)
+        // exact: stop at the target itself (start of a recorded way), not in front of it.
+        void StartGoal(Vector3D target, string name, bool dock, bool resume = false, bool exact = false)
         {
+            if (!resume)
+            {
+                _pathAfterRoute = false;
+                _goalExact = exact;
+            }
             _goalTarget = target;
             _goalName = name;
             _goalDock = dock;
             _dockAfterRoute = dock;
+            _zoneGoal = false;
             if (!resume)
+            {
                 _temporaryObstacles.Clear();    // ships seen on the way stay avoided when resuming
+                _terrainRadius = 0;
+            }
             _replanPending = _resumeGoal = false;
+            if (!resume && !CanHover())
+                return;
             // Already near the dock (at the approach point or on the way in):
             // go straight to the slow docking manoeuvre.
             if (dock && NearDock())
@@ -298,8 +331,31 @@ namespace IngameScript
                 StartDockAlign();
                 return;
             }
+            if (!resume)
+                _exitAttempts = _waitAttempts = 0;
+            _pendingStart = false;
+            int confined = TryLeaveConfined();
+            if (confined == 2)
+            {
+                WaitForCameras();
+                return;
+            }
+            if (confined == 1)
+                return;
             Vector3D departure;
-            if (NeedsDeparture(ReferencePosition(), out departure))
+            int leave = NeedsDeparture(ReferencePosition(), out departure);
+            if (leave == 2)
+            {
+                WaitForCameras();
+                return;
+            }
+            if (leave < 0)
+            {
+                _mode = Mode.Manual;
+                _message = "Close to a rock and no way out seen by the cameras: move away by hand";
+                return;
+            }
+            if (leave > 0)
             {
                 _route.Clear();
                 _route.Add(departure);
@@ -314,7 +370,7 @@ namespace IngameScript
         void ContinueGoal()
         {
             Vector3D from = ReferencePosition();
-            Vector3D stop = _goalDock ? _goalTarget : StopPoint(from, _goalTarget);
+            Vector3D stop = _goalDock || _goalExact ? _goalTarget : StopPoint(from, _goalTarget);
             if (_goalDock && Vector3D.Distance(from, stop) < 20)
             {
                 StartDockAlign();
@@ -334,14 +390,18 @@ namespace IngameScript
         }
 
         // Is the ship so close to an asteroid (or a deposit, i.e. a rock face)
-        // that turning or heading off could hit it? Then returns a point to
-        // move to first: straight back if that leads away, else directly away.
-        bool NeedsDeparture(Vector3D from, out Vector3D point)
+        // that turning or heading off could hit it? Then returns 1 and a point to
+        // move to first, straight and without turning: backwards if that leads
+        // away, else away from the rock or along another ship axis, whichever the
+        // cameras see clear and the map allows (another rock may be right behind
+        // the ship). Without any verified way, the way the ship came in is used.
+        // Returns 0 if no departure is needed, -1 if no way out was found.
+        int NeedsDeparture(Vector3D from, out Vector3D point)
         {
             point = from;
             IMyShipController reference = _controller ?? _layoutController;
             if (reference == null)
-                return false;
+                return 0;
             Vector3D back = reference.WorldMatrix.Backward, away = back;
             double need = 0;
             foreach (Obstacle o in _obstacles)
@@ -357,6 +417,8 @@ namespace IngameScript
             }
             foreach (Deposit d in _deposits)
             {
+                if (d.Zone != _zone)
+                    continue;
                 double clearance = ShipRadius + _approachBuffer * 2, distance = Vector3D.Distance(from, d.Position);
                 if (distance < clearance && clearance - distance > need)
                 {
@@ -366,10 +428,280 @@ namespace IngameScript
                 }
             }
             if (need <= 0)
-                return false;
-            Vector3D direction = Vector3D.Dot(back, away) > 0.3 ? back : away;
-            point = from + direction * (need + _approachBuffer);
+                return 0;
+            double move = need + _approachBuffer;
+            // In gravity straight up (the ship is level, a mine is below or beside it).
+            if (InGravity)
+            {
+                point = from - Vector3D.Normalize(_gravity) * move;
+                return 1;
+            }
+            MatrixD m = reference.WorldMatrix;
+            _wayCandidates.Clear();
+            if (Vector3D.Dot(back, away) > 0.3)
+                _wayCandidates.Add(back);
+            _wayCandidates.Add(away);
+            foreach (Vector3D axis in new[] { m.Backward, m.Up, m.Down, m.Left, m.Right, m.Forward })
+                if (Vector3D.Dot(axis, away) > -0.2)
+                    _wayCandidates.Add(axis);
+            Vector3D direction;
+            _blindValid = _cameFromValid && Vector3D.Distance(from, _cameFromAt) < ShipRadius;
+            _blindWay = _cameFrom;
+            int way = ChooseWayOut(from, move, away, out direction);
+            if (way != 1)
+                return way == 2 ? 2 : -1;
+            point = from + direction * move;
+            return 1;
+        }
+
+        // The ship waits (a second at a time, up to ten times) for cameras that look
+        // the right way but have not charged enough range yet, instead of moving
+        // without seeing. The background survey pauses meanwhile.
+        bool _pendingStart, _noWait, _blindValid;
+        int _pendingStartTick, _waitAttempts;
+        Vector3D _blindWay;
+
+        void WaitForCameras()
+        {
+            _waitAttempts++;
+            _pendingStart = true;
+            _pendingStartTick = _ticks + 60;
+            _mode = Mode.Manual;
+            _message = "Charging the cameras to check the way out";
+        }
+
+        void RunPendingStart()
+        {
+            if (!_pendingStart || _ticks < _pendingStartTick)
+                return;
+            _noWait = _waitAttempts >= 10;     // give up waiting: treat uncharged as unseen
+            StartGoal(_goalTarget, _goalName, _goalDock, true);
+            _noWait = false;
+        }
+
+        readonly List<Vector3D> _wayCandidates = new List<Vector3D>();
+        Vector3D _cameFrom, _cameFromAt;        // direction the ship last came from, and where it stopped
+        bool _cameFromValid;
+
+        // Every tick: while moving, remember where the ship came from. That way
+        // is known to be free (the ship just passed there), even where no
+        // camera can look.
+        void TrackCameFrom(Vector3D velocity)
+        {
+            if (velocity.LengthSquared() < 0.25)
+                return;
+            _cameFrom = -Vector3D.Normalize(velocity);
+            _cameFromAt = ReferencePosition();
+            _cameFromValid = true;
+        }
+
+        // First candidate direction (in _wayCandidates) that the map allows and
+        // the cameras see clear for the move plus the ship's radius and a buffer;
+        // else the way the ship came in, if the map allows it and it does not lead
+        // towards the rock. False if neither.
+        // Returns 1 (found), 0 (none) or 2 (wait for cameras to charge). Without a
+        // way seen clear, the blind way (_blindWay: where the ship came from, or up
+        // off the ground) is used if the map allows it and no camera sees it blocked.
+        int ChooseWayOut(Vector3D from, double distance, Vector3D away, out Vector3D direction)
+        {
+            double length = distance + ShipRadius + _approachBuffer;
+            bool wait = false;
+            foreach (Vector3D candidate in _wayCandidates)
+            {
+                if (!MapClear(from, candidate, distance))
+                    continue;
+                int seen = CheckPath(from, candidate, length);
+                if (seen > 0)
+                {
+                    direction = candidate;
+                    return 1;
+                }
+                wait |= seen == -2;
+            }
+            direction = _blindWay;
+            if (wait)
+                return 2;
+            return _blindValid && Vector3D.Dot(_blindWay, away) > -0.2 && MapClear(from, _blindWay, distance)
+                && CheckPath(from, _blindWay, length) == 0 ? 1 : 0;
+        }
+
+        // Known rocks along a straight move: none may be entered, and a rock the
+        // ship is already too close to may not get closer.
+        bool MapClear(Vector3D from, Vector3D direction, double distance)
+        {
+            Vector3D to = from + direction * distance;
+            foreach (Obstacle o in _obstacles)
+            {
+                if (o.Planet)
+                    continue;
+                double now = Vector3D.Distance(from, o.Center), limit = o.Radius + ShipRadius + TurnMargin;
+                double closest = DistanceToSegment(o.Center, from, to);
+                if (now < limit ? closest < now - 1 : closest < limit)
+                    return false;
+            }
             return true;
+        }
+
+        // Rays along a straight move: from every camera facing that way, and to
+        // the centre line and four lines at 60 % of the ship's radius around it.
+        // 1 = seen clear, 0 = could not be seen (no camera looks that way),
+        // -1 = something is in the way, -2 = a camera looks that way but is still charging.
+        int CheckPath(Vector3D from, Vector3D direction, double length)
+        {
+            // Cameras facing the way (they may sit anywhere on the hull, e.g. offset
+            // to the sides) look straight along it from where they are, so their
+            // rays run parallel to the path the hull takes.
+            int parallel = 0;
+            bool charging = false;
+            foreach (IMyCameraBlock c in _cameras)
+            {
+                if (!c.IsWorking || Vector3D.Dot(c.WorldMatrix.Forward, direction) < 0.75)
+                    continue;
+                c.EnableRaycast = true;
+                Vector3D start = c.GetPosition();
+                Vector3D target = start + direction * Math.Max(length - Vector3D.Dot(start - from, direction), 10);
+                if (!c.CanScan(target))
+                {
+                    charging |= !_noWait && LooksAt(c, target);
+                    continue;
+                }
+                MyDetectedEntityInfo hit = Cast(c, target);
+                if (!hit.IsEmpty() && hit.HitPosition.HasValue)
+                {
+                    if (!IsOwnHit(hit))
+                        return -1;
+                    continue;       // looking along the own hull: no information
+                }
+                parallel++;
+            }
+            Vector3D side = Vector3D.CalculatePerpendicularVector(direction), up = Vector3D.Cross(direction, side);
+            int result = 1;
+            for (int i = 0; i < 5; i++)
+            {
+                Vector3D offset = i == 0 ? Vector3D.Zero : (i < 3 ? side : up) * (i % 2 == 0 ? -0.6 : 0.6) * ShipRadius;
+                double hit = ScanFrom(from + offset, direction, length);
+                if (hit >= 0 && hit < double.MaxValue)
+                    return -1;
+                if (hit < 0)
+                    result = 0;
+                charging |= hit == -2;
+            }
+            // Seen clear along the way by at least one camera facing it: good enough
+            // where the rays towards the centre line could not all be cast.
+            return parallel > 0 ? 1 : charging ? -2 : result;
+        }
+
+        // -----------------------------------------------------------------
+        //  Confined spaces (hangars, docking bays)
+        // -----------------------------------------------------------------
+
+        const double TurnMargin = 5;        // m beyond the ship's radius that must be free to turn
+        const int MaxExitAttempts = 4;
+        int _exitAttempts;
+
+        // Before a flight turns the ship (towards the route or for a jump): is
+        // there room to turn? Walls of a hangar are grids and not on the map, so
+        // the cameras check a sphere around the ship. If something is inside,
+        // the ship first moves straight out (without turning) in the ship
+        // direction that is clear far enough, preferably backwards. Returns true
+        // if it took over (moving out, or stopped because no way out was found).
+        // Returns 0 (room to turn, go on), 1 (took over: moving out, or stopped) or
+        // 2 (wait for the cameras to charge).
+        int TryLeaveConfined()
+        {
+            IMyShipController reference = _controller ?? _layoutController;
+            if (reference == null || _cameras.Count == 0 || _exitAttempts >= MaxExitAttempts)
+                return 0;
+            MatrixD m = reference.WorldMatrix;
+            Vector3D center = ReferencePosition();
+            double r = ShipRadius;
+            bool confined = false, onlyBelow = InGravity, wait = false;
+            Vector3D down = InGravity ? Vector3D.Normalize(_gravity) : Vector3D.Zero;
+            for (int x = -1; x <= 1; x++)
+                for (int y = -1; y <= 1; y++)
+                    for (int z = -1; z <= 1; z++)
+                    {
+                        if (x == 0 && y == 0 && z == 0)
+                            continue;
+                        Vector3D direction = Vector3D.Normalize(m.Right * x + m.Up * y + m.Backward * z);
+                        double hit = ScanFrom(center, direction, r + TurnMargin);
+                        wait |= hit == -2;
+                        if (hit >= 0 && hit < r + TurnMargin)
+                        {
+                            confined = true;
+                            onlyBelow &= Vector3D.Dot(direction, down) > 0.3;    // the ground under a landed ship
+                        }
+                    }
+            if (!confined)
+                return wait ? 2 : 0;
+
+            // A straight way out along a ship axis that the cameras see clear
+            // (preferably backwards), else the way the ship came in, or straight up
+            // if only the ground below is close (landed on a planet).
+            _wayCandidates.Clear();
+            if (onlyBelow)
+                _wayCandidates.Add(-down);
+            _wayCandidates.AddRange(new[] { m.Backward, m.Forward, m.Up, m.Down, m.Left, m.Right });
+            _blindValid = onlyBelow || (_cameFromValid && Vector3D.Distance(center, _cameFromAt) < r);
+            _blindWay = onlyBelow ? -down : _cameFrom;
+            Vector3D axis;
+            int way = ChooseWayOut(center, 2 * r + _approachBuffer, _blindWay, out axis);
+            if (way == 2)
+                return 2;
+            if (way == 1)
+            {
+                _exitAttempts++;
+                _route.Clear();
+                _route.Add(center + axis * (2 * r + _approachBuffer));
+                StartRoute("leaving");
+                _departing = true;
+                _message = "Too tight to turn: moving out straight first";
+                return 1;
+            }
+            _mode = Mode.Manual;
+            _message = "Too tight to turn and no straight way out seen: fly out by hand";
+            return 1;
+        }
+
+        // Is the point inside the camera's raycast cone?
+        static bool LooksAt(IMyCameraBlock camera, Vector3D point)
+        {
+            Vector3D to = point - camera.GetPosition();
+            double length = to.Length();
+            return length < 1e-3 || Vector3D.Dot(to / length, camera.WorldMatrix.Forward) >= Math.Cos(MathHelper.ToRadians(camera.RaycastConeLimit));
+        }
+
+        // Distance from 'from' to the first foreign object along a ray of the given
+        // length (MaxValue: clear), -1 if no camera can look there or only the own
+        // hull is in the way, -2 if a camera looks there but has not charged enough.
+        double ScanFrom(Vector3D from, Vector3D direction, double length)
+        {
+            Vector3D point = from + direction * length;
+            IMyCameraBlock best = null;
+            double bestDistance = double.MaxValue;
+            bool charging = false;
+            foreach (IMyCameraBlock c in _cameras)
+            {
+                if (!c.IsWorking)
+                    continue;
+                c.EnableRaycast = true;
+                double d = Vector3D.DistanceSquared(c.GetPosition(), point);
+                if (d >= bestDistance)
+                    continue;
+                if (c.CanScan(point))
+                {
+                    best = c;
+                    bestDistance = d;
+                }
+                else
+                    charging |= !_noWait && LooksAt(c, point);
+            }
+            if (best == null)
+                return charging ? -2 : -1;
+            MyDetectedEntityInfo hit = Cast(best, point);
+            if (hit.IsEmpty() || !hit.HitPosition.HasValue)
+                return double.MaxValue;
+            return IsOwnHit(hit) ? -1 : Vector3D.Distance(from, hit.HitPosition.Value);
         }
 
         // goto GPS:name:x:y:z:...  (as copied from the game's GPS list)
@@ -386,9 +718,13 @@ namespace IngameScript
             GoToPoint(new Vector3D(x, y, z), p[1]);
         }
 
-        // The point where the ship's center stops in front of a target: ApproachBuffer plus the ship's radius.
+        // The point where the ship's center stops in front of a target: ApproachBuffer
+        // plus the ship's radius. On a planet above the target.
         Vector3D StopPoint(Vector3D from, Vector3D target)
         {
+            Obstacle planet = PlanetAt(target);
+            if (planet != null && Vector3D.Distance(target, planet.Center) < NearGroundRadius(planet))
+                return target + Vector3D.Normalize(target - planet.Center) * StopOffset;
             Vector3D ray = target - from;
             double distance = ray.Length();
             return distance > StopOffset ? target - ray / distance * StopOffset : from;
@@ -396,8 +732,9 @@ namespace IngameScript
 
         void StartRoute(string name)
         {
-            _departing = _resumeGoal = _replanPending = _flipBraking = false;
+            _departing = _resumeGoal = _replanPending = _flipBraking = _tracking = false;
             _routeIndex = 0;
+            _jumpCheckedLeg = -1;
             _legStart = ReferencePosition();
             PlanCornerSpeeds();
             _approachTarget = _route[0];
@@ -477,13 +814,17 @@ namespace IngameScript
             if (reference == null)
                 return 0.1;
             double mass = reference.CalculateShipMass().PhysicalMass, brake;
-            if (_useBestThrust && _gyros.Count > 0)
+            if (LevelFlight)
+                // Level flight: braking forward, or holding a descent against gravity.
+                brake = Math.Min(MaxAccel(2, 0, mass), MaxAccel(1, 0, mass) - _gravity.Length());
+            else if (_useBestThrust && _gyros.Count > 0)
             {
                 Vector3D direction;
                 BestThrust(reference.WorldMatrix, mass, out direction, out brake);
+                brake -= _gravity.Length();     // weak gravity may still pull the wrong way
             }
             else
-                brake = MaxAccel(2, 0, mass);
+                brake = MaxAccel(2, 0, mass) - _gravity.Length();
             return Math.Max(brake * _brakeSafety, 0.1);
         }
 
@@ -543,6 +884,28 @@ namespace IngameScript
             double look = Math.Min(remaining + _approachBuffer * 2,
                 Math.Max(_currentSpeed * _currentSpeed / (2 * brake) * 1.5 + _approachBuffer * 2, ProbeMinRange));
 
+            // Every other scan: a ray parallel to the path from a camera facing the
+            // way (cameras sit anywhere on the hull, so these rays cover the space
+            // the hull sweeps through; thin things beside the centre line, e.g. wind
+            // turbine blades, slip between the rays towards the look point).
+            _guardParallel = !_guardParallel;
+            if (_guardParallel)
+                for (int i = 0; i < _cameras.Count; i++)
+                {
+                    IMyCameraBlock camera = _cameras[(_guardCamera + i) % _cameras.Count];
+                    if (!camera.IsWorking || Vector3D.Dot(camera.WorldMatrix.Forward, direction) < 0.75)
+                        continue;
+                    camera.EnableRaycast = true;
+                    Vector3D target = camera.GetPosition() + direction * look;
+                    if (!camera.CanScan(target))
+                        continue;
+                    _guardCamera = (_guardCamera + i + 1) % _cameras.Count;
+                    MyDetectedEntityInfo parallel = Cast(camera, target);
+                    if (!parallel.IsEmpty() && parallel.HitPosition.HasValue && !IsOwnHit(parallel))
+                        HandleGuardHit(parallel, position, direction, remaining);
+                    return;
+                }
+
             // Ring point for this step (step 0 = center)
             int step = _guardStep % GuardPattern;
             Vector3D point = position + direction * look;
@@ -564,7 +927,7 @@ namespace IngameScript
                     continue;
                 _guardCamera = (_guardCamera + i + 1) % _cameras.Count;
                 _guardStep++;
-                MyDetectedEntityInfo hit = camera.Raycast(point);
+                MyDetectedEntityInfo hit = Cast(camera, point);
                 if (!hit.IsEmpty() && hit.HitPosition.HasValue && !IsOwnHit(hit))
                     HandleGuardHit(hit, position, direction, remaining);
                 return;
@@ -575,6 +938,19 @@ namespace IngameScript
         {
             double along = Vector3D.Dot(hit.HitPosition.Value - position, direction);
             double stopDistance = _currentSpeed * _currentSpeed / (2 * Math.Max(BrakeAccel(direction), 0.1));
+            if (_tracking)
+            {
+                // Following a moving planet: no route to plan around, stop in front.
+                if (hit.Type == MyDetectedEntityType.Asteroid)
+                    RegisterObstacle(hit);
+                bool waiting = _zoneGoal;
+                _route.Clear();
+                _route.Add(position + direction * Math.Max(along - StopOffset, 0));
+                StartRoute(_targetName);
+                _zoneGoal = waiting;
+                _message = "Obstacle ahead, stopping: steer past it, then run 'track' to continue";
+                return;
+            }
             if (_dockAfterRoute && IsBaseHit(hit))
             {
                 // Flying to the base: the base and the rock it stands on are
@@ -603,12 +979,15 @@ namespace IngameScript
             bool voxel = hit.Type == MyDetectedEntityType.Asteroid || hit.Type == MyDetectedEntityType.Planet;
             if (voxel)
                 RegisterObstacle(hit);
+            // Terrain ahead on a planet: planning again flies higher.
+            if (hit.Type == MyDetectedEntityType.Planet && _planet != null)
+                _terrainRadius = Math.Max(_terrainRadius, Vector3D.Distance(hit.HitPosition.Value, _planet.Center) + _approachBuffer);
 
             // The rock the target lies on: stop earlier. Any other rock (e.g. one the
             // route goes around, larger than known) is an obstacle.
             Obstacle rock = voxel ? FindObstacle(hit.EntityId) : null;
             Vector3D final = _route[_route.Count - 1];
-            if (OnLastLeg && rock != null && Vector3D.Distance(final, rock.Center) < rock.Radius + StopOffset)
+            if (OnLastLeg && rock != null && (rock.Planet ? PlanetAt(final) == rock : Vector3D.Distance(final, rock.Center) < rock.Radius + StopOffset))
             {
                 // Most likely the target rock itself: stop earlier. Small corrections
                 // are ignored (the end point is only hit roughly anyway), and the new
@@ -686,7 +1065,7 @@ namespace IngameScript
         // the measured rotation and corrected if needed.
         void UpdateGyros(IMyShipController controller, Vector3D velocity)
         {
-            bool wanted = _gyros.Count > 0 && (_mode == Mode.Jump || _mode == Mode.Dock || (_alignShip && _mode == Mode.Approach));
+            bool wanted = _gyros.Count > 0 && (_mode == Mode.Jump || _mode == Mode.Dock || _mode == Mode.Path || (_alignShip && _mode == Mode.Approach));
             // The player turning the ship takes over the gyroscopes.
             if (controller.RotationIndicator.LengthSquared() > 0.01f || Math.Abs(controller.RollIndicator) > 0.01f)
                 wanted = false;
@@ -701,6 +1080,11 @@ namespace IngameScript
             Vector3D pointing = matrix.Forward;     // ship direction that is turned towards 'desired'
             if (_mode == Mode.Jump)
                 desired = _jumpDirection;
+            else if (_mode == Mode.Path)
+            {
+                desired = _pathF;       // the recorded pose of the next point
+                desiredUp = _pathU;
+            }
             else if (_mode == Mode.Dock && _dockPhase == DockPhase.Clearance)
                 desired = matrix.Forward;       // hold until the space to turn is checked
             else if (_mode == Mode.Dock)
@@ -723,7 +1107,7 @@ namespace IngameScript
                 else
                 {
                     desired = toward;
-                    if (_useBestThrust && !_probing)
+                    if (_useBestThrust && !_probing && !LevelFlight)
                     {
                         // Point the strongest thrusters along the flight; for the
                         // final braking of a flip, against the velocity.
@@ -733,6 +1117,17 @@ namespace IngameScript
                             desired = velocity.LengthSquared() > 1 ? -Vector3D.Normalize(velocity) : -toward;
                     }
                 }
+            }
+            if (LevelFlight && _mode != Mode.Jump && desiredUp == Vector3D.Zero)
+            {
+                // In gravity the ship stays level: its up against gravity, the nose
+                // turned only horizontally (climbs and descents use the up thrusters).
+                desiredUp = -Vector3D.Normalize(_gravity);
+                pointing = matrix.Forward;
+                desired -= desiredUp * Vector3D.Dot(desired, desiredUp);
+                if (desired.LengthSquared() < 0.01)
+                    desired = matrix.Forward - desiredUp * Vector3D.Dot(matrix.Forward, desiredUp);
+                desired = desired.LengthSquared() > 1e-6 ? Vector3D.Normalize(desired) : Vector3D.CalculatePerpendicularVector(desiredUp);
             }
             Vector3D axis = Vector3D.Cross(pointing, desired);
             double sin = axis.Length(), cos = Vector3D.Dot(pointing, desired);

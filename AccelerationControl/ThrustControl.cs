@@ -46,7 +46,14 @@ namespace IngameScript
         {
             _controller = FindActiveController();
             if (_controller == null)
+            {
                 _uiMode = false;
+                // Nobody in a seat: a flight (approach, GO, docking, cruise) goes on
+                // without a pilot, using any controller of the ship as reference.
+                // Overrides of thrusters and gyroscopes work without a pilot.
+                if (_mode != Mode.Manual && _layoutController != null && _layoutController.IsFunctional)
+                    _controller = _layoutController;
+            }
             if ((!_enabled && !_uiMode) || _controller == null)
             {
                 ReleaseAll();
@@ -86,6 +93,15 @@ namespace IngameScript
                 hasTarget = true;
                 targetVelocity = dampeners ? Vector3D.Zero : velocity;
             }
+            // Wind, drag and lift: measured while an assist controls all axes and
+            // compensated like gravity (see Planets.cs).
+            // Not while cruising: drilling pushes back, and compensating that would
+            // push the ship into the rock when the drills break through.
+            bool observe = hasTarget && _mode != Mode.Cruise && move.LengthSquared() < InputDeadzone * InputDeadzone;
+            if (observe)
+                MeasureThrust();    // only while it is used: it reads every thruster
+            UpdateDisturbance(observe, velocity, gravity, mass);
+            Vector3D external = gravity + _disturbance;
 
             Vector3D[] axes = { matrix.Right, matrix.Up, matrix.Backward };
             for (int axis = 0; axis < 3; axis++)
@@ -120,8 +136,9 @@ namespace IngameScript
                     continue;
                 }
 
-                // Net force needed along +axis, including the part that cancels gravity.
-                double force = mass * (targetAccel - Vector3D.Dot(gravity, dir));
+                // Net force needed along +axis, including the part that cancels
+                // gravity (and, for the assists, the measured disturbance).
+                double force = mass * (targetAccel - Vector3D.Dot(Math.Abs(input) > InputDeadzone ? gravity : external, dir));
                 ApplyAxisForce(axis, force);
             }
 
