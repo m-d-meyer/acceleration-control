@@ -49,7 +49,9 @@ namespace IngameScript
         bool _dockAfterRoute;           // current flight ends with docking
         DockPhase _dockPhase;
         int _dockWaitTicks, _dockScanIndex, _dockScanSeen;
-        bool _dockScanHit;
+        bool _dockScanAround;
+        string _dockScanBlocker;
+        Vector3D _dockGridPosition, _dockGridForward, _dockGridUp;   // ship grid pose when docked
 
         // Records the docking pose when a connector gets connected.
         void CheckDocking()
@@ -75,6 +77,10 @@ namespace IngameScript
             _dockAxis = -connector.WorldMatrix.Forward;     // from the base towards the ship
             _dockForward = reference.WorldMatrix.Forward;
             _dockUp = reference.WorldMatrix.Up;
+            MatrixD grid = Me.CubeGrid.WorldMatrix;
+            _dockGridPosition = grid.Translation;
+            _dockGridForward = grid.Forward;
+            _dockGridUp = grid.Up;
             _dockConnectorId = connector.EntityId;
             _dockGridId = connector.OtherConnector.CubeGrid.EntityId;
             _dockKnown = true;
@@ -144,7 +150,7 @@ namespace IngameScript
         {
             _dockPhase = DockPhase.Clearance;
             _dockWaitTicks = _dockScanIndex = _dockScanSeen = 0;
-            _dockScanHit = false;
+            _dockScanBlocker = null;
             _dockAfterRoute = false;
             _alignError = Math.PI;
             _enabled = true;
@@ -232,8 +238,9 @@ namespace IngameScript
             BuildDockScan(false, position);
             if (DockScanStep() == ScanBlocked || SensorBlocked())
             {
+                if (_dockScanBlocker == null)
+                    _message = "Waiting: a sensor reports something nearby";
                 _dockPhase = DockPhase.Corridor;
-                _message = "Something is in the way, waiting";
                 return true;
             }
             Vector3D offset = _dockPosition - position;
@@ -249,13 +256,13 @@ namespace IngameScript
             return true;
         }
 
-        // Scan targets: around the ship's center (space to turn in), or along the
-        // corridor from the connector to the dock position, with a ring at the
-        // ship's radius.
+        // Scan targets. Around: points on a sphere around the ship's center (space
+        // to turn in). Corridor: the corners and center of the ship's box in the
+        // docked pose and half way out, so the rays cross the path the ship takes.
         void BuildDockScan(bool around, Vector3D connector)
         {
             _dockScanPoints.Clear();
-            double r = ShipRadius;
+            _dockScanAround = around;
             if (around)
             {
                 Vector3D center = Me.CubeGrid.WorldVolume.Center;
@@ -263,38 +270,93 @@ namespace IngameScript
                     for (int y = -1; y <= 1; y++)
                         for (int z = -1; z <= 1; z++)
                             if (x != 0 || y != 0 || z != 0)
-                                _dockScanPoints.Add(center + Vector3D.Normalize(new Vector3D(x, y, z)) * (r + 10));
+                                _dockScanPoints.Add(center + Vector3D.Normalize(new Vector3D(x, y, z)) * (ShipRadius + 10));
                 return;
             }
-            Vector3D side = Vector3D.CalculatePerpendicularVector(_dockAxis);
-            Vector3D up = Vector3D.Cross(_dockAxis, side);
-            Vector3D middle = (connector + _dockPosition) / 2;
-            _dockScanPoints.Add(_dockPosition);
-            for (int i = 0; i < 8; i++)
+            MatrixD docked = DockedGridMatrix();
+            Vector3D min, max;
+            GridBox(out min, out max);
+            for (int half = 0; half < 2; half++)
             {
-                double angle = i * Math.PI / 4;
-                Vector3D ring = (side * Math.Cos(angle) + up * Math.Sin(angle)) * r * 0.8;
-                _dockScanPoints.Add(_dockPosition + ring);
-                _dockScanPoints.Add(middle + ring);
+                Vector3D shift = _dockAxis * DockTravel * half * 0.5;
+                for (int i = 0; i < 8; i++)
+                {
+                    Vector3D corner = new Vector3D((i & 1) == 0 ? min.X : max.X, (i & 2) == 0 ? min.Y : max.Y, (i & 4) == 0 ? min.Z : max.Z);
+                    _dockScanPoints.Add(Vector3D.Transform(corner, docked) + shift);
+                }
+                _dockScanPoints.Add(Vector3D.Transform((min + max) / 2, docked) + shift);
             }
+        }
+
+        // The ship grid's position and orientation when it was docked.
+        MatrixD DockedGridMatrix()
+        {
+            return MatrixD.CreateWorld(_dockGridPosition, _dockGridForward, _dockGridUp);
+        }
+
+        // Bounding box of the ship's blocks in grid coordinates (meters).
+        void GridBox(out Vector3D min, out Vector3D max)
+        {
+            IMyCubeGrid grid = Me.CubeGrid;
+            double half = grid.GridSize / 2;
+            min = new Vector3D(grid.Min) * grid.GridSize - new Vector3D(half);
+            max = new Vector3D(grid.Max) * grid.GridSize + new Vector3D(half);
+        }
+
+        // Travel distance from the docked pose out to the approach point.
+        double DockTravel
+        {
+            get { return Vector3D.Distance(_dockPosition, DockApproachPoint); }
+        }
+
+        // True if a point lies in the space the ship sweeps through when it
+        // moves from the approach point into the docked pose: the ship's box
+        // in the docked pose, moved outwards along the connector axis.
+        bool InDockPath(Vector3D point)
+        {
+            MatrixD toDocked = MatrixD.Invert(DockedGridMatrix());
+            Vector3D p = Vector3D.Transform(point, toDocked);
+            Vector3D a = Vector3D.TransformNormal(_dockAxis, toDocked);
+            Vector3D min, max;
+            GridBox(out min, out max);
+            double margin = 1.5, from = 0, to = DockTravel;
+            for (int i = 0; i < 3; i++)
+            {
+                double pi = p.GetDim(i), ai = a.GetDim(i), lo = min.GetDim(i) - margin, hi = max.GetDim(i) + margin;
+                if (Math.Abs(ai) < 1e-9)
+                {
+                    if (pi < lo || pi > hi)
+                        return false;
+                    continue;
+                }
+                // p - a * t must lie between lo and hi
+                double t1 = (pi - hi) / ai, t2 = (pi - lo) / ai;
+                from = Math.Max(from, Math.Min(t1, t2));
+                to = Math.Min(to, Math.Max(t1, t2));
+                if (from > to)
+                    return false;
+            }
+            return true;
         }
 
         const int ScanPending = 0, ScanClear = 1, ScanBlocked = 2;
 
         // One raycast per tick towards the next scan point. After a full round
-        // it reports whether anything other than the base was hit. Points no
-        // camera can see are skipped.
+        // it reports whether something blocks the way. Points no camera can see
+        // are skipped. Only hits inside the checked space count: within the
+        // ship's turning radius (other ships and players), or in the path into
+        // the dock. Parts of the base never count.
         int DockScanStep()
         {
             if (_dockScanIndex >= _dockScanPoints.Count)
             {
-                int result = _dockScanHit ? ScanBlocked : ScanClear;
-                if (_dockScanSeen == 0 && !_dockScanHit)
+                int result = _dockScanBlocker != null ? ScanBlocked : ScanClear;
+                if (_dockScanSeen == 0 && result == ScanClear)
                     _message = "No camera can see the docking path, docking without check";
-                else if (_dockScanHit)
-                    _message = "Something is in the way, waiting";
+                else if (result == ScanBlocked)
+                    _message = "Waiting: " + _dockScanBlocker + " is in the way";
                 _dockScanIndex = _dockScanSeen = 0;
-                _dockScanHit = false;
+                _dockScanBlocker = null;
                 return result;
             }
             Vector3D point = _dockScanPoints[_dockScanIndex++];
@@ -307,8 +369,16 @@ namespace IngameScript
                     continue;
                 MyDetectedEntityInfo hit = camera.Raycast(point);
                 _dockScanSeen++;
-                if (!hit.IsEmpty() && !IsBaseGrid(hit.EntityId))
-                    _dockScanHit = true;
+                if (!hit.IsEmpty() && hit.HitPosition.HasValue && !IsBaseGrid(hit.EntityId) && hit.EntityId != Me.CubeGrid.EntityId)
+                {
+                    Vector3D at = hit.HitPosition.Value;
+                    bool voxel = hit.Type == MyDetectedEntityType.Asteroid || hit.Type == MyDetectedEntityType.Planet;
+                    bool blocks = _dockScanAround
+                        ? !voxel && Vector3D.Distance(at, Me.CubeGrid.WorldVolume.Center) < ShipRadius + 5
+                        : InDockPath(at);
+                    if (blocks)
+                        _dockScanBlocker = (voxel ? "rock" : hit.Name) + " (" + FormatDistance(Vector3D.Distance(at, camera.GetPosition())) + ")";
+                }
                 break;
             }
             return ScanPending;

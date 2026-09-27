@@ -84,8 +84,12 @@ def full_minify(body):
     target = os.path.join(check, "obj", "script-min.cs")
     with open(source, "w", encoding="utf-8") as f:
         f.write(body)
-    subprocess.check_call(["dotnet", "run", "--project", check, "-v", "q", "--", source, "--minify", target],
-                          stdout=subprocess.DEVNULL)
+    if os.path.exists(target):
+        os.remove(target)
+    result = subprocess.run(["dotnet", "run", "--project", check, "-v", "q", "--", source, "--minify", target],
+                            capture_output=True, text=True)
+    if not os.path.exists(target):
+        sys.exit("Full minification failed, the script does not compile:\n" + result.stdout + result.stderr)
     return open(target, encoding="utf-8").read() + "\n"
 
 

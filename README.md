@@ -312,24 +312,32 @@ ready, sets the jump distance and jumps ("blind jump" along the nose). The jump 
 from known asteroids and gravity wells (the distance is shortened if needed). After
 the jump the rest is planned and flown as usual.
 
-The game itself may refuse or shorten a jump, e.g. near gravity or obstacles the
-script does not know. If nothing happens within 30 seconds, the flight stops.
+The game may not accept a jump started by a script. In that case the script keeps
+the ship aligned with the distance set and shows **press JUMP on your toolbar**:
+use the jump drive's Jump action from the cockpit toolbar (the jump goes where the
+cockpit points, which the script keeps on target). After the jump it continues on
+its own. The game may also refuse or shorten a jump near gravity or obstacles the
+script does not know; if no jump happens within 90 seconds, the flight stops.
 
 ## Docking
 
 1. Dock at the base by hand once. The script notices the connection and stores the
-   dock pose: where the connector was and how the ship was oriented, plus all grids
-   belonging to the base (including rotor and piston parts). The base entry on the
+   dock pose: where the connector was, how the ship was oriented and where its
+   grid was, plus all grids belonging to the base (including rotor and piston
+   parts). The base entry on the
    map is set to that position.
 2. From then on, **GO** on the base (or `dock`) flies there, jumping if far, and
    stops at an approach point in front of the connector (twice the ship's radius
    plus `DockApproach`), far enough out to turn without touching the base.
-3. **Space to turn**: the cameras check the space around the ship for other ships
-   before it turns. If something is there, the ship waits.
+3. **Space to turn**: the cameras check the space around the ship (its bounding
+   sphere) for other ships and players before it turns. If something is there,
+   the ship waits.
 4. The ship turns into the stored orientation.
-5. **Way in**: the cameras check the corridor from the approach point to the
-   connector, with a ring of rays at the ship's radius. If something is there, the
-   ship waits.
+5. **Way in**: the cameras check the path into the dock. Only what lies in the
+   space the ship actually sweeps through counts: the ship's own shape in the
+   docked pose, moved out along the connector axis. Rock or ships next to that
+   path (e.g. at neighbouring connectors) do not block. If something is in the
+   path, the ship waits and the message says what it is.
 6. The ship moves in slowly along the connector axis, correcting sideways drift,
    and keeps scanning the rest of the way; if something shows up, it stops and
    waits. When the connector is ready, it connects.

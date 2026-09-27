@@ -23,11 +23,16 @@ namespace IngameScript
     // Jump drive: for long distances GO first jumps towards the target
     // ("blind jump" along the ship's nose with a set distance), then flies the
     // rest. The jump ends JumpArrival meters before the target, in free space.
+    //
+    // The game may not accept a jump started by a script. Then the script
+    // keeps the ship aligned with the distance set and asks the pilot to press
+    // the jump drive's Jump action on the toolbar.
     partial class Program
     {
         const double JumpAlignTolerance = 0.01;     // rad (about 0.6 degrees)
         const double JumpDetected = 1000;           // m moved at once = the jump happened
-        const int JumpTimeoutTicks = 60 * 30;
+        const int JumpTimeoutTicks = 60 * 90;
+        const int JumpManualTicks = 60 * 3;         // no jump after this: ask the pilot to press Jump
 
         Vector3D _jumpDirection, _jumpFrom, _afterJumpTarget;
         double _jumpDistance;
@@ -112,6 +117,18 @@ namespace IngameScript
             }
 
             _jumpTicks++;
+            bool counting = false;
+            foreach (IMyJumpDrive d in _jumpDrives)
+                if (d.Status == MyJumpDriveStatus.Jumping)
+                    counting = true;
+            if (counting)
+                _jumpState = "jumping";
+            else if (_jumpTicks == JumpManualTicks)
+            {
+                _jumpState = "press JUMP on your toolbar";
+                _message = "Ship aligned, distance set: press the jump drive's Jump action";
+            }
+
             if (Vector3D.Distance(ReferencePosition(), _jumpFrom) > JumpDetected)
             {
                 // Arrived: fly the rest.
@@ -130,7 +147,7 @@ namespace IngameScript
             else if (_jumpTicks > JumpTimeoutTicks)
             {
                 _mode = Mode.Manual;
-                _message = "The jump did not happen (blocked or cancelled?)";
+                _message = "No jump within 90 s, cancelled";
             }
         }
     }

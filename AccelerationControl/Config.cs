@@ -226,7 +226,7 @@ namespace IngameScript
             if (_dockKnown)
             {
                 state.Set(StateSection, "Dock", string.Join(";", Vec(_dockPosition), Vec(_dockAxis), Vec(_dockForward), Vec(_dockUp),
-                    _dockConnectorId.ToString(), _dockGridId.ToString()));
+                    _dockConnectorId.ToString(), _dockGridId.ToString(), Vec(_dockGridPosition), Vec(_dockGridForward), Vec(_dockGridUp)));
                 state.Set(StateSection, "BaseGrids", string.Join(";", _baseGrids));
             }
             SaveMap(state);
@@ -262,8 +262,11 @@ namespace IngameScript
                     _gyroCalibrated[i] = gyro[3 + i] == "1";
             }
             string[] dock = state.Get(StateSection, "Dock").ToString("").Split(';');
-            if (dock.Length == 14)
+            if (dock.Length == 23)
             {
+                _dockGridPosition = ParseVec(dock, 14);
+                _dockGridForward = ParseVec(dock, 17);
+                _dockGridUp = ParseVec(dock, 20);
                 _dockPosition = ParseVec(dock, 0);
                 _dockAxis = ParseVec(dock, 3);
                 _dockForward = ParseVec(dock, 6);
