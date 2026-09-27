@@ -769,8 +769,17 @@ namespace IngameScript
         void Text(string text, float x, float y, float scale, Color color,
             TextAlignment alignment = TextAlignment.LEFT, string font = "White")
         {
-            MySprite sprite = MySprite.CreateText(text, font, color, TextPixelScale(scale), alignment);
-            sprite.Position = P(x, y);
+            // Aligned here instead of by the game, so the text starts on a whole pixel.
+            float pixelScale = TextPixelScale(scale);
+            Vector2 position = P(x, y);
+            if (alignment != TextAlignment.LEFT)
+            {
+                _measure.Clear().Append(text);
+                float width = _surface.MeasureStringInPixels(_measure, font, pixelScale).X;
+                position.X = (float)Math.Round(position.X - (alignment == TextAlignment.CENTER ? width / 2 : width));
+            }
+            MySprite sprite = MySprite.CreateText(text, font, color, pixelScale, TextAlignment.LEFT);
+            sprite.Position = position;
             _frame.Add(sprite);
         }
 
@@ -781,9 +790,17 @@ namespace IngameScript
         }
 
         // Font scale on the surface, with ScreenTextScale from Custom Data applied.
+        // Rounded so the line height is a whole number of pixels.
         float TextPixelScale(float scale)
         {
-            return scale * _u * _screenTextScale;
+            if (_fontHeight <= 0)
+            {
+                _measure.Clear().Append("A");
+                _fontHeight = Math.Max(_surface.MeasureStringInPixels(_measure, "White", 1).Y, 1);
+            }
+            return Math.Max(1, (float)Math.Round(scale * _u * _screenTextScale * _fontHeight)) / _fontHeight;
         }
+
+        float _fontHeight;      // line height of the font at scale 1 (px)
     }
 }
