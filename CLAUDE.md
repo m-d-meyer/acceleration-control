@@ -273,7 +273,8 @@ The README describes all commands and Custom Data options for players.
   each base entry (`Deposit.Dock`, a MyIni, section "D") keeps its own copy,
   saved as map sections `Dock<i>`. `WriteDock`/`ReadDock` (Config.cs) serialise,
   `StoreDock`/`ActivateDock`/`ChooseDock` (Docking.cs) switch; `_dockEntry` is the
-  active dock's base entry. At script start a connection to another known base
+  active dock's base entry. `dock` refuses without a known dock in this zone
+  within `DockRange` (20 km; user: never fall back to a far dock). At script start a connection to another known base
   activates that base's dock.
 - Size: `OwnBlocks<T>()` replaces the repeated construct-filtered
   `GetBlocksOfType`; the minifier (step 5b) caches frequent static API values

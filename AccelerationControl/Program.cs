@@ -263,8 +263,8 @@ namespace IngameScript
                     HandleTrackCommand(parts.Length > 1 ? (value == "clear" ? "clear" : argument.Substring(argument.IndexOf(' ') + 1)) : null);
                     break;
                 case "dock":
-                    ChooseDock();
-                    StartDocking();
+                    if (ChooseDock())
+                        StartDocking();
                     break;
                 case "undock":
                     Undock();

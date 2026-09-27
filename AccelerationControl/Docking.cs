@@ -152,16 +152,24 @@ namespace IngameScript
             _dockEntry = d;
         }
 
-        // 'dock': the nearest base with a dock in this zone.
-        void ChooseDock()
+        // 'dock': the nearest base with a dock in this zone, within DockRange.
+        // None: refuse (a far base is flown to with GO on its map entry).
+        const double DockRange = 20000;
+
+        bool ChooseDock()
         {
             Deposit best = null;
             foreach (Deposit d in _deposits)
                 if ((d.Dock != null || d == _dockEntry) && d.Zone == _zone && (best == null
                     || Vector3D.DistanceSquared(d.Position, ReferencePosition()) < Vector3D.DistanceSquared(best.Position, ReferencePosition())))
                     best = d;
-            if (best != null)
-                ActivateDock(best);
+            if (best == null || Vector3D.Distance(best.Position, ReferencePosition()) > DockRange)
+            {
+                _message = "No known dock within 20 km: dock by hand once to teach it, or GO on a base entry";
+                return false;
+            }
+            ActivateDock(best);
+            return true;
         }
 
         IMyShipConnector DockConnector()
