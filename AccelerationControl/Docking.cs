@@ -99,7 +99,7 @@ namespace IngameScript
                 _mode = Mode.Manual;
             AddDeposit(BaseName, _dockPosition, false);
             _mapChanged = true;
-            _message = HasDockPath ? "Docked. Dock position and the way in saved for 'dock'" : "Docked. Dock position saved for 'dock'";
+            _message = HasDockPath ? "Docked. Dock position and the way in saved for 'dock'" : "Docked. Dock position saved, but no way in: the script saw less than 20 m of it. Fly out and dock by hand again";
         }
 
         IMyShipConnector DockConnector()
