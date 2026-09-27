@@ -147,7 +147,7 @@ namespace IngameScript
                     _text.AppendLine("Docking: " + DockPhaseText());
                     break;
                 case Mode.Approach:
-                    _text.AppendFormat("Approach {0}: {1}, {2:0} m/s\n", _targetName, FormatDistance(_targetDistance), _currentSpeed);
+                    _text.AppendFormat("Approach {0}: {1}, {2:0} m/s\n", _targetName, FormatDistance(_remainingDistance), _currentSpeed);
                     _text.AppendFormat("{0}, stopping distance {1}\n", _approachPhase, FormatDistance(_stopDistance));
                     break;
                 default:

@@ -330,12 +330,12 @@ namespace IngameScript
         {
             bool braking = _approachPhase == "BRAKING";
             Text(_approachPhase, x, y, 0.6f, braking ? RouteColor : Cyan);
-            Text("stop " + FormatDistance(_stopDistance) + " / " + FormatDistance(_targetDistance),
+            Text("stop " + FormatDistance(_stopDistance) + " / " + FormatDistance(_remainingDistance),
                 x + width, y, 0.6f, TextColor, TextAlignment.RIGHT);
             float by = y + 26, bh = 18;
-            double full = Math.Max(Math.Max(_targetDistance, _stopDistance), 1);
+            double full = Math.Max(Math.Max(_remainingDistance, _stopDistance), 1);
             Box(x, by, width, bh, 1, GridColor);
-            Rect(x + 1, by + 1, (width - 2) * (float)(_targetDistance / full), bh - 2, Cyan * 0.6f);
+            Rect(x + 1, by + 1, (width - 2) * (float)(_remainingDistance / full), bh - 2, Cyan * 0.6f);
             float stop = x + (width - 2) * (float)Math.Min(_stopDistance / full, 1);
             Rect(stop - 2, by - 4, 4, bh + 8, RouteColor);
             if (_probing)
@@ -403,7 +403,7 @@ namespace IngameScript
                 Text("DOCKING  " + DockPhaseText(), 10, fy + 6, 0.66f, Cyan);
             else if (_mode == Mode.Approach)
             {
-                Text(_approachPhase + "  " + FormatDistance(_targetDistance), 10, fy + 6, 0.66f, _approachPhase == "BRAKING" ? RouteColor : Cyan);
+                Text(_approachPhase + "  " + FormatDistance(_remainingDistance), 10, fy + 6, 0.66f, _approachPhase == "BRAKING" ? RouteColor : Cyan);
                 Text("stop " + FormatDistance(_stopDistance), 502, fy + 8, 0.6f, TextColor, TextAlignment.RIGHT);
             }
             else if (_selected != null)

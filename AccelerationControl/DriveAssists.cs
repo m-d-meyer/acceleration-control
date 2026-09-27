@@ -41,6 +41,7 @@ namespace IngameScript
         double _targetDistance;
         double _stopDistance;
         string _approachPhase = "";
+        double _remainingDistance;      // to the end of the route
         bool _flipPlanned;              // final braking with the strongest thrusters after turning around
         bool _flipBraking;              // turned around for braking; kept until the flight ends
         const double FlipFactor = 1.3;              // turn around only if the strongest side is this much stronger
@@ -340,7 +341,7 @@ namespace IngameScript
 
             // Intermediate waypoints are passed, not stopped at.
             double endSpeed = _probing ? 0 : CornerSpeed();
-            if (!_probing && !OnLastLeg && _targetDistance < Math.Max(50, _currentSpeed))
+            if (!_probing && !OnLastLeg && _targetDistance < Math.Max(50, _currentSpeed * 0.5))
             {
                 NextWaypoint();
                 toTarget = _approachTarget - position;
@@ -407,13 +408,16 @@ namespace IngameScript
                 distance = Math.Min(distance, Math.Max(clear, 0));
             }
 
-            double speed = Math.Min(_departing ? DepartureSpeed : _maxSpeed, Math.Sqrt(endSpeed * endSpeed + 2 * brake * distance));
+            // Routes with turns only plan with BrakeShare of the braking (see PlanCornerSpeeds).
+            double share = _route.Count > 1 && !_probing ? BrakeShare : 1;
+            double speed = Math.Min(_departing ? DepartureSpeed : _maxSpeed, Math.Sqrt(endSpeed * endSpeed + 2 * brake * share * distance));
             // Close in: approach proportionally so the ship settles instead of oscillating.
             if (endSpeed <= 0)
                 speed = Math.Min(speed, distance * _velocityGain * 0.5);
             targetVelocity = direction * speed;
 
-            // For the display: stopping distance and flight phase.
+            // For the display: stopping distance, distance to the end of the route and flight phase.
+            _remainingDistance = _targetDistance + (_probing ? 0 : RouteLengthAfterWaypoint());
             _stopDistance = current > 0 ? current * current / (2 * Math.Max(brake, 0.01)) : 0;
             _approachPhase = speed < current - 1 ? "BRAKING" : speed > current + 1 ? "ACCELERATING" : "CRUISING";
             if (_flipPlanned && _approachPhase == "BRAKING")

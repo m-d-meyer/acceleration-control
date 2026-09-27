@@ -291,8 +291,11 @@ length, delta-v and flight time. **GO** plans and flies it.
   route gets a waypoint beside it, keeping the ship's radius plus `ApproachBuffer`
   of distance. Several obstacles give several waypoints. If no complete route is
   found (very dense fields), GO refuses instead of flying a risky path.
-- **Flying**: full thrust up to `MaxSpeed`. Waypoints are passed without stopping,
-  slower for sharper turns. The gyroscopes turn the ship so that its strongest
+- **Flying**: full thrust up to `MaxSpeed`. Waypoints are passed without stopping.
+  Their speeds are planned backwards from the end of the route: each waypoint is
+  passed only as fast as the ship can still slow down for the rest of the route,
+  and slower for sharper turns. The ship can therefore always stop at the end,
+  even if the last waypoint is just before the target. The gyroscopes turn the ship so that its strongest
   thrusters push along the route (`UseStrongestThrusters`; otherwise the nose points
   along the route).
 - **Flip and burn**: if the side that would brake is much weaker than the strongest

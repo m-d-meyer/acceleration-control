@@ -91,6 +91,13 @@ The README describes all commands and Custom Data options for players.
 - Camera raycasts DO hit the own ship when the ray passes through the hull (seen
   after flights started using sideways/backward thrust orientation). Every raycast
   result must be filtered with `IsOwnHit` (all grids of the own construct).
+- Waypoint speeds are planned backwards from the end (`PlanCornerSpeeds`): before,
+  the corner speed ignored the remaining distance, and a ship accelerated for 16 km
+  towards a waypoint just before the base and crashed into it. Simulated setting
+  that works: turn factor cos^2 and `BrakeShare` 0.7 of the planned braking on
+  routes with turns (1600 random routes, worst 29 m past the end point).
+- The collision guard ignores the base only while the ship can still stop in front
+  of it; otherwise it makes an emergency stop.
 - Screens: LCD textures are 512 px; the user found small fonts unreadable, so keep
   text scales around 0.55 or larger.
 

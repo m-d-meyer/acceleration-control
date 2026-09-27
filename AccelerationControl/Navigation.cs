@@ -42,6 +42,8 @@ namespace IngameScript
         readonly List<Obstacle> _temporaryObstacles = new List<Obstacle>();
 
         int _routeIndex;
+        readonly List<double> _cornerLimits = new List<double>();
+        const double BrakeShare = 0.7;              // share of the braking planned for routes with turns
         Vector3D _goalTarget;
         string _goalName = "";
         bool _goalDock, _departing, _resumeGoal, _replanPending;
@@ -342,6 +344,7 @@ namespace IngameScript
         {
             _departing = _resumeGoal = _replanPending = _flipBraking = false;
             _routeIndex = 0;
+            PlanCornerSpeeds();
             _approachTarget = _route[0];
             _targetName = name;
             _probing = false;
@@ -356,15 +359,63 @@ namespace IngameScript
             get { return _routeIndex >= _route.Count - 1; }
         }
 
-        // Speed to pass an intermediate waypoint with: slower for sharper turns.
+        // Speed to pass the current waypoint with (0 at the end of the route).
         double CornerSpeed()
         {
-            if (OnLastLeg)
-                return 0;
-            Vector3D previous = _routeIndex > 0 ? _route[_routeIndex - 1] : ReferencePosition();
-            Vector3D a = Vector3D.Normalize(_route[_routeIndex] - previous);
-            Vector3D b = Vector3D.Normalize(_route[_routeIndex + 1] - _route[_routeIndex]);
-            return _maxSpeed * MathHelper.Clamp(Vector3D.Dot(a, b), 0.1, 1);
+            return _routeIndex < _cornerLimits.Count ? _cornerLimits[_routeIndex] : 0;
+        }
+
+        // Backward planning of the waypoint speeds: starting with 0 at the end
+        // of the route, each waypoint may only be passed as fast as the ship can
+        // still slow down to the next limit on the following leg. Sharper turns
+        // lower the limit further (cos^2 of the turn angle), because the speed
+        // across the new leg has to be removed after the turn. Only BrakeShare
+        // of the planned braking is used, as margin for cutting corners.
+        // Simulated with thousands of random routes ending in turns.
+        void PlanCornerSpeeds()
+        {
+            _cornerLimits.Clear();
+            for (int i = 0; i < _route.Count; i++)
+                _cornerLimits.Add(0);
+            double brake = PlanningBrake();
+            Vector3D start = ReferencePosition();
+            for (int i = _route.Count - 2; i >= 0; i--)
+            {
+                Vector3D previous = i > 0 ? _route[i - 1] : start;
+                Vector3D a = _route[i] - previous, b = _route[i + 1] - _route[i];
+                double la = a.Length(), lb = b.Length();
+                double c = la > 1e-3 && lb > 1e-3 ? Math.Max(Vector3D.Dot(a, b) / (la * lb), 0) : 0;
+                double next = _cornerLimits[i + 1];
+                _cornerLimits[i] = Math.Min(_maxSpeed * Math.Max(c, 0.1), Math.Sqrt(next * next + 2 * brake * BrakeShare * lb) * c * c);
+            }
+        }
+
+        // Braking the planning can count on: with the strongest thrusters pointing
+        // along the flight, the opposite (braking) side; otherwise the thrusters
+        // pushing backwards while the nose points along the flight.
+        double PlanningBrake()
+        {
+            IMyShipController reference = _controller ?? _layoutController;
+            if (reference == null)
+                return 0.1;
+            double mass = reference.CalculateShipMass().PhysicalMass, brake;
+            if (_useBestThrust && _gyros.Count > 0)
+            {
+                Vector3D direction;
+                BestThrust(reference.WorldMatrix, mass, out direction, out brake);
+            }
+            else
+                brake = MaxAccel(2, 0, mass);
+            return Math.Max(brake * _brakeSafety, 0.1);
+        }
+
+        // Length of the route after the current waypoint.
+        double RouteLengthAfterWaypoint()
+        {
+            double length = 0;
+            for (int i = _routeIndex; i < _route.Count - 1; i++)
+                length += Vector3D.Distance(_route[i], _route[i + 1]);
+            return length;
         }
 
         void NextWaypoint()
@@ -381,6 +432,7 @@ namespace IngameScript
             {
                 _routeIndex = 0;
                 _approachTarget = _route[0];
+                PlanCornerSpeeds();
             }
             else
             {
@@ -441,9 +493,21 @@ namespace IngameScript
 
         void HandleGuardHit(MyDetectedEntityInfo hit, Vector3D position, Vector3D direction, double remaining)
         {
-            if (_dockAfterRoute && IsBaseGrid(hit.EntityId))
-                return;     // flying to the base: the base itself is expected ahead
             double along = Vector3D.Dot(hit.HitPosition.Value - position, direction);
+            double stopDistance = _currentSpeed * _currentSpeed / (2 * Math.Max(BrakeAccel(direction), 0.1));
+            if (_dockAfterRoute && IsBaseGrid(hit.EntityId))
+            {
+                // Flying to the base: the base is expected ahead and is ignored,
+                // unless the ship could no longer stop in front of it.
+                if (along - ShipRadius > stopDistance * 1.3 + _approachBuffer)
+                    return;
+                _route.Clear();
+                _route.Add(position + direction * Math.Max(along - StopOffset, 0));
+                StartRoute(_targetName);
+                _resumeGoal = true;
+                _message = "Too fast towards the base, emergency stop";
+                return;
+            }
             if (along > remaining + StopOffset + 5)
                 return;     // beyond the stop point plus buffer: no problem
 
@@ -470,7 +534,6 @@ namespace IngameScript
             // Too close to go around at this speed: stop in front of it, then
             // start over from there (moving away first). Otherwise plan a way
             // around in the next tick.
-            double stopDistance = _currentSpeed * _currentSpeed / (2 * Math.Max(BrakeAccel(direction), 0.1));
             if (along - _approachBuffer - ShipRadius < stopDistance * 1.3)
             {
                 _route.Clear();
