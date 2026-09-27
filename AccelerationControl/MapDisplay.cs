@@ -169,7 +169,8 @@ namespace IngameScript
                 if (!o.Planet)
                     _mapItems.Add(new MapItem { Rock = o, Local = ToLocal(o.Center, shipPos, ship) });
             foreach (Deposit d in _visibleDeposits)
-                _mapItems.Add(new MapItem { Deposit = d, Local = ToLocal(d.Position, shipPos, ship) });
+                if (d.Zone == _zone)
+                    _mapItems.Add(new MapItem { Deposit = d, Local = ToLocal(d.Position, shipPos, ship) });
             _mapItems.Sort((a, b) => b.Local.Z.CompareTo(a.Local.Z));
 
             // Active route (or the previewed one) as a dashed line with waypoints
@@ -295,7 +296,8 @@ namespace IngameScript
             {
                 Text(_selected.Label, left, y + 6, 0.8f, RouteColor);
                 Text(FormatDistance(_selected.Distance), right, y + 10, 0.7f, TextColor, TextAlignment.RIGHT);
-                Text(DirectionText(_selected.Position, false), left, y + 40, 0.6f, DimColor);
+                Text(_selected.Zone == _zone ? DirectionText(_selected.Position, false) : "GO: flight via the zone change",
+                    left, y + 40, 0.6f, DimColor);
 
                 if (_previewRoute.Count > 0 && _previewName == _selected.Label)
                     Text(string.Format("Route {0} legs  {1}  {2:0} m/s  {3}", _previewRoute.Count, FormatDistance(_routeLength),
@@ -375,6 +377,11 @@ namespace IngameScript
                 Text(FormatDistance(d.Distance), 322, ty + 2, 0.66f, TextColor, TextAlignment.RIGHT);
 
                 // Direction indicator: where the entry is relative to the nose.
+                if (d.Zone != _zone)
+                {
+                    y += ListRowHeight;
+                    continue;
+                }
                 Vector3D local = ToLocal(d.Position, shipPos, ship);
                 double yaw = Math.Atan2(local.X, local.Z), pitch = Math.Atan2(local.Y, new Vector2D(local.X, local.Z).Length());
                 bool behind = Math.Abs(yaw) > Math.PI / 2;

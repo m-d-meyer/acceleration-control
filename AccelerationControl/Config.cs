@@ -74,6 +74,12 @@ namespace IngameScript
         double _defaultHydrogenThrustPerLiter = 1400;
         double _defaultUraniumMWhPerKg = 1.0;
         double _defaultElectricThrustPerMW = 120000;
+        bool _planetZonesConfig = false;
+        double _planetCruiseHeight = 1500;
+        double _atmosphereHeight = 12000;
+        double _atmosphereSpeed = 100;
+        double _gravityFalloff = 7;
+        bool _compensateWind = true;
 
         // ---- state ----
         double _limit;
@@ -138,6 +144,12 @@ namespace IngameScript
             _defaultHydrogenThrustPerLiter = _ini.Get(IniSection, "HydrogenThrustPerLiter").ToDouble(_defaultHydrogenThrustPerLiter);
             _defaultUraniumMWhPerKg = _ini.Get(IniSection, "UraniumMWhPerKg").ToDouble(_defaultUraniumMWhPerKg);
             _defaultElectricThrustPerMW = _ini.Get(IniSection, "ElectricThrustPerMW").ToDouble(_defaultElectricThrustPerMW);
+            _planetZonesConfig = _ini.Get(IniSection, "PlanetZones").ToBoolean(_planetZonesConfig);
+            _planetCruiseHeight = _ini.Get(IniSection, "PlanetCruiseHeight").ToDouble(_planetCruiseHeight);
+            _atmosphereHeight = _ini.Get(IniSection, "AtmosphereHeight").ToDouble(_atmosphereHeight);
+            _atmosphereSpeed = _ini.Get(IniSection, "AtmosphereSpeed").ToDouble(_atmosphereSpeed);
+            _gravityFalloff = _ini.Get(IniSection, "GravityFalloff").ToDouble(_gravityFalloff);
+            _compensateWind = _ini.Get(IniSection, "CompensateWind").ToBoolean(_compensateWind);
 
             // Write back so every option is visible and editable in Custom Data.
             _ini.Set(IniSection, "DefaultAcceleration", _defaultLimit);
@@ -184,10 +196,18 @@ namespace IngameScript
             _ini.Set(IniSection, "HydrogenThrustPerLiter", _defaultHydrogenThrustPerLiter);
             _ini.Set(IniSection, "UraniumMWhPerKg", _defaultUraniumMWhPerKg);
             _ini.Set(IniSection, "ElectricThrustPerMW", _defaultElectricThrustPerMW);
+            _ini.Set(IniSection, "PlanetZones", _planetZonesConfig);
+            _ini.Set(IniSection, "PlanetCruiseHeight", _planetCruiseHeight);
+            _ini.Set(IniSection, "AtmosphereHeight", _atmosphereHeight);
+            _ini.Set(IniSection, "AtmosphereSpeed", _atmosphereSpeed);
+            _ini.Set(IniSection, "GravityFalloff", _gravityFalloff);
+            _ini.Set(IniSection, "CompensateWind", _compensateWind);
             _ini.SetSectionComment(IniSection,
                 " Accelerations in m/s² (1 g = 9.81 m/s²), speeds in m/s, distances in m.\n" +
                 " *CockpitSurface: cockpit screen index for that page, -1 = off.\n" +
                 " HydrogenThrustPerLiter, UraniumMWhPerKg: start values, calibrated in flight.\n" +
+                " PlanetZones: true for Real Solar Systems (switches on by itself at the first teleport).\n" +
+                " AtmosphereHeight: above sea level, used until the ship has measured the atmosphere.\n" +
                 " Run the PB with 'reload' after editing.");
             Me.CustomData = _ini.ToString();
 
@@ -234,7 +254,10 @@ namespace IngameScript
                 state.Set(StateSection, "Dock", string.Join(";", Vec(_dockPosition), Vec(_dockAxis), Vec(_dockForward), Vec(_dockUp),
                     _dockConnectorId.ToString(), _dockGridId.ToString(), Vec(_dockGridPosition), Vec(_dockGridForward), Vec(_dockGridUp)));
                 state.Set(StateSection, "BaseGrids", string.Join(";", _baseGrids));
+                state.Set(StateSection, "DockZone", _dockZone);
             }
+            state.Set(StateSection, "Zone", _zone);
+            state.Set(StateSection, "PlanetZonesSeen", _planetZonesSeen);
             SaveMap(state);
             Storage = state.ToString();
         }
@@ -285,6 +308,9 @@ namespace IngameScript
                 if (long.TryParse(id, out grid))
                     _baseGrids.Add(grid);
             }
+            _dockZone = state.Get(StateSection, "DockZone").ToString("");
+            _zone = state.Get(StateSection, "Zone").ToString("");
+            _planetZonesSeen = state.Get(StateSection, "PlanetZonesSeen").ToBoolean(false);
             LoadMap(state);
         }
 

@@ -113,6 +113,7 @@ namespace IngameScript
             _text.AppendFormat("Limit: {0:0.00} m/s² ({1:0.00} g)\n", _limit, _limit / 9.81);
             _text.AppendLine("Dampeners: " + (_limitDampeners ? "limited" : "full thrust"));
             AppendModeStatus();
+            AppendPlanetStatus();
 
             if (mass > 0)
             {
@@ -129,6 +130,23 @@ namespace IngameScript
             if (_message.Length > 0)
                 _text.AppendLine(_message);
             return _text.ToString();
+        }
+
+        // Gravity, height, air and the measured wind while near a planet.
+        void AppendPlanetStatus()
+        {
+            if (_zoneGoal)
+                _text.AppendLine("Waiting for the zone of " + _zoneGoalName);
+            if (_planet == null && !InGravity)
+                return;
+            _text.AppendFormat("Gravity {0:0.00} g", _gravity.Length() / 9.81);
+            if (_planet != null)
+                _text.Append("  alt " + FormatDistance(Vector3D.Distance(ReferencePosition(), _planet.Center) - _planet.Radius));
+            if (_air >= 0)
+                _text.AppendFormat("  air {0:0}%", _air * 100);
+            _text.AppendLine();
+            if (_disturbance.LengthSquared() > 0.01)
+                _text.AppendFormat("Wind/drag {0:0.0} m/s² compensated\n", _disturbance.Length());
         }
 
         void AppendModeStatus()
@@ -242,6 +260,8 @@ namespace IngameScript
 
         string FormatDistance(double meters)
         {
+            if (meters == double.MaxValue)
+                return "other zone";    // entry recorded in another planet zone
             return meters >= 1000 ? (meters / 1000).ToString("0.00") + " km" : meters.ToString("0") + " m";
         }
 

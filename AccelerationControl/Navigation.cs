@@ -71,11 +71,18 @@ namespace IngameScript
 
         // Plans from -> to around known obstacles. Returns false if a detour
         // could not be found within the depth limit.
+        // Near a planet the route climbs to a cruise height, follows the
+        // curvature and ends above the target (see Planets.cs).
         bool PlanRoute(Vector3D from, Vector3D to, List<Vector3D> route)
         {
             route.Clear();
             _planOwners.Clear();
-            bool ok = PlanSegment(from, to, route, 0, true, true);
+            if (InGravity)
+                UpdatePlanet();
+            double cruise;
+            Obstacle planet = PlanetOnRoute(from, to, out cruise);
+            Vector3D start = planet != null ? PlanPlanetArc(planet, cruise, from, to, route) : from;
+            bool ok = PlanSegment(start, to, route, 0, true, true);
             route.Add(to);
             _planOwners.Add(null);
             if (ok)
@@ -261,6 +268,12 @@ namespace IngameScript
                 _message = "No entry selected";
                 return;
             }
+            if (_selected.Zone != _zone)
+            {
+                bool dock = _selected.Ore == BaseName && _dockKnown && _dockZone == _selected.Zone;
+                StartZoneGoal(dock ? DockApproachPoint : _selected.Position, _selected.Label, _selected.Zone, dock);
+                return;
+            }
             if (_selected.Ore == BaseName && _dockKnown && Vector3D.Distance(_selected.Position, _dockPosition) < _mergeDistance * 2)
             {
                 StartDocking();
@@ -288,8 +301,12 @@ namespace IngameScript
             _goalName = name;
             _goalDock = dock;
             _dockAfterRoute = dock;
+            _zoneGoal = false;
             if (!resume)
+            {
                 _temporaryObstacles.Clear();    // ships seen on the way stay avoided when resuming
+                _terrainRadius = 0;
+            }
             _replanPending = _resumeGoal = false;
             // Already near the dock (at the approach point or on the way in):
             // go straight to the slow docking manoeuvre.
@@ -357,6 +374,8 @@ namespace IngameScript
             }
             foreach (Deposit d in _deposits)
             {
+                if (d.Zone != _zone)
+                    continue;
                 double clearance = ShipRadius + _approachBuffer * 2, distance = Vector3D.Distance(from, d.Position);
                 if (distance < clearance && clearance - distance > need)
                 {
@@ -367,7 +386,8 @@ namespace IngameScript
             }
             if (need <= 0)
                 return false;
-            Vector3D direction = Vector3D.Dot(back, away) > 0.3 ? back : away;
+            // In gravity straight up (the ship is level, a mine is below or beside it).
+            Vector3D direction = InGravity ? -Vector3D.Normalize(_gravity) : Vector3D.Dot(back, away) > 0.3 ? back : away;
             point = from + direction * (need + _approachBuffer);
             return true;
         }
@@ -386,9 +406,13 @@ namespace IngameScript
             GoToPoint(new Vector3D(x, y, z), p[1]);
         }
 
-        // The point where the ship's center stops in front of a target: ApproachBuffer plus the ship's radius.
+        // The point where the ship's center stops in front of a target: ApproachBuffer
+        // plus the ship's radius. On a planet above the target.
         Vector3D StopPoint(Vector3D from, Vector3D target)
         {
+            Obstacle planet = PlanetAt(target);
+            if (planet != null && Vector3D.Distance(target, planet.Center) < planet.Radius * 1.5)
+                return target + Vector3D.Normalize(target - planet.Center) * StopOffset;
             Vector3D ray = target - from;
             double distance = ray.Length();
             return distance > StopOffset ? target - ray / distance * StopOffset : from;
@@ -477,7 +501,10 @@ namespace IngameScript
             if (reference == null)
                 return 0.1;
             double mass = reference.CalculateShipMass().PhysicalMass, brake;
-            if (_useBestThrust && _gyros.Count > 0)
+            if (InGravity)
+                // Level flight: braking forward, or holding a descent against gravity.
+                brake = Math.Min(MaxAccel(2, 0, mass), MaxAccel(1, 0, mass) - _gravity.Length());
+            else if (_useBestThrust && _gyros.Count > 0)
             {
                 Vector3D direction;
                 BestThrust(reference.WorldMatrix, mass, out direction, out brake);
@@ -603,12 +630,15 @@ namespace IngameScript
             bool voxel = hit.Type == MyDetectedEntityType.Asteroid || hit.Type == MyDetectedEntityType.Planet;
             if (voxel)
                 RegisterObstacle(hit);
+            // Terrain ahead on a planet: planning again flies higher.
+            if (hit.Type == MyDetectedEntityType.Planet && _planet != null)
+                _terrainRadius = Math.Max(_terrainRadius, Vector3D.Distance(hit.HitPosition.Value, _planet.Center) + _approachBuffer);
 
             // The rock the target lies on: stop earlier. Any other rock (e.g. one the
             // route goes around, larger than known) is an obstacle.
             Obstacle rock = voxel ? FindObstacle(hit.EntityId) : null;
             Vector3D final = _route[_route.Count - 1];
-            if (OnLastLeg && rock != null && Vector3D.Distance(final, rock.Center) < rock.Radius + StopOffset)
+            if (OnLastLeg && rock != null && (rock.Planet ? PlanetAt(final) == rock : Vector3D.Distance(final, rock.Center) < rock.Radius + StopOffset))
             {
                 // Most likely the target rock itself: stop earlier. Small corrections
                 // are ignored (the end point is only hit roughly anyway), and the new
@@ -723,7 +753,7 @@ namespace IngameScript
                 else
                 {
                     desired = toward;
-                    if (_useBestThrust && !_probing)
+                    if (_useBestThrust && !_probing && !InGravity)
                     {
                         // Point the strongest thrusters along the flight; for the
                         // final braking of a flip, against the velocity.
@@ -733,6 +763,17 @@ namespace IngameScript
                             desired = velocity.LengthSquared() > 1 ? -Vector3D.Normalize(velocity) : -toward;
                     }
                 }
+            }
+            if (InGravity && _mode != Mode.Jump && desiredUp == Vector3D.Zero)
+            {
+                // In gravity the ship stays level: its up against gravity, the nose
+                // turned only horizontally (climbs and descents use the up thrusters).
+                desiredUp = -Vector3D.Normalize(_gravity);
+                pointing = matrix.Forward;
+                desired -= desiredUp * Vector3D.Dot(desired, desiredUp);
+                if (desired.LengthSquared() < 0.01)
+                    desired = matrix.Forward - desiredUp * Vector3D.Dot(matrix.Forward, desiredUp);
+                desired = desired.LengthSquared() > 1e-6 ? Vector3D.Normalize(desired) : Vector3D.CalculatePerpendicularVector(desiredUp);
             }
             Vector3D axis = Vector3D.Cross(pointing, desired);
             double sin = axis.Length(), cos = Vector3D.Dot(pointing, desired);

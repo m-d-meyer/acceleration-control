@@ -80,7 +80,7 @@ namespace IngameScript
             {
                 _message = _mode == Mode.Jump ? "Jump cancelled" : _mode == Mode.Dock ? "Docking cancelled" : "Approach cancelled";
                 _mode = Mode.Manual;
-                _dockAfterRoute = _departing = _resumeGoal = false;
+                _dockAfterRoute = _departing = _resumeGoal = _zoneGoal = false;
                 return false;
             }
 
@@ -279,7 +279,7 @@ namespace IngameScript
             _route.Clear();
             _route.Add(surfacePoint - ray / distance * StopOffset);
             _temporaryObstacles.Clear();
-            _dockAfterRoute = false;
+            _dockAfterRoute = _zoneGoal = false;
             StartRoute(name);
             return true;
         }
@@ -327,10 +327,13 @@ namespace IngameScript
         }
 
         // Deceleration the approach plans with when moving along a direction.
+        // Gravity pulling along the direction (descending) takes its share.
         double BrakeAccel(Vector3D direction)
         {
             double brake = MaxAccelAlong(-direction) * _brakeSafety;
-            return _approachFullThrust ? brake : Math.Min(brake, _limit * _brakeSafety);
+            if (!_approachFullThrust)
+                brake = Math.Min(brake, _limit * _brakeSafety);
+            return Math.Max(brake - Math.Max(Vector3D.Dot(_gravity, direction), 0), 0.05);
         }
 
         // Velocity that brings the ship to the approach target and still lets it
@@ -413,7 +416,7 @@ namespace IngameScript
             _flipPlanned = _flipBraking;
             IMyShipController reference = _controller ?? _layoutController;
             if (_useBestThrust && !_probing && !_departing && OnLastLeg && _gyros.Count > 0 && reference != null
-                && _targetDistance > FlipMinDistance)
+                && _targetDistance > FlipMinDistance && !InGravity)
             {
                 Vector3D bestDirection;
                 double reverse, best = BestThrust(reference.WorldMatrix, reference.CalculateShipMass().PhysicalMass, out bestDirection, out reverse);
@@ -439,6 +442,8 @@ namespace IngameScript
             // Close in: approach proportionally so the ship settles instead of oscillating.
             if (endSpeed <= 0)
                 speed = Math.Min(speed, distance * _velocityGain * 0.5);
+            // Atmosphere: limited speed inside, braked in time before entering.
+            speed = Math.Min(speed, AtmosphereSpeedLimit(position, _route[_route.Count - 1], brake));
             targetVelocity = direction * speed;
 
             // For the display: stopping distance, distance to the end of the route and flight phase.

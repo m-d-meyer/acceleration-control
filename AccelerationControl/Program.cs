@@ -27,6 +27,7 @@ namespace IngameScript
     //   ShipStatus.cs    - cargo, fuel and delta-v monitoring
     //   Displays.cs      - LCD / cockpit screen output
     //   Config.cs        - Custom Data configuration and saved state
+    //   Planets.cs       - planet routes, atmosphere, wind compensation, zones
     partial class Program : MyGridProgram
     {
         const int BlockRefreshTicks = 600;          // rescan blocks every 10 s
@@ -102,6 +103,7 @@ namespace IngameScript
             if (_ticks % BlockRefreshTicks == 0)
                 RefreshBlocks();
 
+            UpdateZone();
             RunPendingReplan();
             UpdateScan();
             ControlThrust();
@@ -126,6 +128,16 @@ namespace IngameScript
 
             GridTerminalSystem.GetBlocksOfType(_controllers, c => c.IsSameConstructAs(Me) && c.CanControlShip);
             GridTerminalSystem.GetBlocksOfType(_allThrusters, t => t.IsSameConstructAs(Me));
+            _atmoThrusters.Clear();
+            _ionThrusters.Clear();
+            foreach (IMyThrust t in _allThrusters)
+            {
+                string subtype = t.BlockDefinition.SubtypeId;
+                if (subtype.Contains("Atmospheric"))
+                    _atmoThrusters.Add(t);
+                else if (!subtype.Contains("Hydrogen"))
+                    _ionThrusters.Add(t);
+            }
             GridTerminalSystem.GetBlocksOfType(_cameras, c => c.IsSameConstructAs(Me));
             GridTerminalSystem.GetBlocksOfType(_gyros, g => g.IsSameConstructAs(Me));
             GridTerminalSystem.GetBlocksOfType(_connectors, c => c.IsSameConstructAs(Me));

@@ -36,6 +36,11 @@ MDK2 project, C# 6). Features, roughly in the order they were added:
 7. Docking (`Docking.cs`): pose recorded when docking by hand; approach point, turning
    check, swept-volume corridor check (ship box moved along the connector axis),
    final approach with continuous scanning; `undock`
+8. Planets (`Planets.cs`, PR 2): planet routes (climb, arc at cruise height, vertical
+   descent), level flight in gravity, gravity-aware braking, atmosphere speed limit
+   (top learned from atmospheric/ion thruster effectiveness), disturbance observer
+   for wind/drag/lift, Real Solar Systems zones (teleport detection, map entries per
+   zone, flights across zone changes)
 
 The README describes all commands and Custom Data options for players.
 
@@ -126,6 +131,18 @@ The README describes all commands and Custom Data options for players.
   (not verified in game which of these was the cause).
 - Screens: LCD textures are 512 px; the user found small fonts unreadable, so keep
   text scales around 0.55 or larger.
+
+- Real Solar Systems (user's save): proxy planets move, real planets are static and
+  far away; near a proxy the ship is teleported into the planet's zone with its own
+  coordinates (and possibly a changed velocity). Zone key = planet center rounded to
+  km ("" = space). Only this zone's obstacles are in `_obstacles` (`SwitchZone`),
+  others in `_otherObstacles`. The mod's gravity is larger with a gentler falloff:
+  the falloff exponent is learned in `UpdatePlanet`. Unknown and not verified: how
+  the orbit zone moves ships, whether proxies have gravity for scripts. Planet
+  features were only compile-checked and simulated (descent braking with thruster
+  lag and wind, observer with lag, arc geometry), not flown in game.
+- Planet obstacles: raycast hits on a known planet (center within 1 km) only store the
+  entity id; `UpdatePlanet` measures radius/well (duplicates caused replanning loops).
 
 ## Open ideas / next steps
 

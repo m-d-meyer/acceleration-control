@@ -28,6 +28,10 @@ acceleration instead — in m/s², independent of cargo mass.
   number of trips it allows
 - **Ore map**: deposits marked with a camera scan or logged automatically while mining,
   shown as a 3D radar and as a list, with GPS export and toolbar-driven buttons
+- **Planets**: flights on and around planets (climb, follow the curvature, descend
+  above the target, ship kept level), atmosphere speed limit, wind/drag/lift
+  compensation, and support for the Real Solar Systems mod (planet zones with their
+  own coordinates, flights across zone changes)
 - Settings survive saving/reloading the world
 
 ## Setup
@@ -148,6 +152,12 @@ first run. Edit them there and run `reload`.
 | `DockApproach`       | `30`      | Distance in front of the base connector where docking starts (m, plus ship radius) |
 | `UseStrongestThrusters` | `true` | Turn the ship so its strongest thrusters push along the flight, and flip for braking if worth it |
 | `FlipTime`           | `30`      | Seconds planned for turning around before braking                 |
+| `PlanetZones`        | `false`   | Real Solar Systems: each planet zone has its own coordinates (switches on by itself at the first teleport into or out of a planet zone) |
+| `PlanetCruiseHeight` | `1500`    | Height above the ground (start, target, terrain seen) for flights on a planet (m); short hops fly lower |
+| `AtmosphereHeight`   | `12000`   | Assumed top of the atmosphere above sea level until the ship has measured it (m) |
+| `AtmosphereSpeed`    | `100`     | Speed limit inside an atmosphere (m/s); the ship brakes to it before entering, `0` = off |
+| `GravityFalloff`     | `7`       | Gravity falloff exponent until measured (vanilla planets: 7; mods may use less) |
+| `CompensateWind`     | `true`    | Measure wind, drag and lift and compensate them during flights |
 
 ## Drive assists
 
@@ -339,6 +349,71 @@ length, delta-v and flight time. **GO** plans and flies it.
   overrides against the measured rotation and corrects it by itself. Until that is
   done (usually within the first second of the first turn), it turns slowly.
   `calibrate reset` repeats this.
+
+## Planets
+
+### Flying on a planet
+
+When the start or the target of a flight lies in a planet's gravity well and the
+direct line would pass lower than the cruise height, the route:
+
+1. climbs straight up to the cruise height (`PlanetCruiseHeight` above the higher of
+   the ground under the ship and the target; for short hops a quarter of the
+   distance, at least 200 m),
+2. follows the curvature of the planet at that height (waypoints at most 100 m below
+   the cruise sphere),
+3. descends vertically above the target and stops `ApproachBuffer` plus the ship's
+   radius above it (targets in space: heads straight for them once the planet is
+   out of the way).
+
+In gravity (above 0.5 m/s²) the ship stays level: its up side points against
+gravity and only the nose turns towards the flight direction. Climbs and descents
+use the up/down thrusters; flip-and-burn and turning the strongest thrusters along
+the flight are not used. Braking on a descent is planned with the upward thrust
+minus gravity. If the collision guard sees terrain ahead, the route is planned again
+higher. Leaving a mine on a planet starts with a straight climb.
+
+### Atmosphere
+
+Inside the atmosphere the speed is limited to `AtmosphereSpeed`; above it, a flight
+that goes down into the atmosphere slows down in time to enter at that speed. The
+top of the atmosphere is measured with the ship's atmospheric thrusters (they gain
+thrust in air) or ion thrusters (they lose thrust) and stored per planet. Until then `AtmosphereHeight` above sea level is assumed.
+
+### Wind, drag and lift
+
+During flights the script measures the ship's acceleration and subtracts what the
+thrusters (their actual output) and gravity explain. The rest is the external
+acceleration: wind, aerodynamic drag, lift from wings. It is filtered (1 s) and
+compensated like gravity, so the ship holds course and speed in wind and the
+thrusters only add what the wings do not carry. The control page shows it as
+"Wind/drag". `CompensateWind=false` turns it off.
+
+### Real Solar Systems
+
+With this mod the planets you see move, but the real planets are static and far
+away; approaching a planet teleports the ship into that planet's zone, which has its
+own coordinates. The script detects teleports (a position jump that the velocity and
+the jump drive do not explain):
+
+- Map entries, obstacles and the base remember the zone they were recorded in. The
+  radar shows only the current zone; the list shows entries of other zones with
+  "other zone" instead of a distance. GPS export only contains the current zone.
+- A teleport ends the current flight. Within the same planet zone (e.g. between
+  orbit and surface) the route is simply planned again.
+- GO/dock to an entry in another zone: in a planet zone the ship climbs straight up
+  until the zone changes; in space fly towards the planet yourself (the script cannot
+  see the moving proxy planets). As soon as the ship is in the target's zone, the
+  flight continues automatically. The control page shows "Waiting for the zone of …".
+- The mod's zone change can change the ship's velocity (a planet "running into" a
+  resting ship). Keep dampeners on when entering a zone by hand.
+
+Zones switch on by themselves at the first teleport into or out of a planet zone.
+If the ship is already in a planet zone when the script is installed, set
+`PlanetZones=true`, otherwise entries recorded before the first teleport count as
+space. The gravity falloff of the mod's planets is measured in flight
+(`GravityFalloff` is only the start value), so the size of the gravity wells that
+routes avoid in space is estimated correctly.
 
 ## Jump drive
 

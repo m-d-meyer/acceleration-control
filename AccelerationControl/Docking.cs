@@ -43,6 +43,7 @@ namespace IngameScript
         readonly List<IMyTerminalBlock> _blockBuffer = new List<IMyTerminalBlock>();
 
         bool _dockKnown;
+        string _dockZone = "";          // coordinate zone of the base (see Planets.cs)
         Vector3D _dockPosition, _dockAxis, _dockForward, _dockUp;
         long _dockConnectorId, _dockGridId;
         bool _wasConnected;
@@ -84,6 +85,7 @@ namespace IngameScript
             _dockConnectorId = connector.EntityId;
             _dockGridId = connector.OtherConnector.CubeGrid.EntityId;
             _dockKnown = true;
+            _dockZone = _zone;
 
             // All grids of the base (including rotor and piston parts), so the
             // docking checks do not treat them as other ships.
@@ -123,6 +125,11 @@ namespace IngameScript
             if (DockConnector() == null)
             {
                 _message = "No connector on this ship";
+                return;
+            }
+            if (_dockZone != _zone)
+            {
+                StartZoneGoal(DockApproachPoint, BaseName, _dockZone, true);
                 return;
             }
             StartGoal(DockApproachPoint, BaseName, true);

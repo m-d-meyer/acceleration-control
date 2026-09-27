@@ -86,6 +86,11 @@ namespace IngameScript
                 hasTarget = true;
                 targetVelocity = dampeners ? Vector3D.Zero : velocity;
             }
+            // Wind, drag and lift: measured while an assist controls all axes and
+            // compensated like gravity (see Planets.cs).
+            MeasureThrust();
+            UpdateDisturbance(hasTarget && move.LengthSquared() < InputDeadzone * InputDeadzone, velocity, gravity, mass);
+            Vector3D external = gravity + _disturbance;
 
             Vector3D[] axes = { matrix.Right, matrix.Up, matrix.Backward };
             for (int axis = 0; axis < 3; axis++)
@@ -120,8 +125,9 @@ namespace IngameScript
                     continue;
                 }
 
-                // Net force needed along +axis, including the part that cancels gravity.
-                double force = mass * (targetAccel - Vector3D.Dot(gravity, dir));
+                // Net force needed along +axis, including the part that cancels
+                // gravity (and, for the assists, the measured disturbance).
+                double force = mass * (targetAccel - Vector3D.Dot(Math.Abs(input) > InputDeadzone ? gravity : external, dir));
                 ApplyAxisForce(axis, force);
             }
 
