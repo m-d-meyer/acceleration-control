@@ -31,7 +31,7 @@ namespace IngameScript
         const double ArrivalRoughSpeed = 1.0;       // m/s - within max(ArrivalTolerance, ApproachBuffer / 4), slower than this
         const double WaypointRadius = 50;           // m - intermediate waypoints count as reached within this
 
-        enum Mode { Manual, Cruise, Approach, Jump, Dock }
+        enum Mode { Manual, Cruise, Approach, Jump, Dock, Path }
         enum ScanPurpose { Approach, Mark }
 
         readonly List<IMyCameraBlock> _cameras = new List<IMyCameraBlock>();
@@ -83,9 +83,9 @@ namespace IngameScript
             }
             if (_mode != Mode.Manual && _mode != Mode.Cruise && move.LengthSquared() > InputDeadzone * InputDeadzone)
             {
-                _message = _mode == Mode.Jump ? "Jump cancelled" : _mode == Mode.Dock ? "Docking cancelled" : "Approach cancelled";
+                _message = _mode == Mode.Jump ? "Jump cancelled" : _mode == Mode.Dock || _mode == Mode.Path ? "Docking cancelled" : "Approach cancelled";
                 _mode = Mode.Manual;
-                _dockAfterRoute = _departing = _resumeGoal = _zoneGoal = _pendingStart = false;
+                _dockAfterRoute = _departing = _resumeGoal = _zoneGoal = _pendingStart = _pathAfterRoute = false;
                 return false;
             }
 
@@ -99,6 +99,12 @@ namespace IngameScript
             {
                 maxAccel = Math.Min(_limit, 2);
                 return DockVelocity(out targetVelocity);
+            }
+
+            if (_mode == Mode.Path)
+            {
+                maxAccel = Math.Min(_limit, 3);
+                return PathVelocity(out targetVelocity);
             }
 
             if (_mode == Mode.Approach)
@@ -196,6 +202,7 @@ namespace IngameScript
             Vector3D origin = _camera.GetPosition();
             Vector3D direction = _camera.WorldMatrix.Forward;
             MyDetectedEntityInfo hit = _camera.Raycast(range);
+            NoteHit(hit);
             if (!hit.IsEmpty() && IsOwnHit(hit))
             {
                 _message = "The scan hit the own ship: point the camera (" + _camera.CustomName + ") away from the hull";
@@ -254,7 +261,7 @@ namespace IngameScript
             if (!_camera.CanScan(lookTarget))
                 return;
 
-            MyDetectedEntityInfo hit = _camera.Raycast(lookTarget);
+            MyDetectedEntityInfo hit = Cast(_camera, lookTarget);
             if (!hit.IsEmpty() && IsOwnHit(hit))
                 return;     // the view ahead is blocked by the own hull: no information
             if (!hit.IsEmpty() && hit.HitPosition.HasValue)
@@ -443,6 +450,11 @@ namespace IngameScript
                 {
                     // Stopped in front of an obstacle: start over from here.
                     StartGoal(_goalTarget, _goalName, _goalDock, true);
+                    return false;
+                }
+                if (_pathAfterRoute)
+                {
+                    StartPathFollow(0);
                     return false;
                 }
                 if (_dockAfterRoute)

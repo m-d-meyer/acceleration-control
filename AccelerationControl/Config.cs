@@ -95,6 +95,36 @@ namespace IngameScript
         bool _hydrogenCalibrated;
         bool _uraniumCalibrated;
 
+        // Reads an option from Custom Data and writes it back, so every option is
+        // visible and editable there.
+        double Option(string key, double value)
+        {
+            value = _ini.Get(IniSection, key).ToDouble(value);
+            _ini.Set(IniSection, key, value);
+            return value;
+        }
+
+        bool Option(string key, bool value)
+        {
+            value = _ini.Get(IniSection, key).ToBoolean(value);
+            _ini.Set(IniSection, key, value);
+            return value;
+        }
+
+        string Option(string key, string value)
+        {
+            value = _ini.Get(IniSection, key).ToString(value);
+            _ini.Set(IniSection, key, value);
+            return value;
+        }
+
+        int Option(string key, int value)
+        {
+            value = _ini.Get(IniSection, key).ToInt32(value);
+            _ini.Set(IniSection, key, value);
+            return value;
+        }
+
         void LoadConfig()
         {
             MyIniParseResult result;
@@ -104,116 +134,61 @@ namespace IngameScript
                 return;
             }
 
-            _defaultLimit = _ini.Get(IniSection, "DefaultAcceleration").ToDouble(_defaultLimit);
-            _step = _ini.Get(IniSection, "Step").ToDouble(_step);
-            _minLimit = _ini.Get(IniSection, "MinAcceleration").ToDouble(_minLimit);
-            _maxLimit = _ini.Get(IniSection, "MaxAcceleration").ToDouble(_maxLimit);
-            _limitDampenersDefault = _ini.Get(IniSection, "LimitDampeners").ToBoolean(_limitDampenersDefault);
-            _dampenerGain = _ini.Get(IniSection, "DampenerGain").ToDouble(_dampenerGain);
-            _lcdTag = _ini.Get(IniSection, "LcdTag").ToString(_lcdTag);
-            _statusTag = _ini.Get(IniSection, "StatusTag").ToString(_statusTag);
-            _cockpitSurface = _ini.Get(IniSection, "CockpitSurface").ToInt32(_cockpitSurface);
-            _statusCockpitSurface = _ini.Get(IniSection, "StatusCockpitSurface").ToInt32(_statusCockpitSurface);
-            _mapTag = _ini.Get(IniSection, "MapTag").ToString(_mapTag);
-            _listTag = _ini.Get(IniSection, "ListTag").ToString(_listTag);
-            _mapCockpitSurface = _ini.Get(IniSection, "MapCockpitSurface").ToInt32(_mapCockpitSurface);
-            _listCockpitSurface = _ini.Get(IniSection, "ListCockpitSurface").ToInt32(_listCockpitSurface);
-            _autoLog = _ini.Get(IniSection, "AutoLogMining").ToBoolean(_autoLog);
-            _logStone = _ini.Get(IniSection, "LogStone").ToBoolean(_logStone);
-            _mergeDistance = _ini.Get(IniSection, "MergeDistance").ToDouble(_mergeDistance);
-            _gravityWellFactor = _ini.Get(IniSection, "GravityWellFactor").ToDouble(_gravityWellFactor);
-            _survey = _ini.Get(IniSection, "Survey").ToBoolean(_survey);
-            _surveyRange = _ini.Get(IniSection, "SurveyRange").ToDouble(_surveyRange);
-            _probeRange = _ini.Get(IniSection, "SearchRange").ToDouble(_probeRange);
-            _alignShip = _ini.Get(IniSection, "AlignShip").ToBoolean(_alignShip);
-            _guard = _ini.Get(IniSection, "CollisionGuard").ToBoolean(_guard);
-            _avoidGravity = _ini.Get(IniSection, "AvoidGravityWells").ToBoolean(_avoidGravity);
-            _importTag = _ini.Get(IniSection, "ImportTag").ToString(_importTag);
-            _useJump = _ini.Get(IniSection, "UseJumpDrive").ToBoolean(_useJump);
-            _jumpThreshold = _ini.Get(IniSection, "JumpMinDistance").ToDouble(_jumpThreshold);
-            _jumpArrival = _ini.Get(IniSection, "JumpArrival").ToDouble(_jumpArrival);
-            _jumpClearance = _ini.Get(IniSection, "JumpClearance").ToDouble(_jumpClearance);
-            _dockApproach = _ini.Get(IniSection, "DockApproach").ToDouble(_dockApproach);
-            _useBestThrust = _ini.Get(IniSection, "UseStrongestThrusters").ToBoolean(_useBestThrust);
-            _flipTime = _ini.Get(IniSection, "FlipTime").ToDouble(_flipTime);
-            _defaultCruiseSpeed = _ini.Get(IniSection, "CruiseSpeed").ToDouble(_defaultCruiseSpeed);
-            _cruiseStep = _ini.Get(IniSection, "CruiseStep").ToDouble(_cruiseStep);
-            _velocityGain = _ini.Get(IniSection, "VelocityGain").ToDouble(_velocityGain);
-            _cameraTag = _ini.Get(IniSection, "CameraTag").ToString(_cameraTag);
-            _scanRange = _ini.Get(IniSection, "ScanRange").ToDouble(_scanRange);
-            _approachBuffer = _ini.Get(IniSection, "ApproachBuffer").ToDouble(_approachBuffer);
-            _approachFullThrust = _ini.Get(IniSection, "ApproachFullThrust").ToBoolean(_approachFullThrust);
-            _maxSpeed = _ini.Get(IniSection, "MaxSpeed").ToDouble(_maxSpeed);
-            _brakeSafety = _ini.Get(IniSection, "BrakeSafety").ToDouble(_brakeSafety);
-            _defaultHydrogenThrustPerLiter = _ini.Get(IniSection, "HydrogenThrustPerLiter").ToDouble(_defaultHydrogenThrustPerLiter);
-            _defaultUraniumMWhPerKg = _ini.Get(IniSection, "UraniumMWhPerKg").ToDouble(_defaultUraniumMWhPerKg);
-            _defaultElectricThrustPerMW = _ini.Get(IniSection, "ElectricThrustPerMW").ToDouble(_defaultElectricThrustPerMW);
-            _planetZonesConfig = _ini.Get(IniSection, "PlanetZones").ToBoolean(_planetZonesConfig);
-            _planetCruiseHeight = _ini.Get(IniSection, "PlanetCruiseHeight").ToDouble(_planetCruiseHeight);
-            _atmosphereHeight = _ini.Get(IniSection, "AtmosphereHeight").ToDouble(_atmosphereHeight);
-            _atmosphereSpeed = _ini.Get(IniSection, "AtmosphereSpeed").ToDouble(_atmosphereSpeed);
-            _gravityFalloff = _ini.Get(IniSection, "GravityFalloff").ToDouble(_gravityFalloff);
-            _compensateWind = _ini.Get(IniSection, "CompensateWind").ToBoolean(_compensateWind);
-            _zoneEntrySpeed = _ini.Get(IniSection, "ZoneEntrySpeed").ToDouble(_zoneEntrySpeed);
-            _waterLevel = _ini.Get(IniSection, "WaterLevel").ToDouble(_waterLevel);
-            _screenTextScale = (float)MathHelper.Clamp(_ini.Get(IniSection, "ScreenTextScale").ToDouble(_screenTextScale), 0.5, 2);
-            _zoneRadiusGuess = _ini.Get(IniSection, "ZoneRadiusGuess").ToDouble(_zoneRadiusGuess);
+            _defaultLimit = Option("DefaultAcceleration", _defaultLimit);
+            _step = Option("Step", _step);
+            _minLimit = Option("MinAcceleration", _minLimit);
+            _maxLimit = Option("MaxAcceleration", _maxLimit);
+            _limitDampenersDefault = Option("LimitDampeners", _limitDampenersDefault);
+            _dampenerGain = Option("DampenerGain", _dampenerGain);
+            _lcdTag = Option("LcdTag", _lcdTag);
+            _statusTag = Option("StatusTag", _statusTag);
+            _cockpitSurface = Option("CockpitSurface", _cockpitSurface);
+            _statusCockpitSurface = Option("StatusCockpitSurface", _statusCockpitSurface);
+            _mapTag = Option("MapTag", _mapTag);
+            _listTag = Option("ListTag", _listTag);
+            _mapCockpitSurface = Option("MapCockpitSurface", _mapCockpitSurface);
+            _listCockpitSurface = Option("ListCockpitSurface", _listCockpitSurface);
+            _autoLog = Option("AutoLogMining", _autoLog);
+            _logStone = Option("LogStone", _logStone);
+            _mergeDistance = Option("MergeDistance", _mergeDistance);
+            _gravityWellFactor = Option("GravityWellFactor", _gravityWellFactor);
+            _survey = Option("Survey", _survey);
+            _surveyRange = Option("SurveyRange", _surveyRange);
+            _probeRange = Option("SearchRange", _probeRange);
+            _alignShip = Option("AlignShip", _alignShip);
+            _guard = Option("CollisionGuard", _guard);
+            _avoidGravity = Option("AvoidGravityWells", _avoidGravity);
+            _importTag = Option("ImportTag", _importTag);
+            _useJump = Option("UseJumpDrive", _useJump);
+            _jumpThreshold = Option("JumpMinDistance", _jumpThreshold);
+            _jumpArrival = Option("JumpArrival", _jumpArrival);
+            _jumpClearance = Option("JumpClearance", _jumpClearance);
+            _dockApproach = Option("DockApproach", _dockApproach);
+            _useBestThrust = Option("UseStrongestThrusters", _useBestThrust);
+            _flipTime = Option("FlipTime", _flipTime);
+            _defaultCruiseSpeed = Option("CruiseSpeed", _defaultCruiseSpeed);
+            _cruiseStep = Option("CruiseStep", _cruiseStep);
+            _velocityGain = Option("VelocityGain", _velocityGain);
+            _cameraTag = Option("CameraTag", _cameraTag);
+            _scanRange = Option("ScanRange", _scanRange);
+            _approachBuffer = Option("ApproachBuffer", _approachBuffer);
+            _approachFullThrust = Option("ApproachFullThrust", _approachFullThrust);
+            _maxSpeed = Option("MaxSpeed", _maxSpeed);
+            _brakeSafety = Option("BrakeSafety", _brakeSafety);
+            _defaultHydrogenThrustPerLiter = Option("HydrogenThrustPerLiter", _defaultHydrogenThrustPerLiter);
+            _defaultUraniumMWhPerKg = Option("UraniumMWhPerKg", _defaultUraniumMWhPerKg);
+            _defaultElectricThrustPerMW = Option("ElectricThrustPerMW", _defaultElectricThrustPerMW);
+            _planetZonesConfig = Option("PlanetZones", _planetZonesConfig);
+            _planetCruiseHeight = Option("PlanetCruiseHeight", _planetCruiseHeight);
+            _atmosphereHeight = Option("AtmosphereHeight", _atmosphereHeight);
+            _atmosphereSpeed = Option("AtmosphereSpeed", _atmosphereSpeed);
+            _gravityFalloff = Option("GravityFalloff", _gravityFalloff);
+            _compensateWind = Option("CompensateWind", _compensateWind);
+            _zoneEntrySpeed = Option("ZoneEntrySpeed", _zoneEntrySpeed);
+            _waterLevel = Option("WaterLevel", _waterLevel);
+            _screenTextScale = (float)MathHelper.Clamp(Option("ScreenTextScale", _screenTextScale), 0.5, 2);
+            _zoneRadiusGuess = Option("ZoneRadiusGuess", _zoneRadiusGuess);
 
-            // Write back so every option is visible and editable in Custom Data.
-            _ini.Set(IniSection, "DefaultAcceleration", _defaultLimit);
-            _ini.Set(IniSection, "Step", _step);
-            _ini.Set(IniSection, "MinAcceleration", _minLimit);
-            _ini.Set(IniSection, "MaxAcceleration", _maxLimit);
-            _ini.Set(IniSection, "LimitDampeners", _limitDampenersDefault);
-            _ini.Set(IniSection, "DampenerGain", _dampenerGain);
-            _ini.Set(IniSection, "LcdTag", _lcdTag);
-            _ini.Set(IniSection, "StatusTag", _statusTag);
-            _ini.Set(IniSection, "CockpitSurface", _cockpitSurface);
-            _ini.Set(IniSection, "StatusCockpitSurface", _statusCockpitSurface);
-            _ini.Set(IniSection, "MapTag", _mapTag);
-            _ini.Set(IniSection, "ListTag", _listTag);
-            _ini.Set(IniSection, "MapCockpitSurface", _mapCockpitSurface);
-            _ini.Set(IniSection, "ListCockpitSurface", _listCockpitSurface);
-            _ini.Set(IniSection, "AutoLogMining", _autoLog);
-            _ini.Set(IniSection, "LogStone", _logStone);
-            _ini.Set(IniSection, "MergeDistance", _mergeDistance);
-            _ini.Set(IniSection, "GravityWellFactor", _gravityWellFactor);
-            _ini.Set(IniSection, "Survey", _survey);
-            _ini.Set(IniSection, "SurveyRange", _surveyRange);
-            _ini.Set(IniSection, "SearchRange", _probeRange);
-            _ini.Set(IniSection, "AlignShip", _alignShip);
-            _ini.Set(IniSection, "CollisionGuard", _guard);
-            _ini.Set(IniSection, "AvoidGravityWells", _avoidGravity);
-            _ini.Set(IniSection, "ImportTag", _importTag);
-            _ini.Set(IniSection, "UseJumpDrive", _useJump);
-            _ini.Set(IniSection, "JumpMinDistance", _jumpThreshold);
-            _ini.Set(IniSection, "JumpArrival", _jumpArrival);
-            _ini.Set(IniSection, "JumpClearance", _jumpClearance);
-            _ini.Set(IniSection, "DockApproach", _dockApproach);
-            _ini.Set(IniSection, "UseStrongestThrusters", _useBestThrust);
-            _ini.Set(IniSection, "FlipTime", _flipTime);
-            _ini.Set(IniSection, "CruiseSpeed", _defaultCruiseSpeed);
-            _ini.Set(IniSection, "CruiseStep", _cruiseStep);
-            _ini.Set(IniSection, "VelocityGain", _velocityGain);
-            _ini.Set(IniSection, "CameraTag", _cameraTag);
-            _ini.Set(IniSection, "ScanRange", _scanRange);
-            _ini.Set(IniSection, "ApproachBuffer", _approachBuffer);
-            _ini.Set(IniSection, "ApproachFullThrust", _approachFullThrust);
-            _ini.Set(IniSection, "MaxSpeed", _maxSpeed);
-            _ini.Set(IniSection, "BrakeSafety", _brakeSafety);
-            _ini.Set(IniSection, "HydrogenThrustPerLiter", _defaultHydrogenThrustPerLiter);
-            _ini.Set(IniSection, "UraniumMWhPerKg", _defaultUraniumMWhPerKg);
-            _ini.Set(IniSection, "ElectricThrustPerMW", _defaultElectricThrustPerMW);
-            _ini.Set(IniSection, "PlanetZones", _planetZonesConfig);
-            _ini.Set(IniSection, "PlanetCruiseHeight", _planetCruiseHeight);
-            _ini.Set(IniSection, "AtmosphereHeight", _atmosphereHeight);
-            _ini.Set(IniSection, "AtmosphereSpeed", _atmosphereSpeed);
-            _ini.Set(IniSection, "GravityFalloff", _gravityFalloff);
-            _ini.Set(IniSection, "CompensateWind", _compensateWind);
-            _ini.Set(IniSection, "ZoneEntrySpeed", _zoneEntrySpeed);
-            _ini.Set(IniSection, "WaterLevel", _waterLevel);
-            _ini.Set(IniSection, "ScreenTextScale", _screenTextScale);
-            _ini.Set(IniSection, "ZoneRadiusGuess", _zoneRadiusGuess);
             _ini.SetSectionComment(IniSection,
                 " Accelerations in m/s² (1 g = 9.81 m/s²), speeds in m/s, distances in m.\n" +
                 " *CockpitSurface: cockpit screen index for that page, -1 = off.\n" +
@@ -267,6 +242,17 @@ namespace IngameScript
                     _dockConnectorId.ToString(), _dockGridId.ToString(), Vec(_dockGridPosition), Vec(_dockGridForward), Vec(_dockGridUp)));
                 state.Set(StateSection, "BaseGrids", string.Join(";", _baseGrids));
                 state.Set(StateSection, "DockZone", _dockZone);
+                if (_baseKnown)
+                {
+                    // Base pose and all dock data relative to it (see Paths.cs).
+                    state.Set(StateSection, "DockBase", Vec(_baseMatrix.Translation) + ";" + Vec(_baseMatrix.Forward) + ";"
+                        + Vec(_baseMatrix.Up) + ";" + Vec(_baseCenterLocal));
+                    var local = new StringBuilder();
+                    foreach (Vector3D v in _dockLocal)
+                        local.Append(Vec(v)).Append(';');
+                    state.Set(StateSection, "DockLocal", local.ToString());
+                    state.Set(StateSection, "DockPath", PathText(_dockPathLocal));
+                }
             }
             state.Set(StateSection, "Zone", _zone);
             state.Set(StateSection, "PlanetZonesSeen", _planetZonesSeen);
@@ -319,6 +305,17 @@ namespace IngameScript
                 _dockForward = ParseVec(dock, 6);
                 _dockUp = ParseVec(dock, 9);
                 _dockKnown = long.TryParse(dock[12], out _dockConnectorId) && long.TryParse(dock[13], out _dockGridId);
+            }
+            string[] baseParts = state.Get(StateSection, "DockBase").ToString("").Split(';');
+            string[] localParts = state.Get(StateSection, "DockLocal").ToString("").Split(';');
+            if (_dockKnown && baseParts.Length == 12 && localParts.Length >= 21)
+            {
+                _baseMatrix = MatrixD.CreateWorld(ParseVec(baseParts, 0), ParseVec(baseParts, 3), ParseVec(baseParts, 6));
+                _baseCenterLocal = ParseVec(baseParts, 9);
+                for (int i = 0; i < 7; i++)
+                    _dockLocal[i] = ParseVec(localParts, i * 3);
+                _dockPathLocal = ParsePath(state.Get(StateSection, "DockPath").ToString(""));
+                _baseKnown = true;
             }
             foreach (string id in state.Get(StateSection, "BaseGrids").ToString("").Split(';'))
             {

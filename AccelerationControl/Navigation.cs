@@ -49,7 +49,7 @@ namespace IngameScript
         const double BrakeShare = 0.7;              // share of the braking planned for routes with turns
         Vector3D _goalTarget;
         string _goalName = "";
-        bool _goalDock, _departing, _resumeGoal, _replanPending;
+        bool _goalDock, _goalExact, _departing, _resumeGoal, _replanPending;
         const double DepartureSpeed = 10;           // m/s while moving away from a rock
         string _previewName;
         double _routeDeltaV, _routeLength, _routeTime;
@@ -275,6 +275,11 @@ namespace IngameScript
                 StartZoneGoal(dock ? DockApproachPoint : _selected.Position, _selected.Label, _selected.Zone, dock);
                 return;
             }
+            if (_selected.Path != null && _selected.Path.Count >= 2 && _selected.Ore != BaseName)
+            {
+                StartPathGoal(_selected.Path, _selected.Label, false);
+                return;
+            }
             if (_selected.Ore == BaseName && _dockKnown && Vector3D.Distance(_selected.Position, _dockPosition) < _mergeDistance * 2)
             {
                 StartDocking();
@@ -296,8 +301,14 @@ namespace IngameScript
         //     turning (backwards, the way the ship came in, if possible).
         //  2. Plan the route around known obstacles.
         //  3. Jump along the first leg if it is long enough, else fly it.
-        void StartGoal(Vector3D target, string name, bool dock, bool resume = false)
+        // exact: stop at the target itself (start of a recorded way), not in front of it.
+        void StartGoal(Vector3D target, string name, bool dock, bool resume = false, bool exact = false)
         {
+            if (!resume)
+            {
+                _pathAfterRoute = false;
+                _goalExact = exact;
+            }
             _goalTarget = target;
             _goalName = name;
             _goalDock = dock;
@@ -357,7 +368,7 @@ namespace IngameScript
         void ContinueGoal()
         {
             Vector3D from = ReferencePosition();
-            Vector3D stop = _goalDock ? _goalTarget : StopPoint(from, _goalTarget);
+            Vector3D stop = _goalDock || _goalExact ? _goalTarget : StopPoint(from, _goalTarget);
             if (_goalDock && Vector3D.Distance(from, stop) < 20)
             {
                 StartDockAlign();
@@ -552,7 +563,7 @@ namespace IngameScript
                     charging |= !_noWait && LooksAt(c, target);
                     continue;
                 }
-                MyDetectedEntityInfo hit = c.Raycast(target);
+                MyDetectedEntityInfo hit = Cast(c, target);
                 if (!hit.IsEmpty() && hit.HitPosition.HasValue)
                 {
                     if (!IsOwnHit(hit))
@@ -685,7 +696,7 @@ namespace IngameScript
             }
             if (best == null)
                 return charging ? -2 : -1;
-            MyDetectedEntityInfo hit = best.Raycast(point);
+            MyDetectedEntityInfo hit = Cast(best, point);
             if (hit.IsEmpty() || !hit.HitPosition.HasValue)
                 return double.MaxValue;
             return IsOwnHit(hit) ? -1 : Vector3D.Distance(from, hit.HitPosition.Value);
@@ -887,7 +898,7 @@ namespace IngameScript
                     if (!camera.CanScan(target))
                         continue;
                     _guardCamera = (_guardCamera + i + 1) % _cameras.Count;
-                    MyDetectedEntityInfo parallel = camera.Raycast(target);
+                    MyDetectedEntityInfo parallel = Cast(camera, target);
                     if (!parallel.IsEmpty() && parallel.HitPosition.HasValue && !IsOwnHit(parallel))
                         HandleGuardHit(parallel, position, direction, remaining);
                     return;
@@ -914,7 +925,7 @@ namespace IngameScript
                     continue;
                 _guardCamera = (_guardCamera + i + 1) % _cameras.Count;
                 _guardStep++;
-                MyDetectedEntityInfo hit = camera.Raycast(point);
+                MyDetectedEntityInfo hit = Cast(camera, point);
                 if (!hit.IsEmpty() && hit.HitPosition.HasValue && !IsOwnHit(hit))
                     HandleGuardHit(hit, position, direction, remaining);
                 return;
@@ -1052,7 +1063,7 @@ namespace IngameScript
         // the measured rotation and corrected if needed.
         void UpdateGyros(IMyShipController controller, Vector3D velocity)
         {
-            bool wanted = _gyros.Count > 0 && (_mode == Mode.Jump || _mode == Mode.Dock || (_alignShip && _mode == Mode.Approach));
+            bool wanted = _gyros.Count > 0 && (_mode == Mode.Jump || _mode == Mode.Dock || _mode == Mode.Path || (_alignShip && _mode == Mode.Approach));
             // The player turning the ship takes over the gyroscopes.
             if (controller.RotationIndicator.LengthSquared() > 0.01f || Math.Abs(controller.RollIndicator) > 0.01f)
                 wanted = false;
@@ -1067,6 +1078,11 @@ namespace IngameScript
             Vector3D pointing = matrix.Forward;     // ship direction that is turned towards 'desired'
             if (_mode == Mode.Jump)
                 desired = _jumpDirection;
+            else if (_mode == Mode.Path)
+            {
+                desired = _pathF;       // the recorded pose of the next point
+                desiredUp = _pathU;
+            }
             else if (_mode == Mode.Dock && _dockPhase == DockPhase.Clearance)
                 desired = matrix.Forward;       // hold until the space to turn is checked
             else if (_mode == Mode.Dock)

@@ -69,17 +69,87 @@ static class Minifier
             names[symbol] = name;
         }
 
-        // 4. Apply the renames to the script body
+        // 4. Further shortening without changing behaviour:
+        //    - 'readonly' on fields is dropped,
+        //    - explicit local types become 'var' where the initializer has exactly
+        //      that type (also foreach variables with the collection's element type).
+        var edits = new List<(int Start, int Length, string Text)>();
+        foreach (var node in root.DescendantNodes())
+        {
+            if (node is FieldDeclarationSyntax field)
+                foreach (var modifier in field.Modifiers)
+                    if (modifier.IsKind(SyntaxKind.ReadOnlyKeyword))
+                        edits.Add((modifier.SpanStart, modifier.Span.Length, ""));
+            if (node is LocalDeclarationStatementSyntax local && !local.IsConst && local.Declaration.Variables.Count == 1
+                && !local.Declaration.Type.IsVar)
+            {
+                var init = local.Declaration.Variables[0].Initializer;
+                var declaredType = model.GetTypeInfo(local.Declaration.Type).Type;
+                var initType = init == null ? null : model.GetTypeInfo(init.Value).Type;
+                if (declaredType != null && initType != null && SymbolEqualityComparer.Default.Equals(declaredType, initType))
+                    edits.Add((local.Declaration.Type.SpanStart, local.Declaration.Type.Span.Length, "var"));
+            }
+            if (node is ForEachStatementSyntax loop && !loop.Type.IsVar)
+            {
+                var element = model.GetForEachStatementInfo(loop).ElementType;
+                var declaredType = model.GetTypeInfo(loop.Type).Type;
+                if (element != null && SymbolEqualityComparer.Default.Equals(element, declaredType))
+                    edits.Add((loop.Type.SpanStart, loop.Type.Span.Length, "var"));
+            }
+        }
+        foreach (var (token, symbol) in tokens)
+            if (!edits.Any(e => e.Text == "var" && token.SpanStart >= e.Start && token.SpanStart < e.Start + e.Length))
+                edits.Add((token.SpanStart, token.Span.Length, names[symbol]));
+
+        // 5. Frequent static calls of API types (Math.Max, Vector3D.Distance, ...)
+        //    go through short wrapper methods: 'Vector3D.Distance(a,b)' -> 'x(a,b)'.
+        var wrappers = new StringBuilder();
+        var calls = new Dictionary<IMethodSymbol, List<MemberAccessExpressionSyntax>>(SymbolEqualityComparer.Default);
+        foreach (var call in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            var access = call.Expression as MemberAccessExpressionSyntax;
+            var method = model.GetSymbolInfo(call).Symbol as IMethodSymbol;
+            if (access == null || method == null || !method.IsStatic || method.IsGenericMethod || method.ReturnsVoid
+                || declared.Contains(method.OriginalDefinition) || call.SpanStart < bodyStart
+                || method.Parameters.Any(p => p.RefKind != RefKind.None || p.IsParams || p.HasExplicitDefaultValue)
+                || call.ArgumentList.Arguments.Count != method.Parameters.Length
+                || !(model.GetSymbolInfo(access.Expression).Symbol is INamedTypeSymbol))
+                continue;
+            if (!calls.TryGetValue(method, out var list))
+                calls[method] = list = new List<MemberAccessExpressionSyntax>();
+            list.Add(access);
+        }
+        foreach (var pair in calls)
+        {
+            var method = pair.Key;
+            string target = pair.Value[0].ToString();
+            if (pair.Value.Count * (target.Length - 3) < 60 + target.Length)
+                continue;       // not worth a wrapper
+            string name;
+            do name = ShortName(counter++);
+            while (otherNames.Contains(name) || SyntaxFacts.GetKeywordKind(name) != SyntaxKind.None
+                   || SyntaxFacts.GetContextualKeywordKind(name) != SyntaxKind.None);
+            var format = SymbolDisplayFormat.MinimallyQualifiedFormat.RemoveMiscellaneousOptions(
+                SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
+            var parameters = string.Join(",", method.Parameters.Select((p, i) => p.Type.ToDisplayString(format) + " p" + i));
+            var arguments = string.Join(",", method.Parameters.Select((p, i) => "p" + i));
+            wrappers.Append("static " + method.ReturnType.ToDisplayString(format) + " " + name + "(" + parameters + ")=>"
+                + target + "(" + arguments + ");\n");
+            foreach (var access in pair.Value)
+                edits.Add((access.SpanStart, access.Span.Length, name));
+        }
+
+        // 6. Apply the edits to the script body
         var text = tree.GetText().ToString();
         var sb = new StringBuilder(text);
-        foreach (var (token, symbol) in tokens.OrderByDescending(t => t.Token.SpanStart))
-            if (token.SpanStart >= bodyStart)
+        foreach (var edit in edits.OrderByDescending(e => e.Start))
+            if (edit.Start >= bodyStart)
             {
-                sb.Remove(token.SpanStart, token.Span.Length);
-                sb.Insert(token.SpanStart, names[symbol]);
+                sb.Remove(edit.Start, edit.Length);
+                sb.Insert(edit.Start, edit.Text);
             }
         var renamed = sb.ToString();
-        var body = renamed.Substring(bodyStart, renamed.LastIndexOf('}') - bodyStart);
+        var body = renamed.Substring(bodyStart, renamed.LastIndexOf('}') - bodyStart) + "\n" + wrappers;
         return Compact(CSharpSyntaxTree.ParseText(body, new CSharpParseOptions(LanguageVersion.CSharp6, kind: SourceCodeKind.Script)));
     }
 

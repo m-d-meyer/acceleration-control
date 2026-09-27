@@ -111,7 +111,10 @@ namespace IngameScript
             if (_ticks % 2 == 0)
                 UpdateGuard();
             if (_ticks % SurveyTicks == 0)
+            {
                 UpdateSurvey();
+                RecordCrumbs();
+            }
 
             SampleFuelUse(1 / TicksPerSecond);
             if (_ticks % StatusTicks == 30)

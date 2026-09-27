@@ -256,6 +256,16 @@ gravity wells, and **GO** refuses to fly straight through a known asteroid.
 The **base** is marked like an ore: choose *Base* in the MARK list, or run
 `mark base here` while docked. It is shown as a square.
 
+**Recorded way to a deposit.** While the ship moves, the script keeps its recent
+poses (position and orientation). `mark <ore> here` and the first automatic log of
+a mining session store the last 300 m of the way in with the deposit. **GO** on such
+a deposit flies to the start of that way and then follows it slowly (8 m/s) in the
+recorded orientation, so the ship arrives on the right side of the asteroid, facing
+it as when mining, and stops about 5 m before the recorded end. The cameras look
+ahead along the way; if something blocks it for 10 seconds, the ship stops and asks
+the pilot to take over (useful for very jagged asteroids). Deposits logged before
+this feature have no way stored; they are approached as before.
+
 ### Screens
 
 - **Radar** (`[Accel Map]`): a plane through the ship that turns with it, forward is up.
@@ -513,6 +523,14 @@ is dropped). If the planet moves faster than `MaxSpeed`, the ship cannot match i
 velocity; the script says so. The collision guard stops the ship in front of
 obstacles; steer past and run `track` to continue.
 
+The zone of a planet reaches farther out than its gravity. A teleport outside
+gravity is assigned to the nearest known planet (within 1.5 times its gravity
+radius plus 50 km), e.g. a base in space near the Moon belongs to the Moon's zone.
+If no planet is known yet, entries recorded there are marked provisionally and
+relabelled as soon as the ship reaches that planet's gravity without another
+teleport. If the base was recorded in the wrong zone by an earlier version, dock by
+hand once more.
+
 Zones switch on by themselves at the first teleport into or out of a planet zone.
 If the ship is already in a planet zone when the script is installed, set
 `PlanetZones=true`, otherwise entries recorded before the first teleport count as
@@ -550,7 +568,8 @@ script does not know; if no jump happens within 90 seconds, the flight stops.
    dock pose: where the connector was, how the ship was oriented and where its
    grid was, plus all grids belonging to the base (including rotor and piston
    parts). The base entry on the
-   map is set to that position.
+   map is set to that position. The last 300 m of the way in are stored too,
+   relative to the base grid (see *Recorded way in* below).
 2. From then on, **GO** on the base (or `dock`) flies there, jumping if far, and
    stops at an approach point in front of the connector (twice the ship's radius
    plus `DockApproach`), far enough out to turn without touching the base.
@@ -579,7 +598,20 @@ towards the connector side of the ship make them more complete. Sensors with
 `[Accel]` in their name are also used during the final approach (set their range
 yourself). Parts of the base never count as obstacles.
 
-This works for bases that do not move. Movement keys cancel docking at any time.
+**Recorded way in.** If the dock was recorded with a way in (the ship came at
+least 20 m while the script ran), steps 2-7 are replaced: the ship flies to the
+start of the recorded way and follows it in the recorded orientation, slowly, as you
+flew it (1.5 m/s near the connector), which also works in tight hangars and from the
+right side. It turns into each recorded pose before moving on, scans ahead along the
+way and waits while something is in it; after 10 seconds blocked it stops and asks
+you to take over. `undock` follows the same way backwards out. Docks recorded before
+this feature have no way in: dock by hand once more to record it.
+
+**Base position.** All dock data is stored relative to the base grid. Whenever a
+camera ray hits the base grid (background survey, collision guard, docking scans),
+its current position and orientation are taken from the hit, so the dock is found
+even when the base appears in other coordinates (e.g. another Real Solar Systems
+zone frame) or has moved. Movement keys cancel docking at any time.
 
 ## GPS coordinates and waypoints
 

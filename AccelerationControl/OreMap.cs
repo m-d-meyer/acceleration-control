@@ -46,6 +46,7 @@ namespace IngameScript
             public bool Mined;          // logged while drilling (otherwise marked by scan)
             public double Distance;     // from the ship, updated for display (MaxValue: other zone)
             public string Zone = "";    // coordinate zone it was recorded in (see Planets.cs)
+            public List<PathPoint> Path;    // the way the ship came to it when mining started (see Paths.cs)
             // Number 0: a waypoint with its own name (e.g. imported GPS "Asteroid 12")
             public string Label { get { return Number > 0 ? Ore + " #" + Number : Ore; } }
         }
@@ -77,6 +78,7 @@ namespace IngameScript
         string _pendingMarkOre = "";
         bool _mapChanged = true;        // GPS export pending
         bool _oreBaseline;              // _previousOre holds a reading to compare with
+        bool _drillingLogged;           // a deposit was logged since the drills started
         int _surveyCamera;
         int _surveyStep;
 
@@ -95,7 +97,10 @@ namespace IngameScript
             }
             string ore = NormalizeOre(parts[1]);
             if (parts.Length > 2 && parts[2].ToLowerInvariant() == "here")
-                AddDeposit(ore, DrillPosition(), false);
+            {
+                Deposit d = AddDeposit(ore, DrillPosition(), false);
+                d.Path = RecentPath() ?? d.Path;
+            }
             else
                 MarkByScan(ore);
         }
@@ -209,6 +214,7 @@ namespace IngameScript
                     }
             }
 
+            bool logged = false;
             if (drilling && _autoLog && _oreBaseline)
             {
                 Vector3D position = DrillPosition();
@@ -221,10 +227,19 @@ namespace IngameScript
                     _drillOre.TryGetValue(ore.Key, out inDrills);
                     _previousDrillOre.TryGetValue(ore.Key, out inDrillsBefore);
                     if (ore.Value > before + MinLoggedOre || inDrills > inDrillsBefore + MinLoggedOre)
-                        AddDeposit(ore.Key, position, true);
+                    {
+                        // The way here, recorded when this drilling started: GO follows it
+                        // later to the same side of the rock in the same orientation.
+                        Deposit d = AddDeposit(ore.Key, position, true);
+                        if (!_drillingLogged || d.Path == null)
+                            d.Path = RecentPath() ?? d.Path;
+                        logged = true;
+                    }
                 }
             }
 
+            // One path per drilling session: later logs of the same session keep it.
+            _drillingLogged = drilling && (_drillingLogged || logged);
             _previousOre.Clear();
             foreach (KeyValuePair<string, double> ore in _oreAmounts)
                 _previousOre[ore.Key] = ore.Value;
@@ -259,7 +274,7 @@ namespace IngameScript
         void UpdateSurvey()
         {
             // Docked (connector connected): nothing to survey, save the raycasts.
-            if (!_survey || _cameras.Count == 0 || _wasConnected || _pendingStart || _departing)
+            if (!_survey || _cameras.Count == 0 || _wasConnected || _pendingStart || _departing || _mode == Mode.Path)
                 return;
             for (int i = 0; i < _cameras.Count; i++)
             {
@@ -276,6 +291,7 @@ namespace IngameScript
                 double radius = Math.Sqrt((step + 0.5) / SurveyPattern) * Math.Min(camera.RaycastConeLimit, 45);
                 double angle = step * 2.39996;
                 MyDetectedEntityInfo hit = camera.Raycast(_surveyRange, (float)(radius * Math.Sin(angle)), (float)(radius * Math.Cos(angle)));
+                NoteHit(hit);
                 if (!hit.IsEmpty() && RegisterObstacle(hit))
                     _message = "Found " + (hit.Type == MyDetectedEntityType.Planet ? "planet" : "asteroid")
                         + " at " + FormatDistance(Vector3D.Distance(hit.Position, ReferencePosition()));
@@ -451,6 +467,8 @@ namespace IngameScript
             for (int i = 0; i < _deposits.Count; i++)
             {
                 Deposit d = _deposits[i];
+                if (d.Path != null)
+                    state.Set(MapSection, "DP" + i, PathText(d.Path));
                 state.Set(MapSection, "D" + i, string.Join(";", d.Ore, d.Number.ToString(),
                     Num(d.Position.X), Num(d.Position.Y), Num(d.Position.Z), d.Mined ? "1" : "0", d.Zone));
             }
@@ -476,7 +494,11 @@ namespace IngameScript
                 if (p.Length < 6 || !int.TryParse(p[1], out number) || !TryParseNumber(p[2], out x)
                     || !TryParseNumber(p[3], out y) || !TryParseNumber(p[4], out z))
                     break;
-                _deposits.Add(new Deposit { Ore = p[0], Number = number, Position = new Vector3D(x, y, z), Mined = p[5] == "1", Zone = p.Length > 6 ? p[6] : "" });
+                var deposit = new Deposit { Ore = p[0], Number = number, Position = new Vector3D(x, y, z), Mined = p[5] == "1", Zone = p.Length > 6 ? p[6] : "" };
+                string path = state.Get(MapSection, "DP" + i).ToString("");
+                if (path.Length > 0)
+                    deposit.Path = ParsePath(path);
+                _deposits.Add(deposit);
             }
             for (int i = 0; ; i++)
             {

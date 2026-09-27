@@ -86,6 +86,8 @@ namespace IngameScript
             _dockGridId = connector.OtherConnector.CubeGrid.EntityId;
             _dockKnown = true;
             _dockZone = _zone;
+            _dockProvisional = _zoneProvisional;
+            RecordBase(connector.OtherConnector.CubeGrid);
 
             // All grids of the base (including rotor and piston parts), so the
             // docking checks do not treat them as other ships.
@@ -97,7 +99,7 @@ namespace IngameScript
                 _mode = Mode.Manual;
             AddDeposit(BaseName, _dockPosition, false);
             _mapChanged = true;
-            _message = "Docked. Dock position saved for 'dock'";
+            _message = HasDockPath ? "Docked. Dock position and the way in saved for 'dock'" : "Docked. Dock position saved for 'dock'";
         }
 
         IMyShipConnector DockConnector()
@@ -129,7 +131,14 @@ namespace IngameScript
             }
             if (_dockZone != _zone)
             {
-                StartZoneGoal(DockApproachPoint, BaseName, _dockZone, true);
+                StartZoneGoal(DockTarget, BaseName, _dockZone, true);
+                return;
+            }
+            if (HasDockPath)
+            {
+                // The recorded way in: to its start, then along it into the dock.
+                LoadDockPath(false);
+                StartPathGoal(_path, BaseName, true);
                 return;
             }
             StartGoal(DockApproachPoint, BaseName, true);
@@ -171,6 +180,16 @@ namespace IngameScript
             }
             Vector3D axis = -connector.WorldMatrix.Forward;
             connector.Disconnect();
+            if (HasDockPath)
+            {
+                // Out the way the ship came in, backwards along the recorded poses.
+                LoadDockPath(true);
+                _pathDock = false;
+                _pathReverseDock = true;
+                _pathName = "the way out";
+                StartPathFollow(0);
+                return;
+            }
             _route.Clear();
             _route.Add(ReferencePosition() + axis * (ShipRadius + _dockApproach));
             _temporaryObstacles.Clear();
@@ -376,7 +395,7 @@ namespace IngameScript
                 camera.EnableRaycast = true;
                 if (!camera.CanScan(point))
                     continue;
-                MyDetectedEntityInfo hit = camera.Raycast(point);
+                MyDetectedEntityInfo hit = Cast(camera, point);
                 _dockScanSeen++;
                 // The base itself never blocks the way in, but it does count in the
                 // space to turn in (wind turbines, antennas and the like stick out).
@@ -428,8 +447,15 @@ namespace IngameScript
             return rock != null && Vector3D.Distance(_dockPosition, rock.Center) < rock.Radius + 50;
         }
 
+        string DockTitle
+        {
+            get { return _mode == Mode.Path && !_pathDock ? "TO " + _pathName : "DOCKING"; }
+        }
+
         string DockPhaseText()
         {
+            if (_mode == Mode.Path)
+                return PathStateText();
             switch (_dockPhase)
             {
                 case DockPhase.Clearance: return "checking space to turn";

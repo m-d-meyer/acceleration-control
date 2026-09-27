@@ -42,6 +42,10 @@ MDK2 project, C# 6). Features, roughly in the order they were added:
    (top learned from atmospheric/ion thruster effectiveness), disturbance observer
    for wind/drag/lift, Real Solar Systems zones (teleport detection, map entries per
    zone, flights across zone changes)
+9. Recorded paths (`Paths.cs`): recent poses ("crumbs") are kept; docking by hand
+   stores the last 300 m of the way in relative to the base grid, mining/`mark here`
+   stores the way to a deposit; `Mode.Path` follows them (dock, reverse for undock,
+   deposits) and hands over to the pilot when blocked for 10 s
 
 The README describes all commands and Custom Data options for players.
 
@@ -60,6 +64,10 @@ The README describes all commands and Custom Data options for players.
   - Over 100,000 characters: comments/indentation are stripped; still too long: full
     minification renames the script's own symbols via Roslyn
     (`tools/SyntaxCheck/Minifier.cs`) and compile-checks the result.
+    The minifier also drops `readonly`, uses `var` where the type matches exactly and
+    adds short static wrappers for frequent static API calls (`Math.Max`,
+    `Vector3D.Distance`, ...). Minified size is about 97.1k of 100k: space is tight;
+    config options use the `Option(key, value)` helpers in `Config.cs` to save room.
   - Always rebuild `dist/` before committing source changes.
 - The MDK wiki API docs (`api/*.md` in the wiki clone) are the reference for member
   names and signatures. They date from about 2022.
@@ -223,6 +231,18 @@ The README describes all commands and Custom Data options for players.
   gravity, where the zone key cannot be derived); docking came from the wrong side.
 - Planet obstacles: raycast hits on a known planet (center within 1 km) only store the
   entity id; `UpdatePlanet` measures radius/well (duplicates caused replanning loops).
+
+- Space base near the Moon, outside gravity, is in the Moon's RSS zone; the Earth
+  zone reaches far beyond gravity (30-60 s at 300 m/s). Teleports outside gravity
+  take the zone of the nearest known planet (`NearbyPlanetZone`, 1.5 x gravity
+  radius + 50 km); unknown -> provisional "" zone, relabelled
+  (`RelabelProvisional`) when that planet's gravity is reached without teleport.
+- Dock data is base-relative (`_baseMatrix`, `_dockLocal`, `_dockPathLocal`);
+  `NoteHit` refreshes the base pose from every raycast hit on the dock grid
+  (`hit.Orientation`, `hit.Position` = AABB centre, hence `_baseCenterLocal`). All
+  raycasts should go through `Cast()`. Storage keys DockBase/DockLocal/DockPath;
+  older saves need one manual dock. Path following is only compile-checked, not
+  simulated or flown.
 
 ## Open ideas / next steps
 

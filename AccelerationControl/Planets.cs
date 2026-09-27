@@ -190,16 +190,66 @@ namespace IngameScript
             _hadPlanet = hasPlanet;
             // A planet zone reaches beyond the gravity: leaving the gravity keeps the
             // zone, only a teleport leads back to space.
-            string zone = !PlanetZones ? "" : hasPlanet ? ZoneKey(center) : teleported ? "" : _zone;
+            // Teleported to where there is no gravity: the zone of a known planet close
+            // by (zones reach beyond the gravity, e.g. a base near a moon), else space.
+            // Space found that way is provisional: if gravity shows a planet later
+            // without another teleport, it was that planet's zone after all.
+            string zone = !PlanetZones ? "" : hasPlanet ? ZoneKey(center) : teleported ? NearbyPlanetZone(position) : _zone;
+            if (zone != _zone && hasPlanet && !teleported && _zoneProvisional)
+                RelabelProvisional(zone);
+            if (teleported || hasPlanet)
+                _zoneProvisional = teleported && !hasPlanet && zone == "";
             bool changed = zone != _zone;
             if (changed)
                 SwitchZone(zone);
+            if (teleported && _zoneProvisional)
+            {
+                _provisionalDeposits = _deposits.Count;
+                _provisionalObstacles = _obstacles.Count;
+            }
             if (teleported)
             {
                 if (_tracking)
                     LearnZoneRadius(before);
                 OnTeleport(changed);
             }
+        }
+
+        bool _zoneProvisional, _dockProvisional;
+        int _provisionalDeposits, _provisionalObstacles;
+
+        // The zone of the nearest known planet whose gravity well (with a wide
+        // margin: zones reach further) contains the point, or "" (space).
+        string NearbyPlanetZone(Vector3D point)
+        {
+            Obstacle best = null;
+            double bestDistance = double.MaxValue;
+            for (int i = 0; i < _obstacles.Count + _otherObstacles.Count; i++)
+            {
+                Obstacle o = i < _obstacles.Count ? _obstacles[i] : _otherObstacles[i - _obstacles.Count];
+                double d = Vector3D.Distance(point, o.Center);
+                if (o.Planet && d < o.GravityRadius * 1.5 + 50000 && d < bestDistance)
+                {
+                    best = o;
+                    bestDistance = d;
+                }
+            }
+            return best == null ? "" : best.Zone != "" ? best.Zone : ZoneKey(best.Center);
+        }
+
+        // Entries recorded since the ship arrived in a zone taken for space belong
+        // to the planet zone found now.
+        void RelabelProvisional(string zone)
+        {
+            for (int i = _provisionalDeposits; i < _deposits.Count; i++)
+                if (_deposits[i].Zone == _zone)
+                    _deposits[i].Zone = zone;
+            for (int i = _provisionalObstacles; i < _obstacles.Count; i++)
+                _obstacles[i].Zone = zone;
+            if (_dockProvisional)
+                _dockZone = zone;
+            _dockProvisional = false;
+            _mapChanged = true;
         }
 
         // Keeps only this zone's obstacles in _obstacles, so route planning,

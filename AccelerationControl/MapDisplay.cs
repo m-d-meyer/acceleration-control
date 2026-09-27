@@ -333,10 +333,10 @@ namespace IngameScript
             Box(x, y, width, height, 1, GridColor);
             float left = x + 12, right = x + width - 12;
 
-            if (_mode == Mode.Jump || _mode == Mode.Dock)
+            if (_mode == Mode.Jump || _mode == Mode.Dock || _mode == Mode.Path)
             {
                 bool jump = _mode == Mode.Jump;
-                Text(jump ? "JUMP  " + FormatDistance(_jumpDistance) : "DOCKING", left, y + 6, 0.8f, jump ? JumpColor : Cyan);
+                Text(jump ? "JUMP  " + FormatDistance(_jumpDistance) : DockTitle, left, y + 6, 0.8f, jump ? JumpColor : Cyan);
                 Text(jump ? _jumpState : DockPhaseText(),
                     left, y + 40, 0.65f, TextColor);
                 Text(string.Format("heading error {0:0.0}°", MathHelper.ToDegrees((float)_alignError)), left, y + 68, 0.55f, DimColor);
@@ -405,9 +405,9 @@ namespace IngameScript
                 detail = _jumpState;
                 color = JumpColor;
             }
-            else if (_mode == Mode.Dock)
+            else if (_mode == Mode.Dock || _mode == Mode.Path)
             {
-                title = "DOCKING";
+                title = DockTitle;
                 detail = DockPhaseText();
                 color = Cyan;
             }
@@ -528,8 +528,8 @@ namespace IngameScript
             Line(6, fy, 506, fy, 1, GridColor);
             if (_mode == Mode.Jump)
                 Text("JUMP " + FormatDistance(_jumpDistance) + "  " + _jumpState, 10, fy + 6, 0.66f, JumpColor);
-            else if (_mode == Mode.Dock)
-                Text("DOCKING  " + DockPhaseText(), 10, fy + 6, 0.66f, Cyan);
+            else if (_mode == Mode.Dock || _mode == Mode.Path)
+                Text(DockTitle + "  " + DockPhaseText(), 10, fy + 6, 0.66f, Cyan);
             else if (_mode == Mode.Approach)
             {
                 Text(_approachPhase + "  " + FormatDistance(_remainingDistance), 10, fy + 6, 0.66f, _approachPhase == "BRAKING" ? RouteColor : Cyan);
