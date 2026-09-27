@@ -88,6 +88,9 @@ The README describes all commands and Custom Data options for players.
   the stop point is safe. Flip-and-burn: `FlipTime` 30 s (user's choice); the flip is
   used only if the estimated trip time (TripTime) is shorter than without. Simulated:
   stops correctly with actual turn times up to 30 s.
+- Camera raycasts DO hit the own ship when the ray passes through the hull (seen
+  after flights started using sideways/backward thrust orientation). Every raycast
+  result must be filtered with `IsOwnHit` (all grids of the own construct).
 - Screens: LCD textures are 512 px; the user found small fonts unreadable, so keep
   text scales around 0.55 or larger.
 

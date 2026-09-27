@@ -186,6 +186,11 @@ namespace IngameScript
             Vector3D origin = _camera.GetPosition();
             Vector3D direction = _camera.WorldMatrix.Forward;
             MyDetectedEntityInfo hit = _camera.Raycast(range);
+            if (!hit.IsEmpty() && IsOwnHit(hit))
+            {
+                _message = "The scan hit the own ship: point the camera (" + _camera.CustomName + ") away from the hull";
+                return;
+            }
             if (hit.IsEmpty() || !hit.HitPosition.HasValue)
             {
                 if (_scanPurpose == ScanPurpose.Mark)
@@ -240,6 +245,8 @@ namespace IngameScript
                 return;
 
             MyDetectedEntityInfo hit = _camera.Raycast(lookTarget);
+            if (!hit.IsEmpty() && IsOwnHit(hit))
+                return;     // the view ahead is blocked by the own hull: no information
             if (!hit.IsEmpty() && hit.HitPosition.HasValue)
             {
                 RegisterObstacle(hit);

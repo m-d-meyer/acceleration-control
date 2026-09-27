@@ -36,6 +36,13 @@ namespace IngameScript
         const double TicksPerSecond = 60.0;
 
         int _ticks;
+        readonly HashSet<long> _ownGrids = new HashSet<long>();
+
+        // A raycast result that hit this ship itself carries no information.
+        bool IsOwnHit(MyDetectedEntityInfo hit)
+        {
+            return hit.EntityId == Me.CubeGrid.EntityId || _ownGrids.Contains(hit.EntityId);
+        }
         string _message = "";
 
         public Program()
@@ -123,6 +130,12 @@ namespace IngameScript
             GridTerminalSystem.GetBlocksOfType(_gyros, g => g.IsSameConstructAs(Me));
             GridTerminalSystem.GetBlocksOfType(_connectors, c => c.IsSameConstructAs(Me));
             GridTerminalSystem.GetBlocksOfType(_sensors, s => s.IsSameConstructAs(Me));
+            // Raycasts also hit the ship itself (a ray from a camera can pass
+            // through the own hull), so all grids of this ship are remembered.
+            _ownGrids.Clear();
+            GridTerminalSystem.GetBlocksOfType(_blockBuffer, b => b.IsSameConstructAs(Me));
+            foreach (IMyTerminalBlock b in _blockBuffer)
+                _ownGrids.Add(b.CubeGrid.EntityId);
             FindDisplays();
             FindStatusBlocks();
 

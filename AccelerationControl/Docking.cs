@@ -353,7 +353,7 @@ namespace IngameScript
                     continue;
                 MyDetectedEntityInfo hit = camera.Raycast(point);
                 _dockScanSeen++;
-                if (!hit.IsEmpty() && hit.HitPosition.HasValue && !IsBaseGrid(hit.EntityId) && hit.EntityId != Me.CubeGrid.EntityId)
+                if (!hit.IsEmpty() && hit.HitPosition.HasValue && !IsBaseGrid(hit.EntityId) && !IsOwnHit(hit))
                 {
                     Vector3D at = hit.HitPosition.Value;
                     bool voxel = hit.Type == MyDetectedEntityType.Asteroid || hit.Type == MyDetectedEntityType.Planet;
@@ -379,7 +379,7 @@ namespace IngameScript
                 _sensorBuffer.Clear();
                 sensor.DetectedEntities(_sensorBuffer);
                 foreach (MyDetectedEntityInfo e in _sensorBuffer)
-                    if (!IsBaseGrid(e.EntityId) && e.EntityId != Me.CubeGrid.EntityId)
+                    if (!IsBaseGrid(e.EntityId) && !IsOwnHit(e))
                         return true;
             }
             return false;

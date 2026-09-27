@@ -433,7 +433,7 @@ namespace IngameScript
                 _guardCamera = (_guardCamera + i + 1) % _cameras.Count;
                 _guardStep++;
                 MyDetectedEntityInfo hit = camera.Raycast(point);
-                if (!hit.IsEmpty() && hit.HitPosition.HasValue)
+                if (!hit.IsEmpty() && hit.HitPosition.HasValue && !IsOwnHit(hit))
                     HandleGuardHit(hit, position, direction, remaining);
                 return;
             }
