@@ -142,6 +142,14 @@ The README describes all commands and Custom Data options for players.
   the orbit zone moves ships, whether proxies have gravity for scripts. Planet
   features were only compile-checked and simulated (descent braking with thruster
   lag and wind, observer with lag, arc geometry), not flown in game.
+- Planet simulations (scratchpad `planetflight*.py`, `guardsim.py`): 3D point mass,
+  level ship with per-axis thrust, thruster lag, gusts, drag, ported route/waypoint/
+  braking/atmosphere logic. Findings that changed the code: the pre-entry speed
+  limit must only apply on the leg entering the atmosphere (it throttled routes
+  cruising just above it); aim at 85 % of `AtmosphereSpeed` (lag overshoot ~18 %);
+  long flights above the atmosphere halve the time; a guard-driven replan handles
+  hills 3 km above the cruise height. Physical limit: a ship with 1.5 g upward
+  thrust entering a zone 60 km up at 1500 m/s cannot stop (warning shown).
 - Planet obstacles: raycast hits on a known planet (center within 1 km) only store the
   entity id; `UpdatePlanet` measures radius/well (duplicates caused replanning loops).
 
