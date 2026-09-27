@@ -150,6 +150,19 @@ The README describes all commands and Custom Data options for players.
   long flights above the atmosphere halve the time; a guard-driven replan handles
   hills 3 km above the cruise height. Physical limit: a ship with 1.5 g upward
   thrust entering a zone 60 km up at 1500 m/s cannot stop (warning shown).
+- RSS mod facts (from the mod description the user pasted): velocity is converted at
+  zone changes (a planet "running into" a resting ship gives it the orbital speed);
+  ORBIT zone follows the planet's orbit, SURFACE zone follows the surface; every GPS
+  placed on a planet gets a moving proxy copy ("PROXY_DO_NOT_EDIT"). No PB API is
+  known, so `track GPS:...` takes samples of such a moving GPS (Lagrange fit through
+  2-3 samples), matches the planet's velocity and brakes to `ZoneEntrySpeed` before
+  the zone edge (`ZoneRadiusGuess`, learned per zone at the first entry, stored in
+  `ZoneRadii`). Simulated: ~100 m/s entry if the guess >= real zone, 340-450 m/s if
+  the zone is larger than guessed (hence default 200 km).
+- Aerodynamic Physics mod (DraygoKorvan, mod id 571920453) offers wind/drag only via
+  mod-to-mod messages (`RemoteDragSettings.cs`), not to PB scripts: the disturbance
+  observer is the only way. Water mod: raycasts do not see water; routes stay above
+  start/target ground and `WaterLevel`.
 - Planet obstacles: raycast hits on a known planet (center within 1 km) only store the
   entity id; `UpdatePlanet` measures radius/well (duplicates caused replanning loops).
 
