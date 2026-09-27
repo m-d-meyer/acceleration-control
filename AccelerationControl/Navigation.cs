@@ -545,10 +545,11 @@ namespace IngameScript
         {
             double along = Vector3D.Dot(hit.HitPosition.Value - position, direction);
             double stopDistance = _currentSpeed * _currentSpeed / (2 * Math.Max(BrakeAccel(direction), 0.1));
-            if (_dockAfterRoute && IsBaseGrid(hit.EntityId))
+            if (_dockAfterRoute && IsBaseHit(hit))
             {
-                // Flying to the base: the base is expected ahead and is ignored,
-                // unless the ship could no longer stop in front of it.
+                // Flying to the base: the base and the rock it stands on are
+                // expected ahead and ignored (docking has its own checks), unless
+                // the ship could no longer stop in front of them.
                 if (along - ShipRadius > stopDistance * 1.3 + _approachBuffer)
                     return;
                 _route.Clear();

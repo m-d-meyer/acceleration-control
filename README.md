@@ -365,15 +365,20 @@ script does not know; if no jump happens within 90 seconds, the flight stops.
 4. The ship turns into the stored orientation.
 5. **Way in**: the cameras check the path into the dock. Only what lies in the
    space the ship actually sweeps through counts: the ship's own shape in the
-   docked pose, moved out along the connector axis. Rock or ships next to that
-   path (e.g. at neighbouring connectors) do not block. If something is in the
-   path, the ship waits and the message says what it is.
+   docked pose, moved out along the connector axis, and only the part still ahead.
+   Rock counts only if it is clearly inside that space (the docked pose itself was
+   free), so bases built into asteroids work. Ships next to the path (e.g. at
+   neighbouring connectors) do not block. If something is in the path, the ship
+   waits in place and the message says what it is and how far away.
 6. The ship moves in slowly along the connector axis, correcting sideways drift,
    and keeps scanning the rest of the way; if something shows up, it stops and
    waits. When the connector is ready, it connects.
 7. `undock` disconnects and backs off along the connector axis.
 
-Waiting ends when the way is clear; after 2 minutes docking is cancelled. The
+On the flight to the base, the collision guard ignores the base and the rock it
+stands on (docking has its own checks), unless the ship could no longer stop in
+front of them. Waiting before turning ends after 2 minutes; on the way in the ship
+waits until the way is clear or you take over. The
 checks use all cameras that can see the respective points; cameras pointing
 towards the connector side of the ship make them more complete. Sensors with
 `[Accel]` in their name are also used during the final approach (set their range

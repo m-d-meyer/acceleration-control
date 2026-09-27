@@ -104,8 +104,12 @@ The README describes all commands and Custom Data options for players.
   towards a waypoint just before the base and crashed into it. Simulated setting
   that works: turn factor cos^2 and `BrakeShare` 0.7 of the planned braking on
   routes with turns (1600 random routes, worst 29 m past the end point).
-- The collision guard ignores the base only while the ship can still stop in front
-  of it; otherwise it makes an emergency stop.
+- The collision guard ignores the base and the rock the dock position lies on
+  (`IsBaseHit`) only while the ship can still stop in front of them; otherwise it
+  makes an emergency stop. Without this, a base built into an asteroid made the
+  guard stop early ("surface closer") and docking failed.
+- Docking path check: voxel hits count only 1 m inside the swept ship box (grids
+  with 1.5 m margin), and only the part of the path still ahead.
 - Screens: LCD textures are 512 px; the user found small fonts unreadable, so keep
   text scales around 0.55 or larger.
 

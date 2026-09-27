@@ -203,7 +203,9 @@ namespace IngameScript
                     _dockPhase = _dockPhase == DockPhase.Clearance ? DockPhase.Align : DockPhase.Final;
                     _dockWaitTicks = 0;
                 }
-                else if (result == ScanBlocked && ++_dockWaitTicks > DockWaitTicks)
+                // Only the check before turning gives up; on the way in the ship
+                // waits in place until the way is clear or the pilot takes over.
+                else if (result == ScanBlocked && _dockPhase == DockPhase.Clearance && ++_dockWaitTicks > DockWaitTicks)
                 {
                     _mode = Mode.Manual;
                     _message = "Docking cancelled: the way stayed blocked";
@@ -296,14 +298,18 @@ namespace IngameScript
         // True if a point lies in the space the ship sweeps through when it
         // moves from the approach point into the docked pose: the ship's box
         // in the docked pose, moved outwards along the connector axis.
-        bool InDockPath(Vector3D point)
+        // margin: added around the ship's box (negative: shrinks it). 'to' only
+        // counts the part of the path still ahead of the ship.
+        bool InDockPath(Vector3D point, double margin)
         {
             MatrixD toDocked = MatrixD.Invert(DockedGridMatrix());
             Vector3D p = Vector3D.Transform(point, toDocked);
             Vector3D a = Vector3D.TransformNormal(_dockAxis, toDocked);
             Vector3D min, max;
             GridBox(out min, out max);
-            double margin = 1.5, from = 0, to = DockTravel;
+            IMyShipConnector connector = DockConnector();
+            double ahead = connector != null ? Vector3D.Dot(connector.GetPosition() - _dockPosition, _dockAxis) : DockTravel;
+            double from = 0, to = MathHelper.Clamp(ahead + 2, 0, DockTravel);
             for (int i = 0; i < 3; i++)
             {
                 double pi = p.GetDim(i), ai = a.GetDim(i), lo = min.GetDim(i) - margin, hi = max.GetDim(i) + margin;
@@ -357,9 +363,11 @@ namespace IngameScript
                 {
                     Vector3D at = hit.HitPosition.Value;
                     bool voxel = hit.Type == MyDetectedEntityType.Asteroid || hit.Type == MyDetectedEntityType.Planet;
+                    // Rock counts only if it is clearly inside the ship's path (the
+                    // docked pose itself was free), ships and players with a margin.
                     bool blocks = _dockScanAround
                         ? !voxel && Vector3D.Distance(at, Me.CubeGrid.WorldVolume.Center) < ShipRadius + 5
-                        : InDockPath(at);
+                        : InDockPath(at, voxel ? -1 : 1.5);
                     if (blocks)
                         _dockScanBlocker = (voxel ? "rock" : hit.Name) + " (" + FormatDistance(Vector3D.Distance(at, camera.GetPosition())) + ")";
                 }
@@ -388,6 +396,15 @@ namespace IngameScript
         bool IsBaseGrid(long id)
         {
             return id == _dockGridId || _baseGrids.Contains(id);
+        }
+
+        // The base itself, or the rock the dock position lies on.
+        bool IsBaseHit(MyDetectedEntityInfo hit)
+        {
+            if (IsBaseGrid(hit.EntityId))
+                return true;
+            Obstacle rock = hit.Type == MyDetectedEntityType.Asteroid ? FindObstacle(hit.EntityId) : null;
+            return rock != null && Vector3D.Distance(_dockPosition, rock.Center) < rock.Radius + 50;
         }
 
         string DockPhaseText()
