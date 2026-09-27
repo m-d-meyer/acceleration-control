@@ -598,6 +598,13 @@ towards the connector side of the ship make them more complete. Sensors with
 `[Accel]` in their name are also used during the final approach (set their range
 yourself). Parts of the base never count as obstacles.
 
+**Several bases.** Every base keeps its own dock: docking by hand at another base
+adds (or updates) a base entry on the map with that dock, its recorded way in and
+its gate connector, and the others are kept. **GO** on a base entry docks there;
+`dock` takes the nearest base with a dock in the current zone (otherwise the one
+docked at last). `undock` uses the dock the ship is at. One dock per base entry:
+docking by hand at another connector of the same base replaces that base's dock.
+
 **Recorded way in.** If the dock was recorded with a way in (the ship came at
 least 20 m while the script ran), steps 2-7 are replaced: the ship flies to the
 start of the recorded way and follows it in the recorded orientation, slowly, as you

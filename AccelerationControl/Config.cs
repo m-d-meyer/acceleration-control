@@ -218,6 +218,7 @@ namespace IngameScript
 
         void SaveState()
         {
+            StoreDock();
             var state = new MyIni();
             state.Set(StateSection, "Limit", _limit);
             state.Set(StateSection, "Enabled", _enabled);
@@ -230,25 +231,7 @@ namespace IngameScript
             state.Set(StateSection, "Zoom", _zoomIndex);
             state.Set(StateSection, "GyroSign", string.Join(";", Num(_gyroSign.X), Num(_gyroSign.Y), Num(_gyroSign.Z),
                 _gyroCalibrated[0] ? "1" : "0", _gyroCalibrated[1] ? "1" : "0", _gyroCalibrated[2] ? "1" : "0"));
-            if (_dockKnown)
-            {
-                state.Set(StateSection, "Dock", string.Join(";", Vec(_dockPosition), Vec(_dockAxis), Vec(_dockForward), Vec(_dockUp),
-                    _dockConnectorId.ToString(), _dockGridId.ToString(), Vec(_dockGridPosition), Vec(_dockGridForward), Vec(_dockGridUp)));
-                state.Set(StateSection, "BaseGrids", string.Join(";", _baseGrids));
-                state.Set(StateSection, "DockZone", _dockZone);
-                if (_baseKnown)
-                {
-                    // Base pose and all dock data relative to it (see Paths.cs).
-                    state.Set(StateSection, "DockBase", Vec(_baseMatrix.Translation) + ";" + Vec(_baseMatrix.Forward) + ";"
-                        + Vec(_baseMatrix.Up) + ";" + Vec(_baseCenterLocal) + ";" + Vec(_baseHalf));
-                    var local = new StringBuilder();
-                    foreach (Vector3D v in _dockLocal)
-                        local.Append(Vec(v)).Append(';');
-                    state.Set(StateSection, "DockLocal", local.ToString());
-                    state.Set(StateSection, "DockPath", PathText(_dockPathLocal));
-                    state.Set(StateSection, "DockGate", _dockBaseConnectorId);
-                }
-            }
+            WriteDock(state, StateSection);
             state.Set(StateSection, "Zone", _zone);
             state.Set(StateSection, "PlanetZonesSeen", _planetZonesSeen);
             if (_cameFromValid)
@@ -259,6 +242,81 @@ namespace IngameScript
             state.Set(StateSection, "ZoneRadii", radii.ToString());
             SaveMap(state);
             Storage = state.ToString();
+        }
+
+        // The dock data (see Docking.cs, Paths.cs) in an ini section: the state,
+        // or a base entry's own copy (one dock per base, OreMap.cs).
+        static void CopySection(MyIni from, string a, MyIni to, string b)
+        {
+            var keys = new List<MyIniKey>();
+            from.GetKeys(a, keys);
+            foreach (MyIniKey k in keys)
+                to.Set(b, k.Name, from.Get(k).ToString());
+        }
+
+        void WriteDock(MyIni ini, string section)
+        {
+            if (_dockKnown)
+            {
+                ini.Set(section, "Dock", string.Join(";", Vec(_dockPosition), Vec(_dockAxis), Vec(_dockForward), Vec(_dockUp),
+                    _dockConnectorId.ToString(), _dockGridId.ToString(), Vec(_dockGridPosition), Vec(_dockGridForward), Vec(_dockGridUp)));
+                ini.Set(section, "BaseGrids", string.Join(";", _baseGrids));
+                ini.Set(section, "DockZone", _dockZone);
+                if (_baseKnown)
+                {
+                    // Base pose and all dock data relative to it (see Paths.cs).
+                    ini.Set(section, "DockBase", Vec(_baseMatrix.Translation) + ";" + Vec(_baseMatrix.Forward) + ";"
+                        + Vec(_baseMatrix.Up) + ";" + Vec(_baseCenterLocal) + ";" + Vec(_baseHalf));
+                    var local = new StringBuilder();
+                    foreach (Vector3D v in _dockLocal)
+                        local.Append(Vec(v)).Append(';');
+                    ini.Set(section, "DockLocal", local.ToString());
+                    ini.Set(section, "DockPath", PathText(_dockPathLocal));
+                    ini.Set(section, "DockGate", _dockBaseConnectorId);
+                }
+            }
+        }
+
+        void ReadDock(MyIni ini, string section)
+        {
+            _dockKnown = _baseKnown = _dockProvisional = false;
+            _baseGrids.Clear();
+            _dockPathLocal = new List<PathPoint>();
+            _dockBaseConnectorId = 0;
+            _baseHalf = Vector3D.Zero;
+            string[] dock = ini.Get(section, "Dock").ToString("").Split(';');
+            if (dock.Length == 23)
+            {
+                _dockGridPosition = ParseVec(dock, 14);
+                _dockGridForward = ParseVec(dock, 17);
+                _dockGridUp = ParseVec(dock, 20);
+                _dockPosition = ParseVec(dock, 0);
+                _dockAxis = ParseVec(dock, 3);
+                _dockForward = ParseVec(dock, 6);
+                _dockUp = ParseVec(dock, 9);
+                _dockKnown = long.TryParse(dock[12], out _dockConnectorId) && long.TryParse(dock[13], out _dockGridId);
+            }
+            string[] baseParts = ini.Get(section, "DockBase").ToString("").Split(';');
+            string[] localParts = ini.Get(section, "DockLocal").ToString("").Split(';');
+            if (_dockKnown && baseParts.Length >= 12 && localParts.Length >= 21)
+            {
+                _baseMatrix = MatrixD.CreateWorld(ParseVec(baseParts, 0), ParseVec(baseParts, 3), ParseVec(baseParts, 6));
+                _baseCenterLocal = ParseVec(baseParts, 9);
+                if (baseParts.Length >= 15)
+                    _baseHalf = ParseVec(baseParts, 12);
+                for (int i = 0; i < 7; i++)
+                    _dockLocal[i] = ParseVec(localParts, i * 3);
+                _dockPathLocal = ParsePath(ini.Get(section, "DockPath").ToString(""));
+                _dockBaseConnectorId = ini.Get(section, "DockGate").ToInt64();
+                _baseKnown = true;
+            }
+            foreach (string id in ini.Get(section, "BaseGrids").ToString("").Split(';'))
+            {
+                long grid;
+                if (long.TryParse(id, out grid))
+                    _baseGrids.Add(grid);
+            }
+            _dockZone = ini.Get(section, "DockZone").ToString("");
         }
 
         void LoadState()
@@ -289,39 +347,7 @@ namespace IngameScript
                 for (int i = 0; i < 3; i++)
                     _gyroCalibrated[i] = gyro[3 + i] == "1";
             }
-            string[] dock = state.Get(StateSection, "Dock").ToString("").Split(';');
-            if (dock.Length == 23)
-            {
-                _dockGridPosition = ParseVec(dock, 14);
-                _dockGridForward = ParseVec(dock, 17);
-                _dockGridUp = ParseVec(dock, 20);
-                _dockPosition = ParseVec(dock, 0);
-                _dockAxis = ParseVec(dock, 3);
-                _dockForward = ParseVec(dock, 6);
-                _dockUp = ParseVec(dock, 9);
-                _dockKnown = long.TryParse(dock[12], out _dockConnectorId) && long.TryParse(dock[13], out _dockGridId);
-            }
-            string[] baseParts = state.Get(StateSection, "DockBase").ToString("").Split(';');
-            string[] localParts = state.Get(StateSection, "DockLocal").ToString("").Split(';');
-            if (_dockKnown && baseParts.Length >= 12 && localParts.Length >= 21)
-            {
-                _baseMatrix = MatrixD.CreateWorld(ParseVec(baseParts, 0), ParseVec(baseParts, 3), ParseVec(baseParts, 6));
-                _baseCenterLocal = ParseVec(baseParts, 9);
-                if (baseParts.Length >= 15)
-                    _baseHalf = ParseVec(baseParts, 12);
-                for (int i = 0; i < 7; i++)
-                    _dockLocal[i] = ParseVec(localParts, i * 3);
-                _dockPathLocal = ParsePath(state.Get(StateSection, "DockPath").ToString(""));
-                _dockBaseConnectorId = state.Get(StateSection, "DockGate").ToInt64();
-                _baseKnown = true;
-            }
-            foreach (string id in state.Get(StateSection, "BaseGrids").ToString("").Split(';'))
-            {
-                long grid;
-                if (long.TryParse(id, out grid))
-                    _baseGrids.Add(grid);
-            }
-            _dockZone = state.Get(StateSection, "DockZone").ToString("");
+            ReadDock(state, StateSection);
             _zone = state.Get(StateSection, "Zone").ToString("");
             _planetZonesSeen = state.Get(StateSection, "PlanetZonesSeen").ToBoolean(false);
             string[] came = state.Get(StateSection, "CameFrom").ToString("").Split(';');
@@ -339,6 +365,10 @@ namespace IngameScript
                     _zoneRadii[kv[0]] = radius;
             }
             LoadMap(state);
+            foreach (Deposit d in _deposits)
+                if (d.Ore == BaseName && d.Zone == _dockZone && _dockKnown
+                    && Vector3D.Distance(d.Position, _dockPosition) < _mergeDistance * 2)
+                    _dockEntry = d;
         }
 
         static string Vec(Vector3D v)

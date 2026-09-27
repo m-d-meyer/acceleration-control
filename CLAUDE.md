@@ -66,7 +66,7 @@ The README describes all commands and Custom Data options for players.
     (`tools/SyntaxCheck/Minifier.cs`) and compile-checks the result.
     The minifier also drops `readonly`, uses `var` where the type matches exactly and
     adds short static wrappers for frequent static API calls (`Math.Max`,
-    `Vector3D.Distance`, ...). Minified size is about 97.1k of 100k: space is tight;
+    `Vector3D.Distance`, ...). Minified size is about 98k of 100k: space is tight;
     config options use the `Option(key, value)` helpers in `Config.cs` to save room.
   - Always rebuild `dist/` before committing source changes.
 - The MDK wiki API docs (`api/*.md` in the wiki clone) are the reference for member
@@ -268,6 +268,17 @@ The README describes all commands and Custom Data options for players.
   as DockGate. Not tested in game.
 - Ship script at ~99.0k of 100k after this; the Custom Data help comment was cut to
   one line to make room.
+
+- Several docks: the active dock lives in the fields as before (state section);
+  each base entry (`Deposit.Dock`, a MyIni, section "D") keeps its own copy,
+  saved as map sections `Dock<i>`. `WriteDock`/`ReadDock` (Config.cs) serialise,
+  `StoreDock`/`ActivateDock`/`ChooseDock` (Docking.cs) switch; `_dockEntry` is the
+  active dock's base entry. At script start a connection to another known base
+  activates that base's dock.
+- Size: `OwnBlocks<T>()` replaces the repeated construct-filtered
+  `GetBlocksOfType`; the minifier (step 5b) caches frequent static API values
+  (enum members, constants, static fields, InvariantCulture) in short fields.
+  Ship script ~98.0k after the multi-dock feature.
 
 ## Open ideas / next steps
 

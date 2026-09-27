@@ -72,6 +72,10 @@ namespace IngameScript
                     continue;
                 long id = c.EntityId, other = c.OtherConnector.CubeGrid.EntityId;
                 now.Add(id);
+                if (!_dockChecked && other != _dockGridId)
+                    foreach (Deposit d in _deposits)
+                        if (d.Dock != null && d.Dock.Get("D", "Dock").ToString("").Contains(";" + other + ";"))
+                            ActivateDock(d);
                 if (!_connectedIds.Contains(id))
                 {
                     bool ours = _dockChecked ? _mode == Mode.Dock || _mode == Mode.Path || FindActiveController() != null
@@ -98,6 +102,8 @@ namespace IngameScript
             IMyShipController reference = _controller ?? _layoutController;
             if (reference == null)
                 return;
+            if (connector.OtherConnector.CubeGrid.EntityId != _dockGridId)
+                StoreDock();        // another base: keep the old dock with its entry
             _dockPosition = connector.GetPosition();
             _dockAxis = -connector.WorldMatrix.Forward;     // from the base towards the ship
             _dockForward = reference.WorldMatrix.Forward;
@@ -122,9 +128,40 @@ namespace IngameScript
                 _baseGrids.Add(b.CubeGrid.EntityId);
             if (_mode == Mode.Dock)
                 _mode = Mode.Manual;
-            AddDeposit(BaseName, _dockPosition, false);
+            _dockEntry = AddDeposit(BaseName, _dockPosition, false);
             _mapChanged = true;
             _message = HasDockPath ? "Docked. Dock position and the way in saved for 'dock'" : "Docked. Dock position saved, but no way in: the script saw less than 20 m of it. Fly out and dock by hand again";
+        }
+
+        // One dock per base: the active one is in the fields above, the others
+        // are kept with their base entries on the map.
+        Deposit _dockEntry;
+
+        void StoreDock()
+        {
+            if (_dockKnown && _dockEntry != null)
+                WriteDock(_dockEntry.Dock = new MyIni(), "D");
+        }
+
+        void ActivateDock(Deposit d)
+        {
+            if (d == _dockEntry || d.Dock == null)
+                return;
+            StoreDock();
+            ReadDock(d.Dock, "D");
+            _dockEntry = d;
+        }
+
+        // 'dock': the nearest base with a dock in this zone.
+        void ChooseDock()
+        {
+            Deposit best = null;
+            foreach (Deposit d in _deposits)
+                if ((d.Dock != null || d == _dockEntry) && d.Zone == _zone && (best == null
+                    || Vector3D.DistanceSquared(d.Position, ReferencePosition()) < Vector3D.DistanceSquared(best.Position, ReferencePosition())))
+                    best = d;
+            if (best != null)
+                ActivateDock(best);
         }
 
         IMyShipConnector DockConnector()

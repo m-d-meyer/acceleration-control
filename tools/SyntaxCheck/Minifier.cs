@@ -139,6 +139,45 @@ static class Minifier
                 edits.Add((access.SpanStart, access.Span.Length, name));
         }
 
+        // 5b. Frequent static values of API types (enum members, constants, static
+        //     fields, CultureInfo.InvariantCulture) are read once into a short
+        //     field: 'TextAlignment.RIGHT' -> 'x' with 'const TextAlignment x=TextAlignment.RIGHT;'.
+        var values = new Dictionary<ISymbol, List<MemberAccessExpressionSyntax>>(SymbolEqualityComparer.Default);
+        foreach (var access in root.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
+        {
+            var symbol = model.GetSymbolInfo(access).Symbol;
+            bool constant = symbol is IFieldSymbol f && f.IsConst;
+            bool field = symbol is IFieldSymbol sf && sf.IsStatic;
+            bool property = symbol is IPropertySymbol pr && pr.IsStatic && pr.Name == "InvariantCulture";
+            if (!field && !property || declared.Contains(symbol.OriginalDefinition) || access.SpanStart < bodyStart
+                || !(model.GetSymbolInfo(access.Expression).Symbol is INamedTypeSymbol)
+                || access.Parent is InvocationExpressionSyntax inv && inv.Expression == access
+                || access.Parent is AssignmentExpressionSyntax asg && asg.Left == access
+                || access.Parent is ArgumentSyntax arg && !arg.RefKindKeyword.IsKind(SyntaxKind.None)
+                || edits.Any(e => access.SpanStart < e.Start + e.Length && e.Start < access.Span.End))
+                continue;
+            if (!values.TryGetValue(symbol, out var list))
+                values[symbol] = list = new List<MemberAccessExpressionSyntax>();
+            list.Add(access);
+        }
+        foreach (var pair in values)
+        {
+            string target = pair.Value[0].ToString();
+            if (pair.Value.Count * (target.Length - 2) < 30 + 2 * target.Length)
+                continue;
+            string name;
+            do name = ShortName(counter++);
+            while (otherNames.Contains(name) || SyntaxFacts.GetKeywordKind(name) != SyntaxKind.None
+                   || SyntaxFacts.GetContextualKeywordKind(name) != SyntaxKind.None);
+            var format = SymbolDisplayFormat.MinimallyQualifiedFormat.RemoveMiscellaneousOptions(
+                SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
+            var type = pair.Key is IFieldSymbol fs ? fs.Type : ((IPropertySymbol)pair.Key).Type;
+            bool isConst = pair.Key is IFieldSymbol c && c.IsConst;
+            wrappers.Append((isConst ? "const " : "static ") + (pair.Key is IPropertySymbol ? "IFormatProvider" : type.ToDisplayString(format)) + " " + name + "=" + target + ";\n");
+            foreach (var access in pair.Value)
+                edits.Add((access.SpanStart, access.Span.Length, name));
+        }
+
         // 6. Apply the edits to the script body
         var text = tree.GetText().ToString();
         var sb = new StringBuilder(text);

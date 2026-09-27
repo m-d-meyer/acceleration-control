@@ -47,6 +47,7 @@ namespace IngameScript
             public double Distance;     // from the ship, updated for display (MaxValue: other zone)
             public string Zone = "";    // coordinate zone it was recorded in (see Planets.cs)
             public List<PathPoint> Path;    // the way the ship came to it when mining started (see Paths.cs)
+            public MyIni Dock;              // base entries: their dock, when not the active one (see Docking.cs)
             // Number 0: a waypoint with its own name (e.g. imported GPS "Asteroid 12")
             public string Label { get { return Number > 0 ? Ore + " #" + Number : Ore; } }
         }
@@ -469,6 +470,8 @@ namespace IngameScript
                 Deposit d = _deposits[i];
                 if (d.Path != null)
                     state.Set(MapSection, "DP" + i, PathText(d.Path));
+                if (d.Dock != null)
+                    CopySection(d.Dock, "D", state, "Dock" + i);
                 state.Set(MapSection, "D" + i, string.Join(";", d.Ore, d.Number.ToString(),
                     Num(d.Position.X), Num(d.Position.Y), Num(d.Position.Z), d.Mined ? "1" : "0", d.Zone));
             }
@@ -498,6 +501,8 @@ namespace IngameScript
                 string path = state.Get(MapSection, "DP" + i).ToString("");
                 if (path.Length > 0)
                     deposit.Path = ParsePath(path);
+                if (state.ContainsSection("Dock" + i))
+                    CopySection(state, "Dock" + i, deposit.Dock = new MyIni(), "D");
                 _deposits.Add(deposit);
             }
             for (int i = 0; ; i++)

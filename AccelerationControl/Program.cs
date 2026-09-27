@@ -40,6 +40,12 @@ namespace IngameScript
         readonly HashSet<long> _ownGrids = new HashSet<long>();
 
         // A raycast result that hit this ship itself carries no information.
+        // All blocks of a type on this ship (its construct).
+        void OwnBlocks<T>(List<T> list) where T : class, IMyTerminalBlock
+        {
+            GridTerminalSystem.GetBlocksOfType(list, b => b.IsSameConstructAs(Me));
+        }
+
         bool IsOwnHit(MyDetectedEntityInfo hit)
         {
             return hit.EntityId == Me.CubeGrid.EntityId || _ownGrids.Contains(hit.EntityId) || _carried.ContainsValue(hit.EntityId);
@@ -134,7 +140,7 @@ namespace IngameScript
             ReleaseAll();
 
             GridTerminalSystem.GetBlocksOfType(_controllers, c => c.IsSameConstructAs(Me) && c.CanControlShip);
-            GridTerminalSystem.GetBlocksOfType(_allThrusters, t => t.IsSameConstructAs(Me));
+            OwnBlocks(_allThrusters);
             _atmoThrusters.Clear();
             _ionThrusters.Clear();
             foreach (IMyThrust t in _allThrusters)
@@ -145,15 +151,15 @@ namespace IngameScript
                 else if (!subtype.Contains("Hydrogen"))
                     _ionThrusters.Add(t);
             }
-            GridTerminalSystem.GetBlocksOfType(_cameras, c => c.IsSameConstructAs(Me));
-            GridTerminalSystem.GetBlocksOfType(_gyros, g => g.IsSameConstructAs(Me));
-            GridTerminalSystem.GetBlocksOfType(_connectors, c => c.IsSameConstructAs(Me));
-            GridTerminalSystem.GetBlocksOfType(_sensors, s => s.IsSameConstructAs(Me));
-            GridTerminalSystem.GetBlocksOfType(_landingGears, g => g.IsSameConstructAs(Me));
+            OwnBlocks(_cameras);
+            OwnBlocks(_gyros);
+            OwnBlocks(_connectors);
+            OwnBlocks(_sensors);
+            OwnBlocks(_landingGears);
             // Raycasts also hit the ship itself (a ray from a camera can pass
             // through the own hull), so all grids of this ship are remembered.
             _ownGrids.Clear();
-            GridTerminalSystem.GetBlocksOfType(_blockBuffer, b => b.IsSameConstructAs(Me));
+            OwnBlocks(_blockBuffer);
             foreach (IMyTerminalBlock b in _blockBuffer)
                 _ownGrids.Add(b.CubeGrid.EntityId);
             FindDisplays();
@@ -257,6 +263,7 @@ namespace IngameScript
                     HandleTrackCommand(parts.Length > 1 ? (value == "clear" ? "clear" : argument.Substring(argument.IndexOf(' ') + 1)) : null);
                     break;
                 case "dock":
+                    ChooseDock();
                     StartDocking();
                     break;
                 case "undock":

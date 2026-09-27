@@ -269,10 +269,12 @@ namespace IngameScript
                 _message = "No entry selected";
                 return;
             }
+            bool dock = _selected.Ore == BaseName && (_selected.Dock != null || _selected == _dockEntry);
+            if (dock)
+                ActivateDock(_selected);
             if (_selected.Zone != _zone)
             {
-                bool dock = _selected.Ore == BaseName && _dockKnown && _dockZone == _selected.Zone;
-                StartZoneGoal(dock ? DockApproachPoint : _selected.Position, _selected.Label, _selected.Zone, dock);
+                StartZoneGoal(dock ? DockTarget : _selected.Position, _selected.Label, _selected.Zone, dock);
                 return;
             }
             if (_selected.Path != null && _selected.Path.Count >= 2 && _selected.Ore != BaseName)
@@ -280,7 +282,7 @@ namespace IngameScript
                 StartPathGoal(_selected.Path, _selected.Label, false);
                 return;
             }
-            if (_selected.Ore == BaseName && _dockKnown && Vector3D.Distance(_selected.Position, _dockPosition) < _mergeDistance * 2)
+            if (dock)
             {
                 StartDocking();
                 return;
