@@ -54,19 +54,43 @@ namespace IngameScript
         string _dockScanBlocker;
         Vector3D _dockGridPosition, _dockGridForward, _dockGridUp;   // ship grid pose when docked
 
-        // Records the docking pose when a connector gets connected.
+        // Connections that are not a dock: a ship docked onto this one (its
+        // pilot docked, not ours), or connected before the script started to
+        // something other than the known base. Own connector id -> other grid id.
+        readonly Dictionary<long, long> _carried = new Dictionary<long, long>();
+        readonly HashSet<long> _connectedIds = new HashSet<long>();
+        bool _dockChecked;
+
+        // Records the docking pose when this ship docks somewhere.
         void CheckDocking()
         {
-            bool connected = false;
+            bool docked = false;
+            var now = new HashSet<long>();
             foreach (IMyShipConnector c in _connectors)
             {
                 if (c.Status != MyShipConnectorStatus.Connected || c.OtherConnector == null)
                     continue;
-                connected = true;
-                if (!_wasConnected)
-                    RecordDock(c);
+                long id = c.EntityId, other = c.OtherConnector.CubeGrid.EntityId;
+                now.Add(id);
+                if (!_connectedIds.Contains(id))
+                {
+                    bool ours = _dockChecked ? _mode == Mode.Dock || _mode == Mode.Path || FindActiveController() != null
+                        : _dockKnown && other == _dockGridId && _dockZone == _zone && Vector3D.Distance(c.OtherConnector.GetPosition(), _dockPosition) < 5;
+                    if (ours && !docked && !_wasConnected)
+                        RecordDock(c);
+                    else if (!ours)
+                        _carried[id] = other;
+                }
+                if (!_carried.ContainsKey(id))
+                    docked = true;
             }
-            _wasConnected = connected;
+            foreach (long id in new List<long>(_carried.Keys))
+                if (!now.Contains(id))
+                    _carried.Remove(id);
+            _connectedIds.Clear();
+            _connectedIds.UnionWith(now);
+            _dockChecked = true;
+            _wasConnected = docked;
         }
 
         void RecordDock(IMyShipConnector connector)
@@ -107,7 +131,10 @@ namespace IngameScript
             foreach (IMyShipConnector c in _connectors)
                 if (c.EntityId == _dockConnectorId)
                     return c;
-            return _connectors.Count > 0 ? _connectors[0] : null;
+            foreach (IMyShipConnector c in _connectors)
+                if (!_carried.ContainsKey(c.EntityId))
+                    return c;
+            return null;
         }
 
         Vector3D DockApproachPoint

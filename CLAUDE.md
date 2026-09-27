@@ -248,6 +248,11 @@ The README describes all commands and Custom Data options for players.
   in (now kept for the same dock); the path index advanced by projection alone, so
   a ship off to the side skipped points (now only near the segment). `NoteHit`
   checks that the reported orientation reproduces the hit's box size (`_baseHalf`).
+  Real cause: a small ship docked on the user's ship made the script "docked" from
+  the start (small ship stored as base, no crumbs ever). `CheckDocking` now tracks
+  connections per connector: a new one is a dock only while this ship is piloted
+  (or in Mode.Dock/Path); at script start only at the known dock position; others
+  are `_carried` (ignored by `IsOwnHit`, `DockConnector`, `_wasConnected`).
 
 ## Open ideas / next steps
 

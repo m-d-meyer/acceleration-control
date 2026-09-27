@@ -608,7 +608,11 @@ you to take over. `undock` follows the same way backwards out. Docks recorded be
 this feature have no way in: dock by hand once more to record it. The way is
 recorded only while the script runs (the last 300 m before the connector locks, at
 least 20 m); the message after docking says "Dock position and the way in saved".
-Reloading the world or the script while docked keeps the recorded way. Without a
+Reloading the world or the script while docked keeps the recorded way. Only
+connections made while this ship is piloted (or docking by script) count as docking:
+a small ship docked onto this one is carried along, not taken for the base, and its
+grid is ignored by the cameras. Connections that exist when the script starts count
+as docked only at the known dock. Without a
 way in, `dock` shows "No recorded way in" and uses the point in front of the
 connector, which is wrong for hangars whose connector does not face the entrance.
 

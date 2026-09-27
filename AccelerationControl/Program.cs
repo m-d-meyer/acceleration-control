@@ -42,7 +42,7 @@ namespace IngameScript
         // A raycast result that hit this ship itself carries no information.
         bool IsOwnHit(MyDetectedEntityInfo hit)
         {
-            return hit.EntityId == Me.CubeGrid.EntityId || _ownGrids.Contains(hit.EntityId);
+            return hit.EntityId == Me.CubeGrid.EntityId || _ownGrids.Contains(hit.EntityId) || _carried.ContainsValue(hit.EntityId);
         }
         string _message = "";
 
