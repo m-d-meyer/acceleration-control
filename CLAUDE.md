@@ -161,8 +161,11 @@ The README describes all commands and Custom Data options for players.
   the zone is larger than guessed (hence default 200 km).
 - Aerodynamic Physics mod (DraygoKorvan, mod id 571920453) offers wind/drag only via
   mod-to-mod messages (`RemoteDragSettings.cs`), not to PB scripts: the disturbance
-  observer is the only way. Water mod: raycasts do not see water; routes stay above
-  start/target ground and `WaterLevel`.
+  observer is the only way. Water mod: raycasts do not see water; the sea floor can
+  be 500 m+ below the surface (user). Planet heights are geodetic (distance from the
+  center, which `TryGetPlanetPosition`/`TryGetPlanetElevation(Sealevel)` give
+  exactly); the cruise sphere is at least above `water here` (per planet) /
+  `WaterLevel`, start/target ground and seen terrain.
 - Planet obstacles: raycast hits on a known planet (center within 1 km) only store the
   entity id; `UpdatePlanet` measures radius/well (duplicates caused replanning loops).
 
