@@ -372,6 +372,10 @@ The README describes all commands and Custom Data options for players.
   surface zone with no known planet near gives its orbit zone; the edge is not
   learned from jumps; leaving a surface zone climbs only to 2 km above its
   learned edge.
+- Zone flights started outside gravity (base in the Moon's orbit zone -> deposit in
+  its surface zone, or back) said "use track or fly yourself": StartZoneGoal needed
+  the planet from gravity. Now `ZoneCenter` takes the centre of the zone's planet
+  from the map (any zone, same centre in orbit and surface zone).
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character

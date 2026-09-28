@@ -272,6 +272,16 @@ namespace IngameScript
 
         // The zone of the nearest known planet whose gravity well (with a wide
         // margin: zones reach further) contains the point, or "" (space).
+        // Outside the gravity: the centre of this zone's planet from the map.
+        bool ZoneCenter(out Vector3D center)
+        {
+            center = Vector3D.Zero;
+            foreach (Obstacle o in _obstacles.Concat(_otherObstacles))
+                if (o.Planet && ZoneKey(o.Center) == _zone.TrimEnd('S'))
+                    center = o.Center;      // same centre in the orbit and the surface zone
+            return center != Vector3D.Zero;
+        }
+
         Obstacle NearbyPlanet(Vector3D point)
         {
             Obstacle best = null;
@@ -402,7 +412,7 @@ namespace IngameScript
             }
             IMyShipController c = _controller ?? _layoutController;
             Vector3D center;
-            if (_zone != "" && c != null && c.TryGetPlanetPosition(out center))
+            if (_zone != "" && c != null && (c.TryGetPlanetPosition(out center) || ZoneCenter(out center)))
             {
                 // Up and out; into this planet's surface zone: down to 1 km below
                 // its learned edge (else 3 km above the ground), which the guard
@@ -411,7 +421,7 @@ namespace IngameScript
                 double edge = 0;
                 bool down = zone == _zone + "S";
                 if (down && !_zoneRadii.TryGetValue(zone, out edge))
-                    edge = (_planet != null ? _planet.Radius : Vector3D.Distance(ReferencePosition(), center)) + 4000;
+                    edge = _planet != null ? _planet.Radius + 4000 : Vector3D.Distance(ReferencePosition(), center) / 2;
                 _route.Clear();
                 _route.Add(down ? center + up * (edge - 1000) : _zone.EndsWith("S") && _zoneRadii.TryGetValue(_zone, out edge)
                     ? center + up * (edge + 2000) : ReferencePosition() + up * ZoneExitDistance);
