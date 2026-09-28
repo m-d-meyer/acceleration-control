@@ -345,6 +345,12 @@ The README describes all commands and Custom Data options for players.
 - Script start: `_zoneProvisional = PlanetZones` (counts from the loaded map), so
   entries made before the first gravity contact are relabelled if the remembered
   zone was wrong (zone change while the script was off).
+- User (TSE editor): RSS bodies are nested (Sun > Earth > Moon); 69 km above the
+  Moon the Moon's markers are in another zone, i.e. likely ORBIT and SURFACE zone
+  per body. Open: does the surface zone keep the planet centre at the same
+  coordinates (same zone key) but rotate with the planet? `HandleTeleport` assumes
+  coordinates still hold within one key. Diagnostic: PB info shows the zone key
+  and the last teleport (jump, old > new zone, centre moved, turned about centre).
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character

@@ -200,6 +200,17 @@ namespace IngameScript
             if (teleported || hasPlanet)
                 _zoneProvisional = teleported && !hasPlanet && zone == "";
             bool changed = zone != _zone;
+            // For finding out how Real Solar Systems nests its zones (e.g. orbit
+            // and surface zone of one planet): what the last teleport did, shown
+            // in the programmable block's info. "turned" = angle about the planet
+            // centre between before and after (a rotating surface frame).
+            if (teleported)
+                _teleportInfo = "Last teleport: " + FormatDistance(Vector3D.Distance(before, position)) + ", zone " + (_zone == "" ? "space" : _zone)
+                    + " > " + (zone == "" ? "space" : zone) + (hasPlanet && _hadCenter ? ", centre moved " + FormatDistance(Vector3D.Distance(center, _lastCenter))
+                    + ", turned " + MathHelper.ToDegrees(Math.Acos(MathHelper.Clamp(Vector3D.Dot(Vector3D.Normalize(before - _lastCenter), Vector3D.Normalize(position - center)), -1, 1))).ToString("0.00") + " deg" : "");
+            _hadCenter = hasPlanet;
+            if (hasPlanet)
+                _lastCenter = center;
             if (changed)
                 SwitchZone(zone);
             if (teleported && _zoneProvisional)
@@ -215,7 +226,9 @@ namespace IngameScript
             }
         }
 
-        bool _zoneProvisional, _dockProvisional;
+        bool _zoneProvisional, _dockProvisional, _hadCenter;
+        Vector3D _lastCenter;
+        string _teleportInfo = "";
         int _provisionalDeposits, _provisionalObstacles;
 
         // The zone of the nearest known planet whose gravity well (with a wide
