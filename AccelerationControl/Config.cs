@@ -229,6 +229,7 @@ namespace IngameScript
             state.Set(StateSection, "UraniumCalibrated", _uraniumCalibrated);
             state.Set(StateSection, "UraniumMWhPerKg", _uraniumMWhPerKg);
             state.Set(StateSection, "Zoom", _zoomIndex);
+            state.Set(StateSection, "GyroTorque", Vec(_gyroTorque));
             state.Set(StateSection, "GyroSign", string.Join(";", Num(_gyroSign.X), Num(_gyroSign.Y), Num(_gyroSign.Z),
                 _gyroCalibrated[0] ? "1" : "0", _gyroCalibrated[1] ? "1" : "0", _gyroCalibrated[2] ? "1" : "0"));
             WriteDock(state, StateSection);
@@ -340,6 +341,9 @@ namespace IngameScript
             if (_uraniumCalibrated)
                 _uraniumMWhPerKg = state.Get(StateSection, "UraniumMWhPerKg").ToDouble(_uraniumMWhPerKg);
             _zoomIndex = MathHelper.Clamp(state.Get(StateSection, "Zoom").ToInt32(_zoomIndex), 0, ZoomLevels.Length - 1);
+            string[] torque = state.Get(StateSection, "GyroTorque").ToString("").Split(';');
+            if (torque.Length == 3)
+                _gyroTorque = ParseVec(torque, 0);
             string[] gyro = state.Get(StateSection, "GyroSign").ToString("").Split(';');
             double x, y, z;
             if (gyro.Length == 6 && TryParseNumber(gyro[0], out x) && TryParseNumber(gyro[1], out y) && TryParseNumber(gyro[2], out z))

@@ -66,7 +66,7 @@ The README describes all commands and Custom Data options for players.
     (`tools/SyntaxCheck/Minifier.cs`) and compile-checks the result.
     The minifier also drops `readonly`, uses `var` where the type matches exactly and
     adds short static wrappers for frequent static API calls (`Math.Max`,
-    `Vector3D.Distance`, ...). Minified size is about 99.6k of 100k: space is tight;
+    `Vector3D.Distance`, ...). Minified size is about 98.3k of 100k: space is tight;
     config options use the `Option(key, value)` helpers in `Config.cs` to save room.
   - Always rebuild `dist/` before committing source changes.
 - The MDK wiki API docs (`api/*.md` in the wiki clone) are the reference for member
@@ -317,6 +317,23 @@ The README describes all commands and Custom Data options for players.
   changed): the guard's look distance grows with speed but cameras see ~6 km, so
   fast flights outrun what the guard can check; undock without a recorded way
   backs out blind; FlipTime is a setting, not measured. Ship script ~99.6k.
+- Follow-up (user): gyro P control (gain 2, max 1.5 rad/s) overshot twice on 180
+  degree turns of the large miner. Now per ship axis rate = min(gain x error,
+  sqrt(1.4 x alpha x error)); alpha = `_gyroTorque` (angular accel x mass, saved as
+  GyroTorque) learned every 30 ticks while an axis is commanded > 0.15 rad/s away
+  from its rotation. `FlipTime` property uses it (180 degrees, 20 % + 2 s), the
+  setting only until measured. Simulated (`gyrosim.py`, torque-limited gyros):
+  old 84-156 degree overshoot, new ~1 degree, learned within the first turn.
+  Dodge (user: accelerating sideways is often cheaper than stopping): guard hit
+  closer than 1.3 stopping distances -> if 2 x needed lateral offset / t^2 <
+  min(SideAccel, limit) x BrakeSafety (x 0.5 if stopping is still possible), a
+  waypoint beside the obstacle (clearance x DetourFactor) is inserted and the rest
+  is replanned from it (`_dodge`, `_dodging`; planning from the ship would ignore
+  the obstacle, since the ship is inside its clearance). Simulated
+  (`dodgesim.py`): rocks seen 3-6 km ahead at 100 m/s with 1 m/s² braking are
+  now passed 165-233 m clear instead of a collision after a failed stop.
+- Minifier step 7 (`MergeFields`) merges same-type instance field and const
+  declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character
   limit), images (mock-ups/diagrams, not screenshots) and their generators. The
   user wants the disclaimer "code written 100% by Claude Opus 5.5, tested in game

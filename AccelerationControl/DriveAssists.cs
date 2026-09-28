@@ -370,7 +370,7 @@ namespace IngameScript
                 v = end;
                 from = _route[i];
             }
-            return _flipPlanned && !_flipBraking ? t + _flipTime : t;
+            return _flipPlanned && !_flipBraking ? t + FlipTime : t;
         }
 
         // Time for a straight leg from speed v0 to v1: accelerate, cruise at 'top', brake.
@@ -388,6 +388,22 @@ namespace IngameScript
         {
             double eta = EtaSeconds();
             return eta < 0 ? "" : "ETA " + FormatTime(eta);
+        }
+
+        // Time to turn the ship around (180 degrees about its weaker of pitch and
+        // yaw) from the learned angular acceleration, with 20 % + 2 s margin;
+        // the FlipTime setting until that is measured.
+        double FlipTime
+        {
+            get
+            {
+                IMyShipController c = _controller ?? _layoutController;
+                double k = Math.Min(_gyroTorque.X, _gyroTorque.Y);
+                if (c == null || k <= 0)
+                    return _flipTime;
+                double a = k / c.CalculateShipMass().PhysicalMass, w = GyroMaxRate;
+                return (Math.PI * a < w * w ? 2 * Math.Sqrt(Math.PI / a) : Math.PI / w + w / a) * 1.2 + 2;
+            }
         }
 
         // Deceleration the approach plans with when moving along a direction.
@@ -503,11 +519,11 @@ namespace IngameScript
                 double reverse, best = BestThrust(reference.WorldMatrix, reference.CalculateShipMass().PhysicalMass, out bestDirection, out reverse);
                 if (!_flipBraking)
                     _flipPlanned = best * _brakeSafety > brake * FlipFactor
-                        && TripTime(_targetDistance, best, best * _brakeSafety, _flipTime) < TripTime(_targetDistance, best, brake, 0);
+                        && TripTime(_targetDistance, best, best * _brakeSafety, FlipTime) < TripTime(_targetDistance, best, brake, 0);
                 if (_flipPlanned)
                 {
                     brake = best * _brakeSafety;
-                    distance = Math.Max(distance - Math.Max(current, 0) * _flipTime, 0);
+                    distance = Math.Max(distance - Math.Max(current, 0) * FlipTime, 0);
                 }
             }
             if (_probing)

@@ -56,6 +56,13 @@ namespace IngameScript
         bool _gyrosActive;
         Vector3D _gyroSign = Vector3D.One;          // gyro Pitch/Yaw/Roll direction relative to right-hand rotation
         Vector3D _gyroEvidence;
+        // Learned turning: angular acceleration x ship mass per ship axis (right,
+        // up, backward), measured while the gyroscopes run at full torque. The
+        // real limit is the moment of inertia (shape matters), which the
+        // measurement per axis contains; cargo is taken into account through
+        // the mass. Zero: not measured yet.
+        Vector3D _gyroTorque, _gyroOmega, _gyroCommand;
+        int _gyroSampleTick;
         bool[] _gyroCalibrated = new bool[3];
         int _guardStep;
         bool _guardParallel;
@@ -736,7 +743,7 @@ namespace IngameScript
 
         void StartRoute(string name)
         {
-            _departing = _resumeGoal = _replanPending = _flipBraking = _tracking = false;
+            _departing = _resumeGoal = _replanPending = _flipBraking = _tracking = _dodging = false;
             _routeIndex = 0;
             _jumpCheckedLeg = -1;
             _legStart = ReferencePosition();
@@ -841,8 +848,12 @@ namespace IngameScript
             return length;
         }
 
+        Vector3D _dodge;
+        bool _dodging;
+
         void NextWaypoint()
         {
+            _dodging = false;
             _legStart = _route[_routeIndex];
             _routeIndex++;
             _approachTarget = _route[_routeIndex];
@@ -852,8 +863,10 @@ namespace IngameScript
         void Replan()
         {
             Vector3D target = _route[_route.Count - 1];
-            if (PlanRoute(ReferencePosition(), target, _route))
+            if (PlanRoute(_dodging ? _dodge : ReferencePosition(), target, _route))
             {
+                if (_dodging)
+                    _route.Insert(0, _dodge);
                 _routeIndex = 0;
                 _legStart = ReferencePosition();
                 _approachTarget = _route[0];
@@ -1013,9 +1026,33 @@ namespace IngameScript
                 BoundingBoxD box = hit.BoundingBox;
                 _temporaryObstacles.Add(new Obstacle { EntityId = hit.EntityId, Center = box.Center, Radius = (box.Max - box.Min).Length() / 2 });
             }
-            // Too close to go around at this speed: stop in front of it, then
-            // start over from there (moving away first). Otherwise plan a way
-            // around in the next tick.
+            // Close: if a sideways dodge past it needs clearly less than the
+            // ship's sideways thrust (often cheaper than stopping, and the only
+            // way when stopping in time is impossible), the next waypoint is put
+            // beside it; the planner itself ignores obstacles the ship is already
+            // inside the clearance of. Otherwise stop in front of it and start
+            // over from there. Far away: plan a way around in the next tick.
+            Obstacle o = voxel ? FindObstacle(hit.EntityId) : _temporaryObstacles[_temporaryObstacles.Count - 1];
+            if (along - _approachBuffer - ShipRadius < stopDistance * 1.3 && o != null)
+            {
+                Vector3D off = position - o.Center;
+                off -= direction * Vector3D.Dot(off, direction);
+                double miss = off.Length(), need = o.Radius + ShipRadius + _approachBuffer * 0.5 - miss;
+                double t = Math.Max(Vector3D.Dot(o.Center - position, direction) - o.Radius - ShipRadius, 1) / Math.Max(_currentSpeed, 0.1);
+                Vector3D beside = o.Center + (miss > 1 ? off / miss : Vector3D.CalculatePerpendicularVector(direction)) * Clearance(o, _approachTarget) * DetourFactor;
+                if (2 * need / (t * t) < Math.Min(SideAccel(), _approachFullThrust ? double.MaxValue : _limit) * _brakeSafety * (along - ShipRadius < stopDistance ? 1 : 0.5) && IsFree(beside, _approachTarget))
+                {
+                    // Next tick the rest is planned from the dodge point (the ship
+                    // itself is inside the rock's clearance, which planning ignores).
+                    _route.Insert(_routeIndex, beside);
+                    _approachTarget = beside;
+                    PlanCornerSpeeds();
+                    _dodge = beside;
+                    _dodging = _replanPending = true;
+                    _message = "Obstacle ahead (" + (voxel ? "rock" : hit.Name) + "), dodging";
+                    return;
+                }
+            }
             if (along - _approachBuffer - ShipRadius < stopDistance * 1.3)
             {
                 _route.Clear();
@@ -1136,15 +1173,48 @@ namespace IngameScript
             Vector3D axis = Vector3D.Cross(pointing, desired);
             double sin = axis.Length(), cos = Vector3D.Dot(pointing, desired);
             _alignError = Math.Atan2(sin, cos);
-            // At least GyroMinRate while not aligned, so small errors do not linger.
-            Vector3D rate = sin > 1e-6 ? axis / sin * Math.Max(_alignError * GyroGain, _alignError > 0.002 ? GyroMinRate : 0)
-                : cos < 0 ? Vector3D.CalculatePerpendicularVector(pointing) * Math.PI * GyroGain : Vector3D.Zero;
+            // Rotation still to do (axis x angle), roll included.
+            Vector3D turn = sin > 1e-6 ? axis / sin * _alignError
+                : cos < 0 ? Vector3D.CalculatePerpendicularVector(pointing) * Math.PI : Vector3D.Zero;
             if (desiredUp != Vector3D.Zero && cos > 0)
             {
                 // Roll: bring the ship's up direction to the desired one as well.
-                Vector3D rollAxis = Vector3D.Cross(matrix.Up, desiredUp);
-                rate += rollAxis * GyroGain;
+                turn += Vector3D.Cross(matrix.Up, desiredUp);
                 _alignError = Math.Max(_alignError, Math.Acos(MathHelper.Clamp(Vector3D.Dot(matrix.Up, desiredUp), -1, 1)));
+            }
+
+            // Per ship axis: proportional near the target, and never faster than
+            // the ship can still stop turning with 70 % of its learned angular
+            // acceleration (a fixed gain overshot twice on 180 degree turns of a
+            // large miner). At least GyroMinRate, so small errors do not linger.
+            double mass = controller.CalculateShipMass().PhysicalMass;
+            Vector3D[] axes = { matrix.Right, matrix.Up, matrix.Backward };
+            Vector3D rate = Vector3D.Zero, omega = Vector3D.Zero;
+            for (int i = 0; i < 3; i++)
+            {
+                double e = Vector3D.Dot(turn, axes[i]), a = _gyroTorque.GetDim(i) / mass;
+                double r = Math.Min(Math.Abs(e) * GyroGain, a > 0 ? Math.Sqrt(1.4 * a * Math.Abs(e)) : double.MaxValue);
+                rate += axes[i] * Math.Sign(e) * Math.Max(r, Math.Abs(e) > 0.002 ? GyroMinRate : 0);
+                omega.SetDim(i, Vector3D.Dot(controller.GetShipVelocities().AngularVelocity, axes[i]));
+            }
+            // Learning, every half second: an axis commanded far from its actual
+            // rotation at both ends ran at full torque; its change of rotation
+            // gives the angular acceleration.
+            if (_ticks - _gyroSampleTick >= 30)
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    double before = _gyroCommand.GetDim(i) - _gyroOmega.GetDim(i), now = Vector3D.Dot(_commandedRate, axes[i]) - omega.GetDim(i);
+                    double change = (omega.GetDim(i) - _gyroOmega.GetDim(i)) * Math.Sign(before);
+                    if (_ticks - _gyroSampleTick < 40 && Math.Abs(before) > 0.15 && Math.Abs(now) > 0.15 && before * now > 0 && change > 0.003)
+                    {
+                        double k = change * 2 * mass, old = _gyroTorque.GetDim(i);
+                        _gyroTorque.SetDim(i, old > 0 ? old * 0.8 + k * 0.2 : k);
+                    }
+                    _gyroCommand.SetDim(i, Vector3D.Dot(_commandedRate, axes[i]));
+                }
+                _gyroOmega = omega;
+                _gyroSampleTick = _ticks;
             }
 
             bool calibrated = _gyroCalibrated[0] && _gyroCalibrated[1] && _gyroCalibrated[2];

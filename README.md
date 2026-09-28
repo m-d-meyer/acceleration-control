@@ -155,7 +155,7 @@ first run. Edit them there and run `reload`.
 | `JumpClearance`      | `1000`    | Minimum distance of the jump destination from known obstacles (m) |
 | `DockApproach`       | `30`      | Distance in front of the base connector where docking starts (m, plus ship radius) |
 | `UseStrongestThrusters` | `true` | Turn the ship so its strongest thrusters push along the flight, and flip for braking if worth it |
-| `FlipTime`           | `30`      | Seconds planned for turning around before braking                 |
+| `FlipTime`           | `30`      | Seconds planned for turning around before braking, until the ship's turning is measured |
 | `PlanetZones`        | `false`   | Real Solar Systems: each planet zone has its own coordinates (switches on by itself at the first teleport into or out of a planet zone) |
 | `PlanetCruiseHeight` | `1500`    | Height above the ground (start, target, terrain seen) for flights on a planet (m); short hops fly lower |
 | `AtmosphereHeight`   | `12000`   | Assumed top of the atmosphere above sea level until the ship has measured it (m) |
@@ -373,7 +373,9 @@ length, delta-v and flight time. **GO** plans and flies it.
   just stops where it is.
 - **Flip and burn**: if the side that would brake is much weaker than the strongest
   side, the ship turns around for the final braking and brakes with its strongest
-  thrusters. The turn is given `FlipTime` seconds (default 30): braking starts earlier
+  thrusters. The turn is given the time the ship needs to turn around, computed
+  from its measured turning (see below; `FlipTime`, default 30 s, until that is
+  measured): braking starts earlier
   by the distance flown in that time, which also lowers the top speed on short trips
   that never reach `MaxSpeed`. The script compares the trip time with and without
   turning around and only flips when it is faster.
@@ -381,6 +383,11 @@ length, delta-v and flight time. **GO** plans and flies it.
   (its bounding sphere) from the surface, measured from the ship's center, so the
   ship can turn safely there. Near the stop point it holds its heading; once slow,
   it turns its nose to the target (e.g. for drilling).
+- **Turning**: the script measures how fast the gyroscopes can speed up and slow
+  down the ship's rotation, per axis, whenever they turn at full torque (the
+  shape of the ship matters, so each axis is learned on its own; cargo is taken
+  into account through the mass). Turns then slow down in time instead of
+  overshooting, and the flip time above is computed from it.
 - Docking, cruise, leaving a rock and all manual movement never turn the ship; all
   thrusters work together there. Turning the ship yourself
   takes over the gyroscopes; any movement key cancels the flight.
@@ -388,9 +395,11 @@ length, delta-v and flight time. **GO** plans and flies it.
   center ray and a ring of rays at the ship's radius, as far as the stopping
   distance. If the target rock sticks out further than scanned (a protrusion
   beside the scanned point), the stop point moves closer. An unknown asteroid or a
-  grid on the path makes the route go around it (planned in the next tick); if the
-  ship is too close to go around at its speed, it stops in front of the obstacle,
-  moves away from it and plans again.
+  grid on the path makes the route go around it (planned in the next tick). Closer
+  than about 1.3 stopping distances, the ship dodges sideways past it if that needs
+  clearly less than its sideways thrust (often cheaper than stopping, and the only
+  way when stopping in time is impossible); otherwise it stops in front of the
+  obstacle, moves away from it and plans again.
 - **Live replanning**: an asteroid found later (by the guard or the background
   survey) that lies on the rest of the route triggers a new plan from the current
   position.
