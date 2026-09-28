@@ -542,7 +542,9 @@ gravity is assigned to the nearest known planet (within 1.5 times its gravity
 radius plus 50 km), e.g. a base in space near the Moon belongs to the Moon's zone.
 If no planet is known yet, entries recorded there are marked provisionally and
 relabelled as soon as the ship reaches that planet's gravity without another
-teleport. If the base was recorded in the wrong zone by an earlier version, dock by
+teleport. The same holds after the script starts outside gravity (a zone
+change while it was off cannot be seen): the zone it remembers counts as
+provisional until the gravity of a planet confirms or corrects it. If the base was recorded in the wrong zone by an earlier version, dock by
 hand once more.
 
 Zones switch on by themselves at the first teleport into or out of a planet zone.

@@ -63,6 +63,11 @@ namespace IngameScript
             _limitDampeners = _limitDampenersDefault;
             _cruiseSpeed = _defaultCruiseSpeed;
             LoadState();
+            // A zone change while the script was off is not seen: until gravity
+            // shows the planet, the zone is provisional (entries are relabelled).
+            _zoneProvisional = PlanetZones;
+            _provisionalDeposits = _deposits.Count;
+            _provisionalObstacles = _obstacles.Count;
             RefreshBlocks();
             ReleaseAll(true); // clear overrides left behind by a previous run
             ReleaseGyros(true);

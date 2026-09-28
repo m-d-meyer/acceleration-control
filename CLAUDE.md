@@ -342,6 +342,9 @@ The README describes all commands and Custom Data options for players.
   Simulated (`evadesim.py`, per-axis saturation, turning 0.03-0.5 rad/s², 6 km):
   390-840 m clear where stopping hit the rock. An estimate of the reach (turn time
   + thrust) was too pessimistic, so the evasion is always used when stopping fails.
+- Script start: `_zoneProvisional = PlanetZones` (counts from the loaded map), so
+  entries made before the first gravity contact are relabelled if the remembered
+  zone was wrong (zone change while the script was off).
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character
