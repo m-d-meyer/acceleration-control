@@ -168,7 +168,13 @@ namespace IngameScript
                 if (Vector3D.Distance(position, predicted) > TeleportDistance)
                 {
                     if (!_jumpUsed && _ticks - _jumpSeenTick <= JumpGraceTicks)
+                    {
+                        // A jump that also crossed a zone edge: RSS moves the ship in
+                        // the same tick, so it did not go where the jump points.
                         _jumped = _jumpUsed = true;
+                        Vector3D moved = position - predicted;
+                        teleported = _mode == Mode.Jump && Vector3D.Dot(moved, _jumpDirection) < moved.Length() * 0.98;
+                    }
                     else
                         teleported = true;
                 }
@@ -215,9 +221,12 @@ namespace IngameScript
                 string key = hasPlanet || near != null ? ZoneKey(center) : "";
                 double r = Vector3D.Distance(position, center), edge;
                 bool same = key != "" && _zone.TrimEnd('S') == key;
-                if (teleported && same)
+                if (key == "" && _zone.EndsWith("S"))
+                    zone = _zone.TrimEnd('S');      // out of a surface zone away from any known planet: its orbit zone
+                else if (teleported && same)
                 {
-                    _zoneRadii[key + "S"] = r;
+                    if (!_jumped)
+                        _zoneRadii[key + "S"] = r;     // not after a jump that crossed it
                     zone = Vector3D.Dot(velocity, position - center) < 0 ? key + "S" : key;
                 }
                 else if (key != "" && _zoneRadii.TryGetValue(key + "S", out edge) && (!same || Math.Abs(r - edge) > 1000))
@@ -404,7 +413,8 @@ namespace IngameScript
                 if (down && !_zoneRadii.TryGetValue(zone, out edge))
                     edge = (_planet != null ? _planet.Radius : Vector3D.Distance(ReferencePosition(), center)) + 4000;
                 _route.Clear();
-                _route.Add(down ? center + up * (edge - 1000) : ReferencePosition() + up * ZoneExitDistance);
+                _route.Add(down ? center + up * (edge - 1000) : _zone.EndsWith("S") && _zoneRadii.TryGetValue(_zone, out edge)
+                    ? center + up * (edge + 2000) : ReferencePosition() + up * ZoneExitDistance);
                 _temporaryObstacles.Clear();
                 _dockAfterRoute = false;
                 StartRoute("leaving the planet");

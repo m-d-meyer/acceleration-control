@@ -364,6 +364,14 @@ The README describes all commands and Custom Data options for players.
   to 1 km below the edge (unknown: 3 km above the ground) for key -> key + "S".
   Airless planets: air measured <= AirDetected inside the assumed atmosphere ->
   `AtmosphereRadius = -1` (no limit); hydrogen-only ships cannot measure air.
+- Moon test 2: GO from the surface zone to the base (orbit zone) climbed towards
+  1000 km (ETA > 99 h), jumped, and afterwards showed 130,000 km to go: the jump
+  crossed the zone edge and RSS moved the ship in the same tick, so the single
+  position jump counted as the jump only. Now a jump that did not move the ship
+  along `_jumpDirection` (cos < 0.98) is also a teleport; a teleport out of a
+  surface zone with no known planet near gives its orbit zone; the edge is not
+  learned from jumps; leaving a surface zone climbs only to 2 km above its
+  learned edge.
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character
