@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -125,6 +126,8 @@ static class Minifier
             string target = pair.Value[0].ToString();
             if (pair.Value.Count * (target.Length - 3) < 60 + target.Length)
                 continue;       // not worth a wrapper
+            if (!Allowed(method.ReturnType, tree, bodyStart) || method.Parameters.Any(p => !Allowed(p.Type, tree, bodyStart)))
+                continue;
             string name;
             do name = ShortName(counter++);
             while (otherNames.Contains(name) || SyntaxFacts.GetKeywordKind(name) != SyntaxKind.None
@@ -165,6 +168,8 @@ static class Minifier
             string target = pair.Value[0].ToString();
             if (pair.Value.Count * (target.Length - 2) < 30 + 2 * target.Length)
                 continue;
+            if (!Allowed(pair.Key is IFieldSymbol ft ? ft.Type : ((IPropertySymbol)pair.Key).Type, tree, bodyStart))
+                continue;
             string name;
             do name = ShortName(counter++);
             while (otherNames.Contains(name) || SyntaxFacts.GetKeywordKind(name) != SyntaxKind.None
@@ -173,7 +178,7 @@ static class Minifier
                 SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
             var type = pair.Key is IFieldSymbol fs ? fs.Type : ((IPropertySymbol)pair.Key).Type;
             bool isConst = pair.Key is IFieldSymbol c && c.IsConst;
-            wrappers.Append((isConst ? "const " : "static ") + (pair.Key is IPropertySymbol ? "IFormatProvider" : type.ToDisplayString(format)) + " " + name + "=" + target + ";\n");
+            wrappers.Append((isConst ? "const " : "static ") + (pair.Key is IPropertySymbol ? type.ToDisplayString() : type.ToDisplayString(format)) + " " + name + "=" + target + ";\n");
             foreach (var access in pair.Value)
                 edits.Add((access.SpanStart, access.Span.Length, name));
         }
@@ -190,6 +195,15 @@ static class Minifier
         var renamed = sb.ToString();
         var body = renamed.Substring(bodyStart, renamed.LastIndexOf('}') - bodyStart) + "\n" + wrappers;
         return Compact(CSharpSyntaxTree.ParseText(body, new CSharpParseOptions(LanguageVersion.CSharp6, kind: SourceCodeKind.Script)));
+    }
+
+    // The game only accepts whitelisted types (e.g. IFormatProvider is
+    // prohibited, CultureInfo is not). Generated code may only name types the
+    // script itself already names, which the game has accepted.
+    static bool Allowed(ITypeSymbol type, SyntaxTree tree, int bodyStart)
+    {
+        return type.SpecialType != SpecialType.None
+            || Regex.IsMatch(tree.GetText().ToString().Substring(bodyStart), @"\b" + Regex.Escape(type.Name) + @"\b");
     }
 
     static bool IsOwnDeclaration(SyntaxToken token)

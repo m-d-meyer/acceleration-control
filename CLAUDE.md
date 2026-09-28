@@ -281,6 +281,11 @@ The README describes all commands and Custom Data options for players.
   (enum members, constants, static fields, InvariantCulture) in short fields.
   Ship script ~98.0k after the multi-dock feature.
 
+- The PB whitelist is not checked by the stub compile: the minifier's cached
+  `IFormatProvider` field compiled here but the game refused it ("type or member
+  'IFormatProvider' is prohibited"). Generated wrappers/fields now only use types
+  the script already names (`Allowed` in Minifier.cs). New API types in source
+  code carry the same risk; the in-game "Check code" is the only whitelist test.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character
   limit), images (mock-ups/diagrams, not screenshots) and their generators. The
   user wants the disclaimer "code written 100% by Claude Opus 5.5, tested in game
