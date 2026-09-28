@@ -373,9 +373,14 @@ namespace IngameScript
                 return true;    // hold still and finish turning
             }
 
-            double speed = Math.Min(PathSpeed, Math.Max(togo * 0.4, 0.3));
-            if (_pathDock && remaining < DockSlowDistance)
-                speed = Math.Min(speed, 1.5);
+            // Speed the ship can still brake from, planned with half of what its
+            // thrusters give in this direction (loaded ships brake worse). The
+            // 1.5 m/s near the dock is reached by braking, not by a sudden limit:
+            // a step from 8 to 1.5 m/s 20 m before the connector overshot it.
+            double brake = Math.Min(BrakeAccel(Vector3D.Normalize(target.P - position + new Vector3D(1e-6))), 3);
+            double speed = Math.Min(PathSpeed, Math.Max(Math.Sqrt(brake * togo), 0.3));
+            if (_pathDock)
+                speed = Math.Min(speed, Math.Sqrt(2.25 + brake * Math.Max(remaining - DockSlowDistance, 0)));
             if (_alignError > 0.35)
                 speed = 0;              // turn into the recorded pose first
             else if (_alignError > 0.1)

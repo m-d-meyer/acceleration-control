@@ -298,6 +298,13 @@ The README describes all commands and Custom Data options for players.
   `Undock()` also unlocks landing gear (and in reverse path mode each tick), and
   with a recorded way keeps the connector locked until `GateWait` reports the gate
   open (`_undockPending`): unlocked and waiting, the connector pulled the ship back.
+- Loaded ship overshot the connector at 2-3 m/s on a recorded way: path speed
+  was min(8, 0.4 x distance) with a hard 1.5 m/s cap 20 m before the dock, i.e. a
+  step from 8 to 1.5 m/s that needs ~3 m/s² of braking. Now v = sqrt(brake x
+  distance) (half of `BrakeAccel` in that direction, max 3) and the dock cap is
+  reached by braking. Simulated (scratchpad `pathbrake.py`, thruster lag 0.5 s):
+  old profile overshoots below ~3 m/s² braking, new one arrives at 1.5 m/s down
+  to 0.5 m/s².
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character
   limit), images (mock-ups/diagrams, not screenshots) and their generators. The
   user wants the disclaimer "code written 100% by Claude Opus 5.5, tested in game
