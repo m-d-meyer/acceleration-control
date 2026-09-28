@@ -35,6 +35,7 @@ namespace IngameScript
         const double GyroEvidence = 0.03;           // rad^2/s of evidence needed to decide a direction
         const double AlignDistance = 300;           // m - closer than this, the heading is held instead of turned
         const int GuardPattern = 9;                 // center ray plus a ring of 8
+        const double GuardRange = 8000;             // m - the guard does not look farther
 
         readonly List<IMyGyro> _gyros = new List<IMyGyro>();
         readonly List<Vector3D> _route = new List<Vector3D>();
@@ -743,7 +744,7 @@ namespace IngameScript
 
         void StartRoute(string name)
         {
-            _departing = _resumeGoal = _replanPending = _flipBraking = _tracking = _dodging = false;
+            _departing = _resumeGoal = _replanPending = _flipBraking = _tracking = _dodging = _evading = false;
             _routeIndex = 0;
             _jumpCheckedLeg = -1;
             _legStart = ReferencePosition();
@@ -848,8 +849,9 @@ namespace IngameScript
             return length;
         }
 
-        Vector3D _dodge;
-        bool _dodging;
+        Vector3D _dodge, _evadeDir, _evadeFrom;
+        bool _dodging, _evading;
+        double _evadeClear;
 
         void NextWaypoint()
         {
@@ -889,7 +891,7 @@ namespace IngameScript
         // makes the route go around the new obstacle.
         void UpdateGuard()
         {
-            if (_mode != Mode.Approach || _probing || _departing || _replanPending || !_guard || _cameras.Count == 0)
+            if (_mode != Mode.Approach || _probing || _departing || _replanPending || _evading || !_guard || _cameras.Count == 0)
                 return;
             Vector3D position = ReferencePosition();
             Vector3D toTarget = _approachTarget - position;
@@ -898,7 +900,10 @@ namespace IngameScript
                 return;
             Vector3D direction = toTarget / remaining;
             double brake = Math.Max(BrakeAccel(direction), 0.1);
-            double look = Math.Min(remaining + _approachBuffer * 2,
+            // Not beyond GuardRange: rays rarely hit rocks farther away, and a
+            // camera needs a second of charge per 2 km, so longer rays (tens of
+            // km at 300 m/s) left the guard nearly blind. Dodging covers the rest.
+            double look = Math.Min(Math.Min(remaining + _approachBuffer * 2, GuardRange),
                 Math.Max(_currentSpeed * _currentSpeed / (2 * brake) * 1.5 + _approachBuffer * 2, ProbeMinRange));
 
             // Every other scan: a ray parallel to the path from a camera facing the
@@ -1040,7 +1045,9 @@ namespace IngameScript
                 double miss = off.Length(), need = o.Radius + ShipRadius + _approachBuffer * 0.5 - miss;
                 double t = Math.Max(Vector3D.Dot(o.Center - position, direction) - o.Radius - ShipRadius, 1) / Math.Max(_currentSpeed, 0.1);
                 Vector3D beside = o.Center + (miss > 1 ? off / miss : Vector3D.CalculatePerpendicularVector(direction)) * Clearance(o, _approachTarget) * DetourFactor;
-                if (2 * need / (t * t) < Math.Min(SideAccel(), _approachFullThrust ? double.MaxValue : _limit) * _brakeSafety * (along - ShipRadius < stopDistance ? 1 : 0.5) && IsFree(beside, _approachTarget))
+                bool cannotStop = along - ShipRadius < stopDistance;
+                Vector3D side = miss > 1 ? off / miss : Vector3D.CalculatePerpendicularVector(direction);
+                if (2 * need / (t * t) < Math.Min(SideAccel(), _approachFullThrust ? double.MaxValue : _limit) * _brakeSafety * (cannotStop ? 1 : 0.5) && IsFree(beside, _approachTarget))
                 {
                     // Next tick the rest is planned from the dodge point (the ship
                     // itself is inside the rock's clearance, which planning ignores).
@@ -1050,6 +1057,19 @@ namespace IngameScript
                     _dodge = beside;
                     _dodging = _replanPending = true;
                     _message = "Obstacle ahead (" + (voxel ? "rock" : hit.Name) + "), dodging";
+                    return;
+                }
+                // Emergency, stopping in time is impossible: turn the strongest
+                // thrusters sideways and push aside and back at full thrust.
+                // Simulated at 300 m/s, rock seen 6 km ahead: passes 390-840 m
+                // clear where stopping hits it (turning 0.03-0.5 rad/s²).
+                if (cannotStop && !o.Planet)
+                {
+                    _evadeDir = side;
+                    _evadeFrom = o.Center;
+                    _evadeClear = o.Radius + ShipRadius + _approachBuffer * 0.5;
+                    _evading = true;
+                    _message = "EVADING " + (voxel ? "rock" : hit.Name) + " at full thrust";
                     return;
                 }
             }
@@ -1133,6 +1153,12 @@ namespace IngameScript
                 desired = _dockForward;
                 desiredUp = _dockUp;
             }
+            else if (_evading)
+            {
+                double reverse;
+                BestThrust(matrix, controller.CalculateShipMass().PhysicalMass, out pointing, out reverse);
+                desired = _evadeDir;
+            }
             else if (_departing)
                 desired = matrix.Forward;       // leaving a rock: hold the heading, do not turn
             else
@@ -1159,7 +1185,7 @@ namespace IngameScript
                     }
                 }
             }
-            if (LevelFlight && _mode != Mode.Jump && desiredUp == Vector3D.Zero)
+            if (LevelFlight && _mode != Mode.Jump && desiredUp == Vector3D.Zero && !_evading)
             {
                 // In gravity the ship stays level: its up against gravity, the nose
                 // turned only horizontally (climbs and descents use the up thrusters).

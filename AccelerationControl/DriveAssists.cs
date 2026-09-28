@@ -112,8 +112,27 @@ namespace IngameScript
             if (_mode == Mode.Approach)
             {
                 UnlockLandingGear();    // auto-lock could catch the ground again right after the start
-                if (_approachFullThrust)
+                if (_approachFullThrust || _evading)
                     maxAccel = double.MaxValue;
+                if (_evading)
+                {
+                    // Full thrust aside, the speed along the way kept, until the
+                    // obstacle is passed or the path clears it; then plan again.
+                    Vector3D off = ReferencePosition() - _evadeFrom, dir = velocity.LengthSquared() > 1 ? Vector3D.Normalize(velocity) : _evadeDir;
+                    double ahead = -Vector3D.Dot(off, dir);
+                    if (ahead < 0 || (off + dir * ahead).Length() > _evadeClear)
+                    {
+                        // Planned on from a point outside the rock's clearance (from
+                        // the ship itself, planning would ignore the rock).
+                        _evading = false;
+                        _dodge = _evadeFrom + Vector3D.Normalize(off) * _evadeClear * 1.5;
+                        _dodging = _replanPending = true;
+                    }
+                    // Aside and back: each thruster side pushes at full thrust if it
+                    // pushes aside or against the motion, never towards the obstacle.
+                    targetVelocity = velocity + (_evadeDir - dir) * 1000;
+                    return true;
+                }
                 return ApproachVelocity(velocity, out targetVelocity);
             }
 

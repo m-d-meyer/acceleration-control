@@ -332,6 +332,16 @@ The README describes all commands and Custom Data options for players.
   the obstacle, since the ship is inside its clearance). Simulated
   (`dodgesim.py`): rocks seen 3-6 km ahead at 100 m/s with 1 m/s² braking are
   now passed 165-233 m clear instead of a collision after a failed stop.
+- Emergency evasion (user flies 300 m/s): when stopping in time is impossible
+  and the plain dodge is not enough (not for planets), `_evading`: gyros turn the
+  strongest side (`BestThrust`) towards `_evadeDir`, target velocity = v + (aside -
+  motion) x 1000 at unlimited accel, until the obstacle is passed or the path
+  clears it, then replanned from a point outside its clearance (`_dodge`). Guard
+  paused meanwhile. Guard look distance capped at `GuardRange` 8 km (before: up to
+  1.5 stopping distances, tens of km at 300 m/s = 1 s camera charge per 2 km).
+  Simulated (`evadesim.py`, per-axis saturation, turning 0.03-0.5 rad/s², 6 km):
+  390-840 m clear where stopping hit the rock. An estimate of the reach (turn time
+  + thrust) was too pessimistic, so the evasion is always used when stopping fails.
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character

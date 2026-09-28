@@ -399,7 +399,12 @@ length, delta-v and flight time. **GO** plans and flies it.
   than about 1.3 stopping distances, the ship dodges sideways past it if that needs
   clearly less than its sideways thrust (often cheaper than stopping, and the only
   way when stopping in time is impossible); otherwise it stops in front of the
-  obstacle, moves away from it and plans again.
+  obstacle, moves away from it and plans again. If stopping in time is impossible
+  and the sideways thrust is not enough, the ship **evades**: it turns its strongest
+  thrusters sideways and pushes aside and back at full thrust (ignoring the
+  acceleration limit) until its path clears the obstacle, then plans on. The guard
+  looks at most 8 km ahead: rays rarely hit rocks farther away, and longer rays
+  need more camera charge, so at high speed it scanned too rarely.
 - **Live replanning**: an asteroid found later (by the guard or the background
   survey) that lies on the rest of the route triggers a new plan from the current
   position.
