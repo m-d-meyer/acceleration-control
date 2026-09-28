@@ -39,6 +39,7 @@ namespace IngameScript
         const double PathReach = 3;             // m - a path point counts as passed within this
         const double PathEndMargin = 5;         // m - deposits: stop this far before the end of the way
         const int PathGiveUpTicks = 60 * 10;    // blocked this long: the pilot takes over
+        const double PathTurnRate = 0.3;        // rad/s the speed plan allows for turning into the next pose
 
         class PathPoint
         {
@@ -49,6 +50,7 @@ namespace IngameScript
         readonly List<PathPoint> _path = new List<PathPoint>();         // being followed (world)
         List<PathPoint> _dockPathLocal = new List<PathPoint>();         // way into the dock (base coordinates)
         int _pathIndex, _pathHoldUntil, _pathBlockedSince, _pathScan, _pathEndTicks;
+        readonly List<double> _pathLimits = new List<double>();     // speed when passing each point
         bool _pathDock, _pathAfterRoute, _pathReverseDock;
         string _pathName = "";
         Vector3D _pathF, _pathU;
@@ -276,7 +278,35 @@ namespace IngameScript
             _alignError = Math.PI;
             _enabled = true;
             _mode = Mode.Path;
+            // Speeds planned backwards from the end, like the corner speeds of a
+            // route: slow enough at every point for the bend of the way (cos^2)
+            // and for turning into the next pose, and able to brake to the next.
+            _pathLimits.Clear();
+            for (int i = 0; i < _path.Count; i++)
+                _pathLimits.Add(0);
+            for (int i = _path.Count - 2; i >= 0; i--)
+            {
+                Vector3D seg = _path[i + 1].P - _path[i].P, before = i > 0 ? _path[i].P - _path[i - 1].P : seg;
+                double c = Math.Max(Vector3D.Dot(Vector3D.Normalize(seg), Vector3D.Normalize(before)), 0);
+                _pathLimits[i] = Math.Min(Math.Min(PathSpeed * c * c + 0.3, TurnSpeed(i)),
+                    Math.Sqrt(_pathLimits[i + 1] * _pathLimits[i + 1] + BrakeAlong(seg) * seg.Length()));
+            }
             _message = "Following the recorded way to " + _pathName;
+        }
+
+        // Braking along a direction the speed plans use: half of the thrust (the
+        // speed v = sqrt(brake * d) needs half of brake to stop), at most 3 m/s².
+        double BrakeAlong(Vector3D direction)
+        {
+            return Math.Min(BrakeAccel(Vector3D.Normalize(direction + new Vector3D(1e-9))), 3);
+        }
+
+        // Speed on the way from point i to i + 1 that leaves time to turn from
+        // the pose of i into the pose of i + 1.
+        double TurnSpeed(int i)
+        {
+            double turn = Math.Acos(MathHelper.Clamp(Math.Min(Vector3D.Dot(_path[i].F, _path[i + 1].F), Vector3D.Dot(_path[i].U, _path[i + 1].U)), -1, 1));
+            return Vector3D.Distance(_path[i].P, _path[i + 1].P) * PathTurnRate / Math.Max(turn, 1e-3);
         }
 
         double PathRemaining(Vector3D position)
@@ -335,9 +365,12 @@ namespace IngameScript
                 else
                     break;
             }
-            PathPoint target = _path[_pathIndex];
-            _pathF = target.F;
-            _pathU = target.U;
+            PathPoint target = _path[_pathIndex], from = _path[Math.Max(_pathIndex - 1, 0)];
+            // The pose turns gradually from point to point, as it was flown.
+            Vector3D seg = target.P - from.P;
+            double t = seg.LengthSquared() > 0.01 ? MathHelper.Clamp(Vector3D.Dot(position - from.P, seg) / seg.LengthSquared(), 0, 1) : 1;
+            _pathF = Vector3D.Normalize(from.F * (1 - t) + target.F * t);
+            _pathU = Vector3D.Normalize(from.U * (1 - t) + target.U * t);
             double remaining = PathRemaining(position);
             double togo = remaining - (_pathDock ? 0 : PathEndMargin);
             _targetDistance = _remainingDistance = Math.Max(togo, 0);
@@ -373,18 +406,19 @@ namespace IngameScript
                 return true;    // hold still and finish turning
             }
 
-            // Speed the ship can still brake from, planned with half of what its
-            // thrusters give in this direction (loaded ships brake worse). The
-            // 1.5 m/s near the dock is reached by braking, not by a sudden limit:
-            // a step from 8 to 1.5 m/s 20 m before the connector overshot it.
-            double brake = Math.Min(BrakeAccel(Vector3D.Normalize(target.P - position + new Vector3D(1e-6))), 3);
-            double speed = Math.Min(PathSpeed, Math.Max(Math.Sqrt(brake * togo), 0.3));
+            // Speed the ship can still brake from (loaded ships brake worse): to the
+            // planned speed at the next point, to the end, and near the dock to
+            // 1.5 m/s. A sudden limit instead (8 to 1.5 m/s 20 m before the
+            // connector) overshot the connector with a loaded ship.
+            double brake = BrakeAlong(target.P - position);
+            double speed = Math.Min(Math.Sqrt(_pathLimits[_pathIndex] * _pathLimits[_pathIndex] + brake * Vector3D.Distance(position, target.P)),
+                Math.Max(Math.Sqrt(brake * togo), 0.3));
+            if (_pathIndex > 0)
+                speed = Math.Min(speed, TurnSpeed(_pathIndex - 1));
             if (_pathDock)
                 speed = Math.Min(speed, Math.Sqrt(2.25 + brake * Math.Max(remaining - DockSlowDistance, 0)));
-            if (_alignError > 0.35)
-                speed = 0;              // turn into the recorded pose first
-            else if (_alignError > 0.1)
-                speed *= 0.3;
+            // Behind the recorded pose: slower, down to holding at 0.33 rad (19 degrees).
+            speed = Math.Min(speed, PathSpeed) * MathHelper.Clamp(1 - _alignError * 3, 0, 1);
             if (PathBlocked(position, target.P, remaining))
             {
                 if (_pathBlockedSince == 0)

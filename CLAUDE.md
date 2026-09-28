@@ -66,7 +66,7 @@ The README describes all commands and Custom Data options for players.
     (`tools/SyntaxCheck/Minifier.cs`) and compile-checks the result.
     The minifier also drops `readonly`, uses `var` where the type matches exactly and
     adds short static wrappers for frequent static API calls (`Math.Max`,
-    `Vector3D.Distance`, ...). Minified size is about 98k of 100k: space is tight;
+    `Vector3D.Distance`, ...). Minified size is about 99.6k of 100k: space is tight;
     config options use the `Option(key, value)` helpers in `Config.cs` to save room.
   - Always rebuild `dist/` before committing source changes.
 - The MDK wiki API docs (`api/*.md` in the wiki clone) are the reference for member
@@ -305,6 +305,18 @@ The README describes all commands and Custom Data options for players.
   reached by braking. Simulated (scratchpad `pathbrake.py`, thruster lag 0.5 s):
   old profile overshoots below ~3 m/s² braking, new one arrives at 1.5 m/s down
   to 0.5 m/s².
+- Review for fixed cutoffs (user's request after the overshoot): recorded ways
+  had no speed plan for bends or pose turns (target pose jumped per point,
+  0.35 rad align error = full stop). Now `_pathLimits` are planned backwards in
+  `StartPathFollow` (bend cos^2, `TurnSpeed` = segment length x 0.3 rad/s / pose
+  change, braking to the next point with `BrakeAlong` = min(BrakeAccel, 3)), the
+  target pose is interpolated along each segment and speed scales down smoothly
+  with the align error. Simulated (scratchpad `pathbend.py`, 90 degree bend,
+  2D, lag): old 11-23 m off the way, new 0.5-1.9 m. Docking final approach, hold
+  and lateral correction are also capped by `BrakeAlong`. Open (reported, not
+  changed): the guard's look distance grows with speed but cameras see ~6 km, so
+  fast flights outrun what the guard can check; undock without a recorded way
+  backs out blind; FlipTime is a setting, not measured. Ship script ~99.6k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character
   limit), images (mock-ups/diagrams, not screenshots) and their generators. The
   user wants the disclaimer "code written 100% by Claude Opus 5.5, tested in game

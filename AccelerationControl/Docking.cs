@@ -348,7 +348,7 @@ namespace IngameScript
             // Hold at the approach point; while checking the way in, hold where the ship is
             // (it may have stopped on the way in because something showed up).
             if (_dockPhase == DockPhase.Clearance || _dockPhase == DockPhase.Align)
-                targetVelocity = ClampLength(toApproach * 0.5, DockMaxSpeed);
+                targetVelocity = ClampLength(toApproach * 0.5, Math.Min(DockMaxSpeed, Math.Sqrt(BrakeAlong(toApproach) * toApproach.Length())));
 
             if (_dockPhase == DockPhase.Clearance || _dockPhase == DockPhase.Corridor)
             {
@@ -390,12 +390,15 @@ namespace IngameScript
             Vector3D offset = _dockPosition - position;
             double along = Vector3D.Dot(offset, -_dockAxis);     // distance still to go
             Vector3D lateral = offset + _dockAxis * along;          // sideways error
-            double speed = along > DockSlowDistance ? DockMaxSpeed : MathHelper.Clamp(along * 0.2, 0.3, DockMaxSpeed);
+            // At most what the ship can brake from (sideways too): a fixed profile
+            // needed up to 1 m/s² of braking along the axis and 1.2 m/s² sideways.
+            double speed = Math.Min(Math.Max(Math.Sqrt(BrakeAlong(-_dockAxis) * Math.Max(along, 0)), 0.3),
+                along > DockSlowDistance ? DockMaxSpeed : MathHelper.Clamp(along * 0.2, 0.3, DockMaxSpeed));
             if (lateral.Length() > 1.5)
                 speed = Math.Min(speed, 0.5);   // straighten out first
             if (along < -1)
                 speed = -0.5;                   // overshot: back off
-            targetVelocity = -_dockAxis * speed + ClampLength(lateral * DockLateralGain, 2);
+            targetVelocity = -_dockAxis * speed + ClampLength(lateral * DockLateralGain, Math.Min(2, Math.Sqrt(BrakeAlong(lateral) * lateral.Length())));
             _targetDistance = Math.Max(along, 0);
             return true;
         }
