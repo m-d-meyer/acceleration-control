@@ -185,7 +185,11 @@ namespace IngameScript
             // moves ships between zones: from now on entries remember their zone.
             Vector3D center;
             bool hasPlanet = c.TryGetPlanetPosition(out center);
-            if (teleported && hasPlanet != _hadPlanet)
+            // Any teleport (jumps are told apart above): Real Solar Systems or a
+            // similar mod. Before, only one into or out of gravity counted, but the
+            // zones reach far beyond the gravity (seen: a teleport 83 km outside the
+            // Moon's gravity left zones off, so the Moon's gravity showed "space").
+            if (teleported)
                 _planetZonesSeen = true;
             _hadPlanet = hasPlanet;
             // A planet zone reaches beyond the gravity: leaving the gravity keeps the

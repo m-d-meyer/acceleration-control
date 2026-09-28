@@ -351,6 +351,10 @@ The README describes all commands and Custom Data options for players.
   coordinates (same zone key) but rotate with the planet? `HandleTeleport` assumes
   coordinates still hold within one key. Diagnostic: PB info shows the zone key
   and the last teleport (jump, old > new zone, centre moved, turned about centre).
+- Test: in the Moon's gravity the PB info showed "Zone: space", last teleport
+  83 km "space > space". Zones had never switched on: `_planetZonesSeen` was only
+  set by a teleport into or out of gravity, and this (new) PB's first teleport
+  happened outside gravity. Now any teleport switches zones on.
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character

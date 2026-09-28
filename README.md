@@ -547,7 +547,7 @@ change while it was off cannot be seen): the zone it remembers counts as
 provisional until the gravity of a planet confirms or corrects it. If the base was recorded in the wrong zone by an earlier version, dock by
 hand once more.
 
-Zones switch on by themselves at the first teleport into or out of a planet zone.
+Zones switch on by themselves at the first teleport (any position jump that is not the jump drive's).
 If the ship is already in a planet zone when the script is installed, set
 `PlanetZones=true`, otherwise entries recorded before the first teleport count as
 space. The gravity falloff of the mod's planets is measured in flight
