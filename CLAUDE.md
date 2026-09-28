@@ -355,6 +355,15 @@ The README describes all commands and Custom Data options for players.
   83 km "space > space". Zones had never switched on: `_planetZonesSeen` was only
   set by a teleport into or out of gravity, and this (new) PB's first teleport
   happened outside gravity. Now any teleport switches zones on.
+- Moon test: orbit and surface zone have the SAME centre key ("P29853,-29355,-390"
+  before and after an 83 km teleport), but different coordinates: a dock taught
+  in the orbit zone, deposits on the surface, GO back -> jump planned 90 degrees
+  off. Now zones are key (orbit) and key + "S" (surface): a same-key teleport
+  inwards (radial velocity < 0) = surface, and the edge radius is stored as
+  `_zoneRadii[key + "S"]`, deciding later (> 1 km from it). StartZoneGoal goes down
+  to 1 km below the edge (unknown: 3 km above the ground) for key -> key + "S".
+  Airless planets: air measured <= AirDetected inside the assumed atmosphere ->
+  `AtmosphereRadius = -1` (no limit); hydrogen-only ships cannot measure air.
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character

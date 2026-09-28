@@ -537,6 +537,13 @@ is dropped). If the planet moves faster than `MaxSpeed`, the ship cannot match i
 velocity; the script says so. The collision guard stops the ship in front of
 obstacles; steer past and run `track` to continue.
 
+Each planet has two zones around the same centre but with different coordinates: an
+outer **orbit zone** and, inside it, a **surface zone**. A teleport between them
+towards the planet leads into the surface zone; its edge is learned then and used
+afterwards (e.g. after a restart). GO between the two climbs straight up or goes
+straight down until the zone changes. Entries recorded by an older version in a
+surface zone are labelled as orbit zone: mark them again.
+
 The zone of a planet reaches farther out than its gravity. A teleport outside
 gravity is assigned to the nearest known planet (within 1.5 times its gravity
 radius plus 50 km), e.g. a base in space near the Moon belongs to the Moon's zone.

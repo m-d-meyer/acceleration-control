@@ -198,7 +198,33 @@ namespace IngameScript
             // by (zones reach beyond the gravity, e.g. a base near a moon), else space.
             // Space found that way is provisional: if gravity shows a planet later
             // without another teleport, it was that planet's zone after all.
-            string zone = !PlanetZones ? "" : hasPlanet ? ZoneKey(center) : teleported ? NearbyPlanetZone(position) : _zone;
+            // Each planet has an orbit zone and, inside it, a surface zone ("S")
+            // around the same centre but with other coordinates (seen on the
+            // Moon: an 83 km position jump, same centre). Which one: a teleport
+            // between them inwards leads into the surface zone; its edge is then
+            // learned (ZoneRadii, key + "S") and decides later, e.g. after a
+            // restart; unknown: the zone the ship was in, else the orbit zone.
+            string zone = _zone;
+            if (!PlanetZones)
+                zone = "";
+            else if (hasPlanet || teleported)
+            {
+                Obstacle near = hasPlanet ? null : NearbyPlanet(position);
+                if (near != null)
+                    center = near.Center;
+                string key = hasPlanet || near != null ? ZoneKey(center) : "";
+                double r = Vector3D.Distance(position, center), edge;
+                bool same = key != "" && _zone.TrimEnd('S') == key;
+                if (teleported && same)
+                {
+                    _zoneRadii[key + "S"] = r;
+                    zone = Vector3D.Dot(velocity, position - center) < 0 ? key + "S" : key;
+                }
+                else if (key != "" && _zoneRadii.TryGetValue(key + "S", out edge) && (!same || Math.Abs(r - edge) > 1000))
+                    zone = r < edge ? key + "S" : key;
+                else if (!same)
+                    zone = key;
+            }
             if (zone != _zone && hasPlanet && !teleported && _zoneProvisional)
                 RelabelProvisional(zone);
             if (teleported || hasPlanet)
@@ -237,7 +263,7 @@ namespace IngameScript
 
         // The zone of the nearest known planet whose gravity well (with a wide
         // margin: zones reach further) contains the point, or "" (space).
-        string NearbyPlanetZone(Vector3D point)
+        Obstacle NearbyPlanet(Vector3D point)
         {
             Obstacle best = null;
             double bestDistance = double.MaxValue;
@@ -251,7 +277,7 @@ namespace IngameScript
                     bestDistance = d;
                 }
             }
-            return best == null ? "" : best.Zone != "" ? best.Zone : ZoneKey(best.Center);
+            return best;
         }
 
         // Entries recorded since the ship arrived in a zone taken for space belong
@@ -369,14 +395,21 @@ namespace IngameScript
             Vector3D center;
             if (_zone != "" && c != null && c.TryGetPlanetPosition(out center))
             {
+                // Up and out; into this planet's surface zone: down to 1 km below
+                // its learned edge (else 3 km above the ground), which the guard
+                // watches.
                 Vector3D up = Vector3D.Normalize(ReferencePosition() - center);
+                double edge = 0;
+                bool down = zone == _zone + "S";
+                if (down && !_zoneRadii.TryGetValue(zone, out edge))
+                    edge = (_planet != null ? _planet.Radius : Vector3D.Distance(ReferencePosition(), center)) + 4000;
                 _route.Clear();
-                _route.Add(ReferencePosition() + up * ZoneExitDistance);
+                _route.Add(down ? center + up * (edge - 1000) : ReferencePosition() + up * ZoneExitDistance);
                 _temporaryObstacles.Clear();
                 _dockAfterRoute = false;
                 StartRoute("leaving the planet");
                 _zoneGoal = true;       // StartRoute does not touch it, StartGoal would
-                _message = "Leaving the planet zone, then on to " + name;
+                _message = (down ? "Down into the surface zone" : "Leaving the planet zone") + ", then on to " + name;
             }
             else
                 _message = name + " is in another zone: run 'track' with its moving GPS (twice, 10 s apart), or fly there yourself";
@@ -739,6 +772,10 @@ namespace IngameScript
                         _air = MathHelper.Clamp((1 - t.MaxEffectiveThrust / t.MaxThrust) / 0.8, 0, 1);
                         break;
                     }
+            // No air measured inside where the atmosphere was assumed: this
+            // planet has none (-1), e.g. the Moon (no speed limit there).
+            if (_planet != null && _air >= 0 && _air <= AirDetected && _planet.AtmosphereRadius == 0 && InAtmosphere)
+                _planet.AtmosphereRadius = -1;
             // Learn where the atmosphere of this planet starts.
             if (_planet != null && _air > AirDetected)
             {
@@ -754,8 +791,8 @@ namespace IngameScript
         // Distance from the planet center where the atmosphere starts (0 = none known).
         double AtmosphereTop(Obstacle planet)
         {
-            if (planet.AtmosphereRadius > 0)
-                return planet.AtmosphereRadius;
+            if (planet.AtmosphereRadius != 0)
+                return Math.Max(planet.AtmosphereRadius, 0);
             return _atmosphereHeight > 0 ? planet.Radius + _atmosphereHeight : 0;
         }
 
