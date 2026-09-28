@@ -243,6 +243,7 @@ namespace IngameScript
                 case "stop":
                     _mode = Mode.Manual;
                     _scanPending = _tracking = _zoneGoal = _pendingStart = false;
+                    _afterUndock = null;
                     break;
                 case "mark":
                     HandleMarkCommand(parts);

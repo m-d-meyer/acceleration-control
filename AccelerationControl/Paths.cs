@@ -352,7 +352,12 @@ namespace IngameScript
                 {
                     _mode = Mode.Manual;
                     if (_pathReverseDock)
+                    {
                         Gate("close");
+                        _message = "Undocked";
+                        AfterUndock();
+                        return false;
+                    }
                     _message = "At " + _pathName + ", aligned as recorded";
                     return false;
                 }
@@ -375,6 +380,7 @@ namespace IngameScript
                 {
                     _mode = Mode.Manual;
                     _message = "The recorded way stays blocked: please take over";
+                    _afterUndock = null;
                     return false;
                 }
                 speed = 0;

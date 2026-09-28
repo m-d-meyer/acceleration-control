@@ -269,6 +269,8 @@ namespace IngameScript
                 _message = "No entry selected";
                 return;
             }
+            if (UndockFirst(GoToSelected))
+                return;
             bool dock = _selected.Ore == BaseName && (_selected.Dock != null || _selected == _dockEntry);
             if (dock)
                 ActivateDock(_selected);
@@ -707,6 +709,8 @@ namespace IngameScript
         // goto GPS:name:x:y:z:...  (as copied from the game's GPS list)
         void GoToGps(string text)
         {
+            if (UndockFirst(() => GoToGps(text)))
+                return;
             int start = text.IndexOf("GPS:", StringComparison.OrdinalIgnoreCase);
             string[] p = start >= 0 ? text.Substring(start).Split(':') : new string[0];
             double x, y, z;

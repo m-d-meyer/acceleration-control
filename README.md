@@ -603,7 +603,8 @@ adds (or updates) a base entry on the map with that dock, its recorded way in an
 its gate connector, and the others are kept. **GO** on a base entry docks there;
 `dock` takes the nearest base with a dock in the current zone within 20 km; if
 there is none, it refuses (teach the dock by hand first, or use GO on a base entry
-for a far base). `undock` uses the dock the ship is at. One dock per base entry:
+for a far base). `undock` uses the dock the ship is at. **GO** or `goto` while docked undocks
+first (along the recorded way out, if there is one) and then starts the flight. One dock per base entry:
 docking by hand at another connector of the same base replaces that base's dock.
 
 **Recorded way in.** If the dock was recorded with a way in (the ship came at

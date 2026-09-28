@@ -286,6 +286,12 @@ The README describes all commands and Custom Data options for players.
   'IFormatProvider' is prohibited"). Generated wrappers/fields now only use types
   the script already names (`Allowed` in Minifier.cs). New API types in source
   code carry the same risk; the in-game "Check code" is the only whitelist test.
+- GO/goto while docked: `UndockFirst` runs `Undock()` and keeps the flight in
+  `_afterUndock`, started at the end of the way out (or of the undock route);
+  cleared on cancel/stop/give-up. User report: after script docking, the thrusters
+  that pushed into the dock stayed at 100 % until a key was pressed; cause not
+  found by reading the code (every tick releases unused axes). Workaround: a new
+  dock connection forces `ReleaseAll(true)`. Not verified in game.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character
   limit), images (mock-ups/diagrams, not screenshots) and their generators. The
   user wants the disclaimer "code written 100% by Claude Opus 5.5, tested in game

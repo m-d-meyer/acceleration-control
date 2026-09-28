@@ -86,6 +86,7 @@ namespace IngameScript
                 _message = _mode == Mode.Jump ? "Jump cancelled" : _mode == Mode.Dock || _mode == Mode.Path ? "Docking cancelled" : "Approach cancelled";
                 _mode = Mode.Manual;
                 _dockAfterRoute = _departing = _resumeGoal = _zoneGoal = _pendingStart = _pathAfterRoute = false;
+                _afterUndock = null;
                 return false;
             }
 
@@ -455,6 +456,12 @@ namespace IngameScript
                 if (_pathAfterRoute)
                 {
                     StartPathFollow(0);
+                    return false;
+                }
+                if (_afterUndock != null)
+                {
+                    _mode = Mode.Manual;
+                    AfterUndock();
                     return false;
                 }
                 if (_dockAfterRoute)
