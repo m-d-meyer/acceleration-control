@@ -87,6 +87,7 @@ namespace IngameScript
                 _mode = Mode.Manual;
                 _dockAfterRoute = _departing = _resumeGoal = _zoneGoal = _pendingStart = _pathAfterRoute = false;
                 _afterUndock = null;
+                _undockPending = false;
                 return false;
             }
 

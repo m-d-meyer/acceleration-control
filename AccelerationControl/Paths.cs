@@ -311,6 +311,15 @@ namespace IngameScript
             }
             if (GateWait())
                 return true;
+            if (_undockPending)
+            {
+                _undockPending = false;
+                IMyShipConnector c = DockConnector();
+                if (c != null)
+                    c.Disconnect();
+            }
+            if (_pathReverseDock)
+                UnlockLandingGear();    // auto-lock could catch the base again
             Vector3D position = ReferencePosition();
             int last = _path.Count - 1;
             while (_pathIndex < last)

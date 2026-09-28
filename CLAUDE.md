@@ -291,7 +291,13 @@ The README describes all commands and Custom Data options for players.
   cleared on cancel/stop/give-up. User report: after script docking, the thrusters
   that pushed into the dock stayed at 100 % until a key was pressed; cause not
   found by reading the code (every tick releases unused axes). Workaround: a new
-  dock connection forces `ReleaseAll(true)`. Not verified in game.
+  dock connection forces `ReleaseAll(true)`. Follow-up: overrides were 0, the
+  game's dampeners fired in the docking direction (likely a game quirk). Now all
+  own thrusters are disabled on docking (`Thrusters(false)`, `_thrustersOff` saved
+  as ThrustersOff) and enabled by `Undock()` or when CheckDocking sees no dock.
+  `Undock()` also unlocks landing gear (and in reverse path mode each tick), and
+  with a recorded way keeps the connector locked until `GateWait` reports the gate
+  open (`_undockPending`): unlocked and waiting, the connector pulled the ship back.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character
   limit), images (mock-ups/diagrams, not screenshots) and their generators. The
   user wants the disclaimer "code written 100% by Claude Opus 5.5, tested in game

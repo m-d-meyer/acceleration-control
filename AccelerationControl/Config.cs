@@ -234,6 +234,7 @@ namespace IngameScript
             WriteDock(state, StateSection);
             state.Set(StateSection, "Zone", _zone);
             state.Set(StateSection, "PlanetZonesSeen", _planetZonesSeen);
+            state.Set(StateSection, "ThrustersOff", _thrustersOff);
             if (_cameFromValid)
                 state.Set(StateSection, "CameFrom", Vec(_cameFrom) + ";" + Vec(_cameFromAt));
             var radii = new StringBuilder();
@@ -350,6 +351,7 @@ namespace IngameScript
             ReadDock(state, StateSection);
             _zone = state.Get(StateSection, "Zone").ToString("");
             _planetZonesSeen = state.Get(StateSection, "PlanetZonesSeen").ToBoolean(false);
+            _thrustersOff = state.Get(StateSection, "ThrustersOff").ToBoolean(false);
             string[] came = state.Get(StateSection, "CameFrom").ToString("").Split(';');
             if (came.Length == 6)
             {

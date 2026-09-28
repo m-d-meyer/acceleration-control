@@ -244,6 +244,7 @@ namespace IngameScript
                     _mode = Mode.Manual;
                     _scanPending = _tracking = _zoneGoal = _pendingStart = false;
                     _afterUndock = null;
+                    _undockPending = false;
                     break;
                 case "mark":
                     HandleMarkCommand(parts);

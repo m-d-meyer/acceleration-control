@@ -83,7 +83,10 @@ namespace IngameScript
                     if (ours && !docked && !_wasConnected)
                     {
                         RecordDock(c);
-                        ReleaseAll(true);   // nothing may keep pushing against the connector
+                        // Thrusters off while docked: the game's dampeners kept firing
+                        // in the docking direction after the lock (overrides at 0).
+                        ReleaseAll(true);
+                        Thrusters(false);
                     }
                     else if (!ours)
                         _carried[id] = other;
@@ -96,6 +99,8 @@ namespace IngameScript
                     _carried.Remove(id);
             _connectedIds.Clear();
             _connectedIds.UnionWith(now);
+            if (!docked && _thrustersOff)
+                Thrusters(true);    // undocked by hand
             _dockChecked = true;
             _wasConnected = docked;
         }
@@ -156,6 +161,16 @@ namespace IngameScript
             _afterUndock = null;
             if (then != null)
                 then();
+        }
+
+        bool _thrustersOff, _undockPending;
+
+        void Thrusters(bool on)
+        {
+            foreach (IMyThrust t in _allThrusters)
+                t.Enabled = on;
+            _thrustersOff = !on;
+            _mapChanged = true;     // saves the state
         }
 
         // One dock per base: the active one is in the fields above, the others
@@ -278,10 +293,14 @@ namespace IngameScript
                 return;
             }
             Vector3D axis = -connector.WorldMatrix.Forward;
-            connector.Disconnect();
+            Thrusters(true);
+            UnlockLandingGear();
             if (HasDockPath)
             {
+                // The connector lets go once the gate is open (PathVelocity):
+                // waiting unlocked above it, it would pull the ship back.
                 Gate("open");
+                _undockPending = true;
                 // Out the way the ship came in, backwards along the recorded poses.
                 LoadDockPath(true);
                 _pathDock = false;
@@ -290,6 +309,7 @@ namespace IngameScript
                 StartPathFollow(0);
                 return;
             }
+            connector.Disconnect();
             _route.Clear();
             _route.Add(ReferencePosition() + axis * (ShipRadius + _dockApproach));
             _temporaryObstacles.Clear();
