@@ -376,6 +376,12 @@ The README describes all commands and Custom Data options for players.
   its surface zone, or back) said "use track or fly yourself": StartZoneGoal needed
   the planet from gravity. Now `ZoneCenter` takes the centre of the zone's planet
   from the map (any zone, same centre in orbit and surface zone).
+- Zones are now EXPERIMENTAL and opt-in only (`PlanetZones=true`); the automatic
+  switch-on at the first teleport is removed (user: star gate mods or a carrier's
+  jump also teleport). Earth -> Moon base test failed again: after a teleport
+  outside gravity `NearbyPlanet` compares the position with planet centres from
+  other zones' coordinates (meaningless), picked the Earth's key. The user asked
+  the RSS author for a PB API (zone id, frame conversion, bodies); wait for it.
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character

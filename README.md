@@ -156,7 +156,7 @@ first run. Edit them there and run `reload`.
 | `DockApproach`       | `30`      | Distance in front of the base connector where docking starts (m, plus ship radius) |
 | `UseStrongestThrusters` | `true` | Turn the ship so its strongest thrusters push along the flight, and flip for braking if worth it |
 | `FlipTime`           | `30`      | Seconds planned for turning around before braking, until the ship's turning is measured |
-| `PlanetZones`        | `false`   | Real Solar Systems: each planet zone has its own coordinates (switches on by itself at the first teleport into or out of a planet zone) |
+| `PlanetZones`        | `false`   | Real Solar Systems (experimental): each planet zone has its own coordinates |
 | `PlanetCruiseHeight` | `1500`    | Height above the ground (start, target, terrain seen) for flights on a planet (m); short hops fly lower |
 | `AtmosphereHeight`   | `12000`   | Assumed top of the atmosphere above sea level until the ship has measured it (m) |
 | `AtmosphereSpeed`    | `100`     | Speed limit inside an atmosphere (m/s); the ship brakes to it before entering, `0` = off |
@@ -481,7 +481,15 @@ pushes back, and compensating that would push the ship into the rock when the dr
 break through. The control page shows it as
 "Wind/drag". `CompensateWind=false` turns it off.
 
-### Real Solar Systems
+### Real Solar Systems (experimental, off by default)
+
+> **Experimental.** Scripts cannot see the mod's zones; the script guesses them from
+> teleports and gravity, and nested zones (a moon inside its planet's zone, orbit
+> and surface zone) still confuse it: flights between zones can go the wrong way.
+> The zone support is off unless `PlanetZones=true` is set in the Custom Data. With
+> it off, a teleport (any position jump the jump drive does not explain, e.g. from
+> a zone change, a star gate mod or a carrier ship jumping) simply stops the flight.
+> The script's author asked the mod's author for a scripting interface.
 
 With this mod the planets you see move, but the real planets are static and far
 away; approaching a planet teleports the ship into that planet's zone, which has its
@@ -554,10 +562,8 @@ change while it was off cannot be seen): the zone it remembers counts as
 provisional until the gravity of a planet confirms or corrects it. If the base was recorded in the wrong zone by an earlier version, dock by
 hand once more.
 
-Zones switch on by themselves at the first teleport (any position jump that is not the jump drive's).
-If the ship is already in a planet zone when the script is installed, set
-`PlanetZones=true`, otherwise entries recorded before the first teleport count as
-space. The gravity falloff of the mod's planets is measured in flight
+Set `PlanetZones=true` before recording entries in such a world, otherwise they
+count as space. The gravity falloff of the mod's planets is measured in flight
 (`GravityFalloff` is only the start value), so the size of the gravity wells that
 routes avoid in space is estimated correctly.
 

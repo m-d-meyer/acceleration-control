@@ -45,7 +45,6 @@ namespace IngameScript
         const double AtmosphereMargin = 500;        // m - flights above the atmosphere stay this far above its top            // thruster effectiveness change that counts as air
 
         string _zone = "";              // "" = space (proxy zone), else the zone of one real planet
-        bool _planetZonesSeen;          // a teleport was seen: zones are in use (Real Solar Systems)
         readonly List<Obstacle> _otherObstacles = new List<Obstacle>();    // obstacles of other zones
         Vector3D _lastPosition, _lastVelocity;
         bool _haveLastPosition, _hadPlanet;
@@ -126,7 +125,10 @@ namespace IngameScript
 
         bool PlanetZones
         {
-            get { return _planetZonesConfig || _planetZonesSeen; }
+            // Experimental, off unless PlanetZones=true: the zones are guessed from
+            // teleports and gravity, which nested zones (moon in planet zone) and
+            // other teleports (star gate mods, carried by a jumping ship) confuse.
+            get { return _planetZonesConfig; }
         }
 
         static string ZoneKey(Vector3D planetCenter)
@@ -191,12 +193,6 @@ namespace IngameScript
             // moves ships between zones: from now on entries remember their zone.
             Vector3D center;
             bool hasPlanet = c.TryGetPlanetPosition(out center);
-            // Any teleport (jumps are told apart above): Real Solar Systems or a
-            // similar mod. Before, only one into or out of gravity counted, but the
-            // zones reach far beyond the gravity (seen: a teleport 83 km outside the
-            // Moon's gravity left zones off, so the Moon's gravity showed "space").
-            if (teleported)
-                _planetZonesSeen = true;
             _hadPlanet = hasPlanet;
             // A planet zone reaches beyond the gravity: leaving the gravity keeps the
             // zone, only a teleport leads back to space.
