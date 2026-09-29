@@ -25,7 +25,7 @@ def cover():
     d.rectangle([0, S - 118, S, S], fill=BG + (255,))
     d.line([0, S - 118, S, S - 118], fill=GRID + (255,), width=3)
     f = ImageFont.truetype(SANS_B, 30)
-    for row, words in enumerate([["acceleration limit", "ore map", "routes"], ["docking", "planets", "landing"]]):
+    for row, words in enumerate([["acceleration limit", "collision avoidance", "ore map"], ["routes", "docking", "planets", "landing"]]):
         text = "   \u00b7   ".join(words)
         y = S - 100 + row * 46
         x = (S - d.textlength(text, font=f)) / 2
