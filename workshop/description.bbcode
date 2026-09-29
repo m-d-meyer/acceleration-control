@@ -63,6 +63,11 @@ Flights on planets climb, follow the curvature at a cruise height above terrain 
 
 [img]https://raw.githubusercontent.com/m-d-meyer/acceleration-control/main/workshop/images/planet.png[/img]
 
+[h2]Landing[/h2]
+[i]land[/i] sets the ship down below it, [i]land GPS:...[/i] flies there first. The cameras scan the ground under the whole ship (its box seen from above, wings included) on a grid of rays about 1.2 m apart. Holes, boulders and slopes steeper than [i]MaxSlope[/i] are refused and the next spot on a spiral is tried; on a gentle slope the ship lands tilted along it and locks the landing gear. Needs landing gear and cameras facing down.
+
+[img]https://raw.githubusercontent.com/m-d-meyer/acceleration-control/main/workshop/images/landing.png[/img]
+
 [img]https://raw.githubusercontent.com/m-d-meyer/acceleration-control/main/workshop/images/status.png[/img]
 
 [h2]Limitations - please read[/h2]

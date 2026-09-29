@@ -1,6 +1,6 @@
 """Explanatory diagrams for the Workshop page (not in-game screenshots).
 
-Writes images/accel.png, route.png, docking.png and planet.png in the colours of
+Writes images/accel.png, route.png, docking.png, planet.png and landing.png in the colours of
 the script's screens. Run: python3 workshop/diagrams.py (needs Pillow).
 """
 import math
@@ -350,8 +350,89 @@ def planet():
     box = [60, 760, 1540, 860]
     d.rectangle(box, fill=PANEL, outline=GRID, width=2)
     label(d, 84, 776, "Level flight in atmosphere; top speed learned from thruster effectiveness.", TEXT, 22)
-    label(d, 84, 812, "Real Solar Systems: zone changes detected, map per zone, 'track' follows a moving planet GPS.", DIM, 20)
+    label(d, 84, 812, "Real Solar Systems: experimental zone support (off by default).", DIM, 20)
     img.save(os.path.join(OUT, "planet.png"))
+
+
+def landing():
+    img, d = canvas("LANDING", "The cameras scan the ground under the whole ship, then it sets down on the first flat spot")
+    # side view: ground with a boulder, a steep bank and a gentle slope
+    def ground(x):
+        h = 640
+        if x > 560:
+            h -= (x - 560) * 0.62          # steep bank
+        if x > 780:
+            h = 640 - 220 * 0.62 - (x - 780) * 0.18   # gentle slope
+        return h
+    xs = list(range(40, 1101, 4))
+    poly = [(x, ground(x)) for x in xs] + [(1100, 760), (40, 760)]
+    d.polygon(poly, fill=(46, 62, 48))
+    d.line([(x, ground(x)) for x in xs], fill=(110, 140, 110), width=3)
+    rock(d, 300, 628, 34, 1.3)
+
+    def spot_ship(x, y, angle, color):
+        c, s = math.cos(angle), math.sin(angle)
+        pts = [(-110, -18), (110, -18), (120, 0), (-120, 0)]
+        d.polygon([(x + px * c - py * s, y + px * s + py * c) for px, py in pts], fill=color)
+        for gx in (-80, 80):
+            a = (x + gx * c, y + gx * s)
+            d.line([a, (a[0] - 14 * s, a[1] + 14 * c)], fill=color, width=5)
+
+    # spot 1: rays over the footprint find the boulder
+    sx, sy = 260, 330
+    spot_ship(sx, sy, 0, CYAN)
+    for i in range(13):
+        gx = 120 + i * 24
+        gy = ground(gx) if abs(gx - 300) > 34 else 596
+        d.line([(sx, sy + 4), (gx, gy)], fill=(40, 120, 140), width=1)
+        d.ellipse([gx - 4, gy - 4, gx + 4, gy + 4], fill=WARN if abs(gx - 300) <= 34 else CYAN)
+    label(d, sx, 240, "spot 1: scanning", CYAN, 22, True, "ma")
+    label(d, sx, 690, "boulder: uneven 1.8 m", WARN, 20, True, "ma")
+
+    # spot 2: bank too steep
+    x2 = 670
+    label(d, x2, 690, "spot 2: 32° - too steep", WARN, 20, True, "ma")
+    d.line([(x2 - 14, ground(x2) - 60), (x2 + 14, ground(x2) - 32)], fill=WARN, width=5)
+    d.line([(x2 + 14, ground(x2) - 60), (x2 - 14, ground(x2) - 32)], fill=WARN, width=5)
+
+    # spot 3: gentle slope, ship tilted to the ground and descending
+    x3 = 960
+    ang = math.atan(0.18) * -1
+    top = ground(x3) - 230
+    dashed(d, (x3, top + 60), (x3, ground(x3) - 40), ROUTE, 4)
+    arrow(d, (x3, ground(x3) - 90), (x3, ground(x3) - 40), ROUTE, 4)
+    spot_ship(x3, ground(x3) - 16, ang, GOOD)
+    label(d, x3, top - 10, "spot 3: 10°, even", GOOD, 22, True, "ma")
+    label(d, x3, top + 20, "tilted to the slope, down at 0.3 m/s", TEXT, 20, False, "ma")
+    label(d, x3, ground(x3) + 40, "gear locked", GOOD, 20, True, "ma")
+
+    # top view: footprint grid and the spiral of spots
+    ox, oy = 1330, 400
+    d.rectangle([1150, 130, 1560, 740], fill=PANEL, outline=GRID, width=2)
+    label(d, 1355, 146, "seen from above", DIM, 20, False, "ma")
+    fw, fh = 150, 64
+    for i in range(16):
+        for j in range(8):
+            px, py = ox - fw / 2 + i * fw / 15, oy - fh / 2 + j * fh / 7
+            d.ellipse([px - 2, py - 2, px + 2, py + 2], fill=CYAN)
+    d.rectangle([ox - fw / 2 + 12, oy - fh / 2 + 12, ox + fw / 2 - 12, oy + fh / 2 - 12], outline=TEXT, width=2)
+    label(d, ox, oy + fh / 2 + 10, "ship box + 3 m, rays 1.2 m apart", TEXT, 18, False, "ma")
+    prev = None
+    for k in range(6):
+        a, r = k * 2.4, 42 * math.sqrt(k)
+        p = (ox + r * math.cos(a), oy + 160 + r * math.sin(a) * 0.9)
+        if prev:
+            dashed(d, prev, p, ROUTE, 2, 8, 6)
+        d.ellipse([p[0] - 7, p[1] - 7, p[0] + 7, p[1] + 7], outline=ROUTE, width=3)
+        label(d, p[0] + 10, p[1] - 10, str(k + 1), ROUTE, 18, True)
+        prev = p
+    label(d, ox, 700, "next spots on a spiral", ROUTE, 18, True, "ma")
+
+    box = [60, 780, 1540, 870]
+    d.rectangle(box, fill=PANEL, outline=GRID, width=2)
+    label(d, 84, 792, "land / land GPS:...  -  holes, bumps over MaxBump and slopes over MaxSlope are refused.", TEXT, 22)
+    label(d, 84, 828, "Needs landing gear and cameras facing down (under the wings of wide ships too).", DIM, 20)
+    img.save(os.path.join(OUT, "landing.png"))
 
 
 if __name__ == "__main__":
@@ -360,4 +441,5 @@ if __name__ == "__main__":
     route()
     docking()
     planet()
+    landing()
     print("written to", OUT)
