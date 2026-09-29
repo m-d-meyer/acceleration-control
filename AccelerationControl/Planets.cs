@@ -121,8 +121,10 @@ namespace IngameScript
             get { return _planetZonesConfig; }
         }
 
-        // Zones recorded while PlanetZones was on count as one ("" = space)
-        // when it is off, so a base recorded in a zone stays reachable.
+        // Map entries and docks recorded while PlanetZones was on count as one
+        // zone ("" = space) when it is off, so a base recorded in a zone stays
+        // reachable. Obstacles keep their zone: their coordinates belong to
+        // another frame (phantom planets); they are measured again.
         string Zone(string zone)
         {
             return PlanetZones ? zone : "";

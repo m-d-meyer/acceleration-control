@@ -519,7 +519,7 @@ namespace IngameScript
                 if (p.Length > 9)
                     TryParseNumber(p[9], out water);
                 var o = new Obstacle { Planet = p[0] == "P", EntityId = id, Center = new Vector3D(x, y, z), Radius = r, GravityRadius = g,
-                    Zone = Zone(p.Length > 7 ? p[7] : ""), AtmosphereRadius = atmosphere, WaterRadius = water };
+                    Zone = p.Length > 7 ? p[7] : "", AtmosphereRadius = atmosphere, WaterRadius = water };
                 (o.Zone == _zone ? _obstacles : _otherObstacles).Add(o);
             }
             _mapChanged = true;

@@ -383,7 +383,12 @@ The README describes all commands and Custom Data options for players.
 - User test: with PlanetZones=false the base (recorded earlier in a zone) could not
   be docked ("other zone"). `Zone()` maps every zone read from Storage, map
   import and dock data to "" while PlanetZones is off (applied at load, so after
-  a script restart).
+  a script restart). Obstacles keep their zone (other frames: phantom planets).
+- Landing test (`land GPS:` to an NPC outpost, ApproachBuffer 200): ~400 m above
+  the ground the guard switched between "Obstacle ahead (rock), going around" and
+  descending. On the last leg a planet hit counted as the target ground only if
+  `FindObstacle(hit.EntityId)` matched and `PlanetAt(final)` was that entry; now
+  any planet hit on the last leg means "stop earlier". Not verified in game.
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character

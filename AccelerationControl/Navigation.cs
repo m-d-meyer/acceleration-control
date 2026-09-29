@@ -992,11 +992,12 @@ namespace IngameScript
             if (hit.Type == MyDetectedEntityType.Planet && _planet != null)
                 _terrainRadius = Math.Max(_terrainRadius, Vector3D.Distance(hit.HitPosition.Value, _planet.Center) + _approachBuffer);
 
-            // The rock the target lies on: stop earlier. Any other rock (e.g. one the
-            // route goes around, larger than known) is an obstacle.
+            // The rock the target lies on, or the ground on the last leg: stop
+            // earlier. Any other rock (e.g. one the route goes around, larger than
+            // known) is an obstacle. (Matching planet hits to a map entry failed
+            // once and made a descent replan in a loop.)
             Obstacle rock = voxel ? FindObstacle(hit.EntityId) : null;
-            Vector3D final = _route[_route.Count - 1];
-            if (OnLastLeg && rock != null && (rock.Planet ? PlanetAt(final) == rock : Vector3D.Distance(final, rock.Center) < rock.Radius + StopOffset))
+            if (OnLastLeg && (hit.Type == MyDetectedEntityType.Planet || rock != null && Vector3D.Distance(_route[_route.Count - 1], rock.Center) < rock.Radius + StopOffset))
             {
                 // Most likely the target rock itself: stop earlier. Small corrections
                 // are ignored (the end point is only hit roughly anyway), and the new
