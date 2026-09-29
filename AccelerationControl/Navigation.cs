@@ -35,6 +35,7 @@ namespace IngameScript
         const double GyroEvidence = 0.03;           // rad^2/s of evidence needed to decide a direction
         const double AlignDistance = 300;           // m - closer than this, the heading is held instead of turned
         const int GuardPattern = 9;                 // center ray plus a ring of 8
+        const double GuardRange = 8000;             // m - the guard does not look farther
 
         readonly List<IMyGyro> _gyros = new List<IMyGyro>();
         readonly List<Vector3D> _route = new List<Vector3D>();
@@ -56,6 +57,13 @@ namespace IngameScript
         bool _gyrosActive;
         Vector3D _gyroSign = Vector3D.One;          // gyro Pitch/Yaw/Roll direction relative to right-hand rotation
         Vector3D _gyroEvidence;
+        // Learned turning: angular acceleration x ship mass per ship axis (right,
+        // up, backward), measured while the gyroscopes run at full torque. The
+        // real limit is the moment of inertia (shape matters), which the
+        // measurement per axis contains; cargo is taken into account through
+        // the mass. Zero: not measured yet.
+        Vector3D _gyroTorque, _gyroOmega, _gyroCommand;
+        int _gyroSampleTick;
         bool[] _gyroCalibrated = new bool[3];
         int _guardStep;
         bool _guardParallel;
@@ -269,6 +277,8 @@ namespace IngameScript
                 _message = "No entry selected";
                 return;
             }
+            if (UndockFirst(GoToSelected))
+                return;
             bool dock = _selected.Ore == BaseName && (_selected.Dock != null || _selected == _dockEntry);
             if (dock)
                 ActivateDock(_selected);
@@ -352,7 +362,7 @@ namespace IngameScript
             if (leave < 0)
             {
                 _mode = Mode.Manual;
-                _message = "Close to a rock and no way out seen by the cameras: move away by hand";
+                _message = "No way out seen: move away by hand";
                 return;
             }
             if (leave > 0)
@@ -659,7 +669,7 @@ namespace IngameScript
                 return 1;
             }
             _mode = Mode.Manual;
-            _message = "Too tight to turn and no straight way out seen: fly out by hand";
+            _message = "Too tight to turn: fly out by hand";
             return 1;
         }
 
@@ -707,6 +717,8 @@ namespace IngameScript
         // goto GPS:name:x:y:z:...  (as copied from the game's GPS list)
         void GoToGps(string text)
         {
+            if (UndockFirst(() => GoToGps(text)))
+                return;
             int start = text.IndexOf("GPS:", StringComparison.OrdinalIgnoreCase);
             string[] p = start >= 0 ? text.Substring(start).Split(':') : new string[0];
             double x, y, z;
@@ -732,7 +744,7 @@ namespace IngameScript
 
         void StartRoute(string name)
         {
-            _departing = _resumeGoal = _replanPending = _flipBraking = _tracking = false;
+            _departing = _resumeGoal = _replanPending = _flipBraking = _dodging = _evading = false;
             _routeIndex = 0;
             _jumpCheckedLeg = -1;
             _legStart = ReferencePosition();
@@ -837,8 +849,13 @@ namespace IngameScript
             return length;
         }
 
+        Vector3D _dodge, _evadeDir, _evadeFrom;
+        bool _dodging, _evading;
+        double _evadeClear;
+
         void NextWaypoint()
         {
+            _dodging = false;
             _legStart = _route[_routeIndex];
             _routeIndex++;
             _approachTarget = _route[_routeIndex];
@@ -848,8 +865,10 @@ namespace IngameScript
         void Replan()
         {
             Vector3D target = _route[_route.Count - 1];
-            if (PlanRoute(ReferencePosition(), target, _route))
+            if (PlanRoute(_dodging ? _dodge : ReferencePosition(), target, _route))
             {
+                if (_dodging)
+                    _route.Insert(0, _dodge);
                 _routeIndex = 0;
                 _legStart = ReferencePosition();
                 _approachTarget = _route[0];
@@ -872,7 +891,7 @@ namespace IngameScript
         // makes the route go around the new obstacle.
         void UpdateGuard()
         {
-            if (_mode != Mode.Approach || _probing || _departing || _replanPending || !_guard || _cameras.Count == 0)
+            if (_mode != Mode.Approach || _probing || _departing || _replanPending || _evading || !_guard || _cameras.Count == 0)
                 return;
             Vector3D position = ReferencePosition();
             Vector3D toTarget = _approachTarget - position;
@@ -881,7 +900,10 @@ namespace IngameScript
                 return;
             Vector3D direction = toTarget / remaining;
             double brake = Math.Max(BrakeAccel(direction), 0.1);
-            double look = Math.Min(remaining + _approachBuffer * 2,
+            // Not beyond GuardRange: rays rarely hit rocks farther away, and a
+            // camera needs a second of charge per 2 km, so longer rays (tens of
+            // km at 300 m/s) left the guard nearly blind. Dodging covers the rest.
+            double look = Math.Min(Math.Min(remaining + _approachBuffer * 2, GuardRange),
                 Math.Max(_currentSpeed * _currentSpeed / (2 * brake) * 1.5 + _approachBuffer * 2, ProbeMinRange));
 
             // Every other scan: a ray parallel to the path from a camera facing the
@@ -938,22 +960,9 @@ namespace IngameScript
         {
             double along = Vector3D.Dot(hit.HitPosition.Value - position, direction);
             double stopDistance = _currentSpeed * _currentSpeed / (2 * Math.Max(BrakeAccel(direction), 0.1));
-            if (_tracking)
+            if ((_dockAfterRoute || _pathAfterRoute && _pathDock) && IsBaseHit(hit))
             {
-                // Following a moving planet: no route to plan around, stop in front.
-                if (hit.Type == MyDetectedEntityType.Asteroid)
-                    RegisterObstacle(hit);
-                bool waiting = _zoneGoal;
-                _route.Clear();
-                _route.Add(position + direction * Math.Max(along - StopOffset, 0));
-                StartRoute(_targetName);
-                _zoneGoal = waiting;
-                _message = "Obstacle ahead, stopping: steer past it, then run 'track' to continue";
-                return;
-            }
-            if (_dockAfterRoute && IsBaseHit(hit))
-            {
-                // Flying to the base: the base and the rock it stands on are
+                // Flying to the base (or the start of the recorded way in): the base and the rock it stands on are
                 // expected close to the approach point (docking has its own checks).
                 // Behind the stop point they do not matter.
                 if (along - ShipRadius > remaining + 5)
@@ -983,11 +992,12 @@ namespace IngameScript
             if (hit.Type == MyDetectedEntityType.Planet && _planet != null)
                 _terrainRadius = Math.Max(_terrainRadius, Vector3D.Distance(hit.HitPosition.Value, _planet.Center) + _approachBuffer);
 
-            // The rock the target lies on: stop earlier. Any other rock (e.g. one the
-            // route goes around, larger than known) is an obstacle.
+            // The rock the target lies on, or the ground on the last leg: stop
+            // earlier. Any other rock (e.g. one the route goes around, larger than
+            // known) is an obstacle. (Matching planet hits to a map entry failed
+            // once and made a descent replan in a loop.)
             Obstacle rock = voxel ? FindObstacle(hit.EntityId) : null;
-            Vector3D final = _route[_route.Count - 1];
-            if (OnLastLeg && rock != null && (rock.Planet ? PlanetAt(final) == rock : Vector3D.Distance(final, rock.Center) < rock.Radius + StopOffset))
+            if (OnLastLeg && (hit.Type == MyDetectedEntityType.Planet || rock != null && Vector3D.Distance(_route[_route.Count - 1], rock.Center) < rock.Radius + StopOffset))
             {
                 // Most likely the target rock itself: stop earlier. Small corrections
                 // are ignored (the end point is only hit roughly anyway), and the new
@@ -1009,9 +1019,48 @@ namespace IngameScript
                 BoundingBoxD box = hit.BoundingBox;
                 _temporaryObstacles.Add(new Obstacle { EntityId = hit.EntityId, Center = box.Center, Radius = (box.Max - box.Min).Length() / 2 });
             }
-            // Too close to go around at this speed: stop in front of it, then
-            // start over from there (moving away first). Otherwise plan a way
-            // around in the next tick.
+            // Close: if a sideways dodge past it needs clearly less than the
+            // ship's sideways thrust (often cheaper than stopping, and the only
+            // way when stopping in time is impossible), the next waypoint is put
+            // beside it; the planner itself ignores obstacles the ship is already
+            // inside the clearance of. Otherwise stop in front of it and start
+            // over from there. Far away: plan a way around in the next tick.
+            Obstacle o = voxel ? FindObstacle(hit.EntityId) : _temporaryObstacles[_temporaryObstacles.Count - 1];
+            if (along - _approachBuffer - ShipRadius < stopDistance * 1.3 && o != null)
+            {
+                Vector3D off = position - o.Center;
+                off -= direction * Vector3D.Dot(off, direction);
+                double miss = off.Length(), need = o.Radius + ShipRadius + _approachBuffer * 0.5 - miss;
+                double t = Math.Max(Vector3D.Dot(o.Center - position, direction) - o.Radius - ShipRadius, 1) / Math.Max(_currentSpeed, 0.1);
+                Vector3D beside = o.Center + (miss > 1 ? off / miss : Vector3D.CalculatePerpendicularVector(direction)) * Clearance(o, _approachTarget) * DetourFactor;
+                bool cannotStop = along - ShipRadius < stopDistance;
+                Vector3D side = miss > 1 ? off / miss : Vector3D.CalculatePerpendicularVector(direction);
+                if (2 * need / (t * t) < Math.Min(SideAccel(), _approachFullThrust ? double.MaxValue : _limit) * _brakeSafety * (cannotStop ? 1 : 0.5) && IsFree(beside, _approachTarget))
+                {
+                    // Next tick the rest is planned from the dodge point (the ship
+                    // itself is inside the rock's clearance, which planning ignores).
+                    _route.Insert(_routeIndex, beside);
+                    _approachTarget = beside;
+                    PlanCornerSpeeds();
+                    _dodge = beside;
+                    _dodging = _replanPending = true;
+                    _message = "Obstacle ahead (" + (voxel ? "rock" : hit.Name) + "), dodging";
+                    return;
+                }
+                // Emergency, stopping in time is impossible: turn the strongest
+                // thrusters sideways and push aside and back at full thrust.
+                // Simulated at 300 m/s, rock seen 6 km ahead: passes 390-840 m
+                // clear where stopping hits it (turning 0.03-0.5 rad/s²).
+                if (cannotStop && !o.Planet)
+                {
+                    _evadeDir = side;
+                    _evadeFrom = o.Center;
+                    _evadeClear = o.Radius + ShipRadius + _approachBuffer * 0.5;
+                    _evading = true;
+                    _message = "EVADING " + (voxel ? "rock" : hit.Name) + " at full thrust";
+                    return;
+                }
+            }
             if (along - _approachBuffer - ShipRadius < stopDistance * 1.3)
             {
                 _route.Clear();
@@ -1065,7 +1114,7 @@ namespace IngameScript
         // the measured rotation and corrected if needed.
         void UpdateGyros(IMyShipController controller, Vector3D velocity)
         {
-            bool wanted = _gyros.Count > 0 && (_mode == Mode.Jump || _mode == Mode.Dock || _mode == Mode.Path || (_alignShip && _mode == Mode.Approach));
+            bool wanted = _gyros.Count > 0 && (_mode == Mode.Jump || _mode >= Mode.Dock || (_alignShip && _mode == Mode.Approach));
             // The player turning the ship takes over the gyroscopes.
             if (controller.RotationIndicator.LengthSquared() > 0.01f || Math.Abs(controller.RollIndicator) > 0.01f)
                 wanted = false;
@@ -1085,12 +1134,25 @@ namespace IngameScript
                 desired = _pathF;       // the recorded pose of the next point
                 desiredUp = _pathU;
             }
+            else if (_mode == Mode.Land)
+            {
+                // Level, or along the ground's slope for a tilted landing; the
+                // heading the footprint was measured with.
+                desiredUp = _landPhase > 1 ? _landUp : GroundUp;
+                desired = Vector3D.Normalize(_landE1 - desiredUp * Vector3D.Dot(_landE1, desiredUp));
+            }
             else if (_mode == Mode.Dock && _dockPhase == DockPhase.Clearance)
                 desired = matrix.Forward;       // hold until the space to turn is checked
             else if (_mode == Mode.Dock)
             {
                 desired = _dockForward;
                 desiredUp = _dockUp;
+            }
+            else if (_evading)
+            {
+                double reverse;
+                BestThrust(matrix, controller.CalculateShipMass().PhysicalMass, out pointing, out reverse);
+                desired = _evadeDir;
             }
             else if (_departing)
                 desired = matrix.Forward;       // leaving a rock: hold the heading, do not turn
@@ -1118,7 +1180,7 @@ namespace IngameScript
                     }
                 }
             }
-            if (LevelFlight && _mode != Mode.Jump && desiredUp == Vector3D.Zero)
+            if (LevelFlight && _mode != Mode.Jump && desiredUp == Vector3D.Zero && !_evading)
             {
                 // In gravity the ship stays level: its up against gravity, the nose
                 // turned only horizontally (climbs and descents use the up thrusters).
@@ -1132,15 +1194,48 @@ namespace IngameScript
             Vector3D axis = Vector3D.Cross(pointing, desired);
             double sin = axis.Length(), cos = Vector3D.Dot(pointing, desired);
             _alignError = Math.Atan2(sin, cos);
-            // At least GyroMinRate while not aligned, so small errors do not linger.
-            Vector3D rate = sin > 1e-6 ? axis / sin * Math.Max(_alignError * GyroGain, _alignError > 0.002 ? GyroMinRate : 0)
-                : cos < 0 ? Vector3D.CalculatePerpendicularVector(pointing) * Math.PI * GyroGain : Vector3D.Zero;
+            // Rotation still to do (axis x angle), roll included.
+            Vector3D turn = sin > 1e-6 ? axis / sin * _alignError
+                : cos < 0 ? Vector3D.CalculatePerpendicularVector(pointing) * Math.PI : Vector3D.Zero;
             if (desiredUp != Vector3D.Zero && cos > 0)
             {
                 // Roll: bring the ship's up direction to the desired one as well.
-                Vector3D rollAxis = Vector3D.Cross(matrix.Up, desiredUp);
-                rate += rollAxis * GyroGain;
+                turn += Vector3D.Cross(matrix.Up, desiredUp);
                 _alignError = Math.Max(_alignError, Math.Acos(MathHelper.Clamp(Vector3D.Dot(matrix.Up, desiredUp), -1, 1)));
+            }
+
+            // Per ship axis: proportional near the target, and never faster than
+            // the ship can still stop turning with 70 % of its learned angular
+            // acceleration (a fixed gain overshot twice on 180 degree turns of a
+            // large miner). At least GyroMinRate, so small errors do not linger.
+            double mass = controller.CalculateShipMass().PhysicalMass;
+            Vector3D[] axes = { matrix.Right, matrix.Up, matrix.Backward };
+            Vector3D rate = Vector3D.Zero, omega = Vector3D.Zero;
+            for (int i = 0; i < 3; i++)
+            {
+                double e = Vector3D.Dot(turn, axes[i]), a = _gyroTorque.GetDim(i) / mass;
+                double r = Math.Min(Math.Abs(e) * GyroGain, a > 0 ? Math.Sqrt(1.4 * a * Math.Abs(e)) : double.MaxValue);
+                rate += axes[i] * Math.Sign(e) * Math.Max(r, Math.Abs(e) > 0.002 ? GyroMinRate : 0);
+                omega.SetDim(i, Vector3D.Dot(controller.GetShipVelocities().AngularVelocity, axes[i]));
+            }
+            // Learning, every half second: an axis commanded far from its actual
+            // rotation at both ends ran at full torque; its change of rotation
+            // gives the angular acceleration.
+            if (_ticks - _gyroSampleTick >= 30)
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    double before = _gyroCommand.GetDim(i) - _gyroOmega.GetDim(i), now = Vector3D.Dot(_commandedRate, axes[i]) - omega.GetDim(i);
+                    double change = (omega.GetDim(i) - _gyroOmega.GetDim(i)) * Math.Sign(before);
+                    if (_ticks - _gyroSampleTick < 40 && Math.Abs(before) > 0.15 && Math.Abs(now) > 0.15 && before * now > 0 && change > 0.003)
+                    {
+                        double k = change * 2 * mass, old = _gyroTorque.GetDim(i);
+                        _gyroTorque.SetDim(i, old > 0 ? old * 0.8 + k * 0.2 : k);
+                    }
+                    _gyroCommand.SetDim(i, Vector3D.Dot(_commandedRate, axes[i]));
+                }
+                _gyroOmega = omega;
+                _gyroSampleTick = _ticks;
             }
 
             bool calibrated = _gyroCalibrated[0] && _gyroCalibrated[1] && _gyroCalibrated[2];

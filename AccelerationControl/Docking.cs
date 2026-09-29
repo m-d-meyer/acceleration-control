@@ -78,10 +78,19 @@ namespace IngameScript
                             ActivateDock(d);
                 if (!_connectedIds.Contains(id))
                 {
-                    bool ours = _dockChecked ? _mode == Mode.Dock || _mode == Mode.Path || FindActiveController() != null
-                        : _dockKnown && other == _dockGridId && _dockZone == _zone && Vector3D.Distance(c.OtherConnector.GetPosition(), _dockPosition) < 5;
+                    // Ours: docked by the pilot or the script, or at the known dock
+                    // (this check runs once a second, when the script's docking may
+                    // already have ended and nobody sits in a cockpit).
+                    bool ours = _dockChecked && (_mode == Mode.Dock || _mode == Mode.Path || FindActiveController() != null)
+                        || _dockKnown && other == _dockGridId && _dockZone == _zone && Vector3D.Distance(c.OtherConnector.GetPosition(), _dockPosition) < 5;
                     if (ours && !docked && !_wasConnected)
+                    {
                         RecordDock(c);
+                        // Thrusters off while docked: the game's dampeners kept firing
+                        // in the docking direction after the lock (overrides at 0).
+                        ReleaseAll(true);
+                        Thrusters(false);
+                    }
                     else if (!ours)
                         _carried[id] = other;
                 }
@@ -93,6 +102,8 @@ namespace IngameScript
                     _carried.Remove(id);
             _connectedIds.Clear();
             _connectedIds.UnionWith(now);
+            if (!docked && _thrustersOff)
+                Thrusters(true);    // undocked by hand
             _dockChecked = true;
             _wasConnected = docked;
         }
@@ -130,7 +141,39 @@ namespace IngameScript
                 _mode = Mode.Manual;
             _dockEntry = AddDeposit(BaseName, _dockPosition, false);
             _mapChanged = true;
-            _message = HasDockPath ? "Docked. Dock position and the way in saved for 'dock'" : "Docked. Dock position saved, but no way in: the script saw less than 20 m of it. Fly out and dock by hand again";
+            _message = HasDockPath ? "Docked. Dock position and the way in saved for 'dock'" : "Docked, but the way in was not recorded: fly out and dock by hand again";
+        }
+
+        // GO / goto while docked: undock first (the recorded way out if there is
+        // one), then the flight starts from outside.
+        Action _afterUndock;
+
+        bool UndockFirst(Action then)
+        {
+            IMyShipConnector c = DockConnector();
+            if (!_wasConnected || c == null || c.Status != MyShipConnectorStatus.Connected)
+                return false;
+            Undock();
+            _afterUndock = then;
+            return true;
+        }
+
+        void AfterUndock()
+        {
+            Action then = _afterUndock;
+            _afterUndock = null;
+            if (then != null)
+                then();
+        }
+
+        bool _thrustersOff, _undockPending;
+
+        void Thrusters(bool on)
+        {
+            foreach (IMyThrust t in _allThrusters)
+                t.Enabled = on;
+            _thrustersOff = !on;
+            _mapChanged = true;     // saves the state
         }
 
         // One dock per base: the active one is in the fields above, the others
@@ -165,7 +208,7 @@ namespace IngameScript
                     best = d;
             if (best == null || Vector3D.Distance(best.Position, ReferencePosition()) > DockRange)
             {
-                _message = "No known dock within 20 km: dock by hand once to teach it, or GO on a base entry";
+                _message = "No known dock within 20 km";
                 return false;
             }
             ActivateDock(best);
@@ -217,7 +260,7 @@ namespace IngameScript
             }
             StartGoal(DockApproachPoint, BaseName, true);
             if (_mode == Mode.Approach && !_departing)
-                _message = "No recorded way in: flying to the point in front of the connector";
+                _message = "No recorded way in: flying to the connector";
         }
 
         // Is the connector close to the approach point or inside the path into the dock?
@@ -253,10 +296,14 @@ namespace IngameScript
                 return;
             }
             Vector3D axis = -connector.WorldMatrix.Forward;
-            connector.Disconnect();
+            Thrusters(true);
+            UnlockLandingGear();
             if (HasDockPath)
             {
+                // The connector lets go once the gate is open (PathVelocity):
+                // waiting unlocked above it, it would pull the ship back.
                 Gate("open");
+                _undockPending = true;
                 // Out the way the ship came in, backwards along the recorded poses.
                 LoadDockPath(true);
                 _pathDock = false;
@@ -265,6 +312,7 @@ namespace IngameScript
                 StartPathFollow(0);
                 return;
             }
+            connector.Disconnect();
             _route.Clear();
             _route.Add(ReferencePosition() + axis * (ShipRadius + _dockApproach));
             _temporaryObstacles.Clear();
@@ -303,7 +351,7 @@ namespace IngameScript
             // Hold at the approach point; while checking the way in, hold where the ship is
             // (it may have stopped on the way in because something showed up).
             if (_dockPhase == DockPhase.Clearance || _dockPhase == DockPhase.Align)
-                targetVelocity = ClampLength(toApproach * 0.5, DockMaxSpeed);
+                targetVelocity = ClampLength(toApproach * 0.5, Math.Min(DockMaxSpeed, Math.Sqrt(BrakeAlong(toApproach) * toApproach.Length())));
 
             if (_dockPhase == DockPhase.Clearance || _dockPhase == DockPhase.Corridor)
             {
@@ -345,12 +393,15 @@ namespace IngameScript
             Vector3D offset = _dockPosition - position;
             double along = Vector3D.Dot(offset, -_dockAxis);     // distance still to go
             Vector3D lateral = offset + _dockAxis * along;          // sideways error
-            double speed = along > DockSlowDistance ? DockMaxSpeed : MathHelper.Clamp(along * 0.2, 0.3, DockMaxSpeed);
+            // At most what the ship can brake from (sideways too): a fixed profile
+            // needed up to 1 m/s² of braking along the axis and 1.2 m/s² sideways.
+            double speed = Math.Min(Math.Max(Math.Sqrt(BrakeAlong(-_dockAxis) * Math.Max(along, 0)), 0.3),
+                along > DockSlowDistance ? DockMaxSpeed : MathHelper.Clamp(along * 0.2, 0.3, DockMaxSpeed));
             if (lateral.Length() > 1.5)
                 speed = Math.Min(speed, 0.5);   // straighten out first
             if (along < -1)
                 speed = -0.5;                   // overshot: back off
-            targetVelocity = -_dockAxis * speed + ClampLength(lateral * DockLateralGain, 2);
+            targetVelocity = -_dockAxis * speed + ClampLength(lateral * DockLateralGain, Math.Min(2, Math.Sqrt(BrakeAlong(lateral) * lateral.Length())));
             _targetDistance = Math.Max(along, 0);
             return true;
         }
@@ -380,8 +431,7 @@ namespace IngameScript
                 Vector3D shift = _dockAxis * DockTravel * half * 0.5;
                 for (int i = 0; i < 8; i++)
                 {
-                    Vector3D corner = new Vector3D((i & 1) == 0 ? min.X : max.X, (i & 2) == 0 ? min.Y : max.Y, (i & 4) == 0 ? min.Z : max.Z);
-                    _dockScanPoints.Add(Vector3D.Transform(corner, docked) + shift);
+                    _dockScanPoints.Add(Vector3D.Transform(Corner(i, min, max), docked) + shift);
                 }
                 _dockScanPoints.Add(Vector3D.Transform((min + max) / 2, docked) + shift);
             }
@@ -400,6 +450,11 @@ namespace IngameScript
             double half = grid.GridSize / 2;
             min = new Vector3D(grid.Min) * grid.GridSize - new Vector3D(half);
             max = new Vector3D(grid.Max) * grid.GridSize + new Vector3D(half);
+        }
+
+        static Vector3D Corner(int i, Vector3D min, Vector3D max)
+        {
+            return new Vector3D((i & 1) == 0 ? min.X : max.X, (i & 2) == 0 ? min.Y : max.Y, (i & 4) == 0 ? min.Z : max.Z);
         }
 
         // Travel distance from the docked pose out to the approach point.
@@ -455,7 +510,7 @@ namespace IngameScript
             {
                 int result = _dockScanBlocker != null ? ScanBlocked : ScanClear;
                 if (_dockScanSeen == 0 && result == ScanClear)
-                    _message = "No camera can see the docking path, docking without check";
+                    _message = "Docking path unseen, docking without check";
                 else if (result == ScanBlocked)
                     _message = "Waiting: " + _dockScanBlocker + " is in the way";
                 _dockScanIndex = _dockScanSeen = 0;
@@ -524,11 +579,13 @@ namespace IngameScript
 
         string DockTitle
         {
-            get { return _mode == Mode.Path && !_pathDock ? "TO " + _pathName : "DOCKING"; }
+            get { return _mode == Mode.Land ? "LANDING" : _mode == Mode.Path && !_pathDock ? "TO " + _pathName : "DOCKING"; }
         }
 
         string DockPhaseText()
         {
+            if (_mode == Mode.Land)
+                return _landState + (_landPhase > 2 ? ", " + FormatDistance(_targetDistance) : "");
             if (_mode == Mode.Path)
                 return PathStateText();
             switch (_dockPhase)

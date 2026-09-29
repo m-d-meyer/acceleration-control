@@ -63,6 +63,11 @@ namespace IngameScript
             _limitDampeners = _limitDampenersDefault;
             _cruiseSpeed = _defaultCruiseSpeed;
             LoadState();
+            // A zone change while the script was off is not seen: until gravity
+            // shows the planet, the zone is provisional (entries are relabelled).
+            _zoneProvisional = PlanetZones;
+            _provisionalDeposits = _deposits.Count;
+            _provisionalObstacles = _obstacles.Count;
             RefreshBlocks();
             ReleaseAll(true); // clear overrides left behind by a previous run
             ReleaseGyros(true);
@@ -242,12 +247,15 @@ namespace IngameScript
                     break;
                 case "stop":
                     _mode = Mode.Manual;
-                    _scanPending = _tracking = _zoneGoal = _pendingStart = false;
+                    _scanPending = _zoneGoal = _pendingStart = _landAfterRoute = false;
+                    _afterUndock = null;
+                    _undockPending = false;
                     break;
                 case "mark":
                     HandleMarkCommand(parts);
                     break;
                 case "goto":
+                    _landAfterRoute = false;
                     if (parts.Length > 1)
                         GoToGps(argument.Substring(argument.IndexOf(' ') + 1));
                     else
@@ -259,8 +267,8 @@ namespace IngameScript
                 case "water":
                     HandleWaterCommand(value);
                     break;
-                case "track":
-                    HandleTrackCommand(parts.Length > 1 ? (value == "clear" ? "clear" : argument.Substring(argument.IndexOf(' ') + 1)) : null);
+                case "land":
+                    Land(parts.Length > 1 ? argument.Substring(argument.IndexOf(' ') + 1) : null);
                     break;
                 case "dock":
                     if (ChooseDock())

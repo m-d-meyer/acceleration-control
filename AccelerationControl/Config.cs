@@ -80,10 +80,9 @@ namespace IngameScript
         double _atmosphereSpeed = 100;
         double _gravityFalloff = 7;
         bool _compensateWind = true;
-        double _zoneEntrySpeed = 100;
         double _waterLevel = 0;
+        double _maxSlope = 15, _maxBump = 1;
         float _screenTextScale = 1;
-        double _zoneRadiusGuess = 200000;
 
         // ---- state ----
         double _limit;
@@ -184,10 +183,10 @@ namespace IngameScript
             _atmosphereSpeed = Option("AtmosphereSpeed", _atmosphereSpeed);
             _gravityFalloff = Option("GravityFalloff", _gravityFalloff);
             _compensateWind = Option("CompensateWind", _compensateWind);
-            _zoneEntrySpeed = Option("ZoneEntrySpeed", _zoneEntrySpeed);
             _waterLevel = Option("WaterLevel", _waterLevel);
+            _maxSlope = Option("MaxSlope", _maxSlope);
+            _maxBump = Option("MaxBump", _maxBump);
             _screenTextScale = (float)MathHelper.Clamp(Option("ScreenTextScale", _screenTextScale), 0.5, 2);
-            _zoneRadiusGuess = Option("ZoneRadiusGuess", _zoneRadiusGuess);
 
             _ini.SetSectionComment(IniSection, " Units: m/s², m/s, m. Options: see README. Run 'reload' after editing.");
             Me.CustomData = _ini.ToString();
@@ -229,11 +228,12 @@ namespace IngameScript
             state.Set(StateSection, "UraniumCalibrated", _uraniumCalibrated);
             state.Set(StateSection, "UraniumMWhPerKg", _uraniumMWhPerKg);
             state.Set(StateSection, "Zoom", _zoomIndex);
+            state.Set(StateSection, "GyroTorque", Vec(_gyroTorque));
             state.Set(StateSection, "GyroSign", string.Join(";", Num(_gyroSign.X), Num(_gyroSign.Y), Num(_gyroSign.Z),
                 _gyroCalibrated[0] ? "1" : "0", _gyroCalibrated[1] ? "1" : "0", _gyroCalibrated[2] ? "1" : "0"));
             WriteDock(state, StateSection);
             state.Set(StateSection, "Zone", _zone);
-            state.Set(StateSection, "PlanetZonesSeen", _planetZonesSeen);
+            state.Set(StateSection, "ThrustersOff", _thrustersOff);
             if (_cameFromValid)
                 state.Set(StateSection, "CameFrom", Vec(_cameFrom) + ";" + Vec(_cameFromAt));
             var radii = new StringBuilder();
@@ -316,7 +316,7 @@ namespace IngameScript
                 if (long.TryParse(id, out grid))
                     _baseGrids.Add(grid);
             }
-            _dockZone = ini.Get(section, "DockZone").ToString("");
+            _dockZone = Zone(ini.Get(section, "DockZone").ToString(""));
         }
 
         void LoadState()
@@ -339,6 +339,9 @@ namespace IngameScript
             if (_uraniumCalibrated)
                 _uraniumMWhPerKg = state.Get(StateSection, "UraniumMWhPerKg").ToDouble(_uraniumMWhPerKg);
             _zoomIndex = MathHelper.Clamp(state.Get(StateSection, "Zoom").ToInt32(_zoomIndex), 0, ZoomLevels.Length - 1);
+            string[] torque = state.Get(StateSection, "GyroTorque").ToString("").Split(';');
+            if (torque.Length == 3)
+                _gyroTorque = ParseVec(torque, 0);
             string[] gyro = state.Get(StateSection, "GyroSign").ToString("").Split(';');
             double x, y, z;
             if (gyro.Length == 6 && TryParseNumber(gyro[0], out x) && TryParseNumber(gyro[1], out y) && TryParseNumber(gyro[2], out z))
@@ -348,8 +351,8 @@ namespace IngameScript
                     _gyroCalibrated[i] = gyro[3 + i] == "1";
             }
             ReadDock(state, StateSection);
-            _zone = state.Get(StateSection, "Zone").ToString("");
-            _planetZonesSeen = state.Get(StateSection, "PlanetZonesSeen").ToBoolean(false);
+            _zone = Zone(state.Get(StateSection, "Zone").ToString(""));
+            _thrustersOff = state.Get(StateSection, "ThrustersOff").ToBoolean(false);
             string[] came = state.Get(StateSection, "CameFrom").ToString("").Split(';');
             if (came.Length == 6)
             {

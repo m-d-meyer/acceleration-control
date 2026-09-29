@@ -32,6 +32,9 @@ acceleration instead — in m/s², independent of cargo mass.
   above the target, ship kept level), atmosphere speed limit, wind/drag/lift
   compensation, and support for the Real Solar Systems mod (planet zones with their
   own coordinates, flights across zone changes)
+- **Landing**: `land` scans the ground under the whole ship with the cameras, picks a
+  flat and even spot (searching around if needed), lands level or along a gentle
+  slope and locks the landing gear
 - Settings survive saving/reloading the world
 
 ## Setup
@@ -89,8 +92,7 @@ Run the programmable block with one of these arguments:
 | `goto`              | Fly to the selected entry along a planned route (stops `ApproachBuffer` before it); long distances start with a jump |
 | `goto GPS:name:x:y:z:` | Fly to GPS coordinates (paste a GPS from the game's GPS list); stops in front of the surface if the point is inside a rock |
 | `dock`              | Fly to the nearest known dock (within 20 km) and dock; a dock is learned by docking there once by hand |
-| `track GPS:name:x:y:z:` | Real Solar Systems: a sample of a planet's moving GPS; after two samples the ship follows the moving planet into its zone (see Planets) |
-| `track` / `track clear` | Follow again with the samples known / forget them        |
+| `land` / `land GPS:name:x:y:z:` | Land below the ship / fly to the GPS and land there (see Landing) |
 | `water here` / `water off` | Store the ship's height as this planet's water surface (water mod) / forget it |
 | `undock`            | Disconnect and back off from the base                    |
 | `delete`            | Delete the selected deposit                              |
@@ -155,16 +157,16 @@ first run. Edit them there and run `reload`.
 | `JumpClearance`      | `1000`    | Minimum distance of the jump destination from known obstacles (m) |
 | `DockApproach`       | `30`      | Distance in front of the base connector where docking starts (m, plus ship radius) |
 | `UseStrongestThrusters` | `true` | Turn the ship so its strongest thrusters push along the flight, and flip for braking if worth it |
-| `FlipTime`           | `30`      | Seconds planned for turning around before braking                 |
-| `PlanetZones`        | `false`   | Real Solar Systems: each planet zone has its own coordinates (switches on by itself at the first teleport into or out of a planet zone) |
+| `FlipTime`           | `30`      | Seconds planned for turning around before braking, until the ship's turning is measured |
+| `PlanetZones`        | `false`   | Real Solar Systems (experimental): each planet zone has its own coordinates. While off, zones recorded earlier are ignored (everything counts as one space; takes effect when the script restarts) |
 | `PlanetCruiseHeight` | `1500`    | Height above the ground (start, target, terrain seen) for flights on a planet (m); short hops fly lower |
 | `AtmosphereHeight`   | `12000`   | Assumed top of the atmosphere above sea level until the ship has measured it (m) |
 | `AtmosphereSpeed`    | `100`     | Speed limit inside an atmosphere (m/s); the ship brakes to it before entering, `0` = off |
 | `GravityFalloff`     | `7`       | Gravity falloff exponent until measured (vanilla planets: 7; mods may use less) |
 | `CompensateWind`     | `true`    | Measure wind, drag and lift and compensate them during flights |
 | `WaterLevel`         | `0`       | Water surface above sea level (water mod); planet routes cruise at least 200 m above it (m) |
-| `ZoneEntrySpeed`     | `100`     | Speed relative to a followed planet when entering its zone (m/s) |
-| `ZoneRadiusGuess`    | `200000`  | Assumed zone radius around a followed planet's GPS until the first entry has measured it (m); better too large than too small |
+| `MaxSlope`           | `15`      | Steepest ground `land` accepts (degrees); from 3 degrees on the ship lands tilted along the slope |
+| `MaxBump`            | `1`       | Largest bump or dip `land` accepts under the ship, relative to the fitted ground plane (m); about the ship's belly clearance |
 
 ## Drive assists
 
@@ -373,7 +375,9 @@ length, delta-v and flight time. **GO** plans and flies it.
   just stops where it is.
 - **Flip and burn**: if the side that would brake is much weaker than the strongest
   side, the ship turns around for the final braking and brakes with its strongest
-  thrusters. The turn is given `FlipTime` seconds (default 30): braking starts earlier
+  thrusters. The turn is given the time the ship needs to turn around, computed
+  from its measured turning (see below; `FlipTime`, default 30 s, until that is
+  measured): braking starts earlier
   by the distance flown in that time, which also lowers the top speed on short trips
   that never reach `MaxSpeed`. The script compares the trip time with and without
   turning around and only flips when it is faster.
@@ -381,6 +385,11 @@ length, delta-v and flight time. **GO** plans and flies it.
   (its bounding sphere) from the surface, measured from the ship's center, so the
   ship can turn safely there. Near the stop point it holds its heading; once slow,
   it turns its nose to the target (e.g. for drilling).
+- **Turning**: the script measures how fast the gyroscopes can speed up and slow
+  down the ship's rotation, per axis, whenever they turn at full torque (the
+  shape of the ship matters, so each axis is learned on its own; cargo is taken
+  into account through the mass). Turns then slow down in time instead of
+  overshooting, and the flip time above is computed from it.
 - Docking, cruise, leaving a rock and all manual movement never turn the ship; all
   thrusters work together there. Turning the ship yourself
   takes over the gyroscopes; any movement key cancels the flight.
@@ -388,9 +397,16 @@ length, delta-v and flight time. **GO** plans and flies it.
   center ray and a ring of rays at the ship's radius, as far as the stopping
   distance. If the target rock sticks out further than scanned (a protrusion
   beside the scanned point), the stop point moves closer. An unknown asteroid or a
-  grid on the path makes the route go around it (planned in the next tick); if the
-  ship is too close to go around at its speed, it stops in front of the obstacle,
-  moves away from it and plans again.
+  grid on the path makes the route go around it (planned in the next tick). Closer
+  than about 1.3 stopping distances, the ship dodges sideways past it if that needs
+  clearly less than its sideways thrust (often cheaper than stopping, and the only
+  way when stopping in time is impossible); otherwise it stops in front of the
+  obstacle, moves away from it and plans again. If stopping in time is impossible
+  and the sideways thrust is not enough, the ship **evades**: it turns its strongest
+  thrusters sideways and pushes aside and back at full thrust (ignoring the
+  acceleration limit) until its path clears the obstacle, then plans on. The guard
+  looks at most 8 km ahead: rays rarely hit rocks farther away, and longer rays
+  need more camera charge, so at high speed it scanned too rarely.
 - **Live replanning**: an asteroid found later (by the guard or the background
   survey) that lies on the rest of the route triggers a new plan from the current
   position.
@@ -467,7 +483,67 @@ pushes back, and compensating that would push the ship into the rock when the dr
 break through. The control page shows it as
 "Wind/drag". `CompensateWind=false` turns it off.
 
-### Real Solar Systems
+### Landing
+
+`land` sets the ship down below where it is; `land GPS:...` flies to the GPS first
+(like `goto`) and lands there. Needs gravity, landing gear and cameras that look
+down.
+
+1. The ship moves to a point above the ground (from the game's surface height)
+   where a camera under its middle sees the edges of the footprint: half the
+   footprint's width + half the ship's height + 5 m for the ship's centre. It
+   holds its heading.
+2. The cameras scan the ground under the ship's **whole footprint**: its bounding
+   box seen from above, plus 3 m all round, on a grid of rays 1.2 m apart (a
+   20 x 30 m footprint: about 500 rays; large ships get wider spacing, at most
+   about 2500 rays). As many rays per tick as the cameras have
+   charged (2 km of range per second each), so it takes a few seconds with several
+   cameras and up to a minute or more for a large ship with one; the control page
+   shows the progress. Wings, outriggers and anything else that sticks out are inside the
+   box, so they are covered too (the rays must reach them: put cameras under the
+   wings of wide ships).
+3. A plane is fitted through the hits. The spot is taken if
+   - the cameras saw at least 3/4 of the points (else the landing stops and asks for
+     cameras facing down),
+   - no ray went through without hitting ground (a drop or a hole),
+   - no hit lies more than `MaxBump` (1 m) above or below the plane (boulders,
+     trees, parked ships, ledges),
+   - the slope is at most `MaxSlope`, and for a tilted landing the ship's weakest
+     side can push 1.2 times the part of gravity along the slope.
+   Otherwise the next spot on a spiral around the target is tried (up to 12, spread
+   by about the ship's size); the reason is shown ("slope 22°, uneven 1.8 m").
+4. Flatter than 3 degrees the ship stays level, else it turns its up side to the
+   ground's normal. Then it descends straight down, as fast as it can brake, near the
+   ground at most 0.3 m/s + 0.3 x the height, the last metre at 0.3 m/s, holding its
+   place sideways.
+5. Landing gear that is ready to lock is locked; then the flight ends ("Landed").
+
+To take off, use `goto`/GO: flights unlock the landing gear and start upwards.
+
+Simulated (scratchpad `rocksim.py`, `landscan.py`): with rays 1.2 m apart every
+boulder from 3 m across is hit, from 2.5 m 97 % (with 4 m spacing only 12-59 %).
+On 600 random hilly spots with one boulder of 2-6 m each, no boulder taller than
+1.25 m was missed (the missed ones were 1.0-1.2 m high, at the `MaxBump` limit); a
+4 m grid missed 52 of 232. On hilly ground a large ship finds about half of the
+spots even enough, so the spiral search matters. The plane fit finds slopes within
+0.3 degrees; the descent
+touches down at about 0.3 m/s with 0.5-8 m/s² of braking and 0.5 s thruster lag
+(without the cap near the ground up to 3.7 m/s). Not
+flown in game yet.
+
+Not covered: the ship's sides above the ground (a wing next to a cliff wall or a
+tree taller than the ship's belly beside the footprint margin), rocks smaller than
+about 2.5 m across (between the rays), and ground that moves (water, other ships).
+
+### Real Solar Systems (experimental, off by default)
+
+> **Experimental.** Scripts cannot see the mod's zones; the script guesses them from
+> teleports and gravity, and nested zones (a moon inside its planet's zone, orbit
+> and surface zone) still confuse it: flights between zones can go the wrong way.
+> The zone support is off unless `PlanetZones=true` is set in the Custom Data. With
+> it off, a teleport (any position jump the jump drive does not explain, e.g. from
+> a zone change, a star gate mod or a carrier ship jumping) simply stops the flight.
+> The script's author asked the mod's author for a scripting interface.
 
 With this mod the planets you see move, but the real planets are static and far
 away; approaching a planet teleports the ship into that planet's zone, which has its
@@ -481,7 +557,8 @@ the jump drive do not explain):
   orbit and surface) the route is simply planned again.
 - GO/dock to an entry in another zone: in a planet zone the ship climbs straight up
   until the zone changes. In space the script cannot see the moving proxy planets
-  itself, so either fly there yourself or let it follow the planet (below). As soon
+  itself, so fly there yourself (the `track` command that followed a planet's moving
+GPS was removed to make room for landing). As soon
   as the ship is in the target's zone, the flight continues automatically. The
   control page shows "Waiting for the zone of …".
 - The mod's zone change can change the ship's velocity (a planet "running into" a
@@ -490,51 +567,28 @@ the jump drive do not explain):
   shows a warning. Simulated: a ship with 1.5 g of upward thrust entering 60 km up at
   1500 m/s cannot be saved; at 500 m/s, or with 3 g, all runs stopped safely.
 
-**Following a moving planet.** The mod keeps a moving copy of every GPS placed on
-a planet (marked `PROXY_DO_NOT_EDIT`), e.g. of your base. Scripts cannot read the GPS
-list, but they can be given samples:
-
-1. GO/dock to the base (or any entry on the planet) while in space: the script waits
-   for the zone change.
-   The mod's setting `EnablePlanetGPSAll` (or `EnablePlanetGPSUnlocking`, a GPS
-   when a zone is entered for the first time) gives every planet such a GPS.
-2. Copy the planet's moving GPS (e.g. the proxy copy of your base GPS) and run
-   `track GPS:...` with it. Do it again 10-30 s later (a third time improves the
-   prediction on curved orbits).
-3. From two samples the script knows where the GPS is and how it moves (from three
-   also how its path curves) and follows it: it matches the planet's velocity and
-   closes in, braking to `ZoneEntrySpeed` relative to the planet before the zone
-   edge, because the zone change keeps that relative speed. The first time the zone
-   edge is not known (`ZoneRadiusGuess`); at the zone change its distance is
-   measured and stored per planet, so later approaches brake at the right place.
-4. After the zone change the flight continues to the base on the planet.
-
-Simulated (planet on a circular orbit, 3 samples 15 s apart): entry at about
-100 m/s relative to the planet when the zone is smaller than `ZoneRadiusGuess`, but
-340 m/s when the real zone was 150 km and the guess 100 km, hence the generous
-default. The prediction was off by less than 3 km after hours of flight.
-
 The control page shows any measurable gravity, also in space without a real planet
-("no planet"), and while following a GPS the angle between gravity and the GPS
-direction. That shows whether the proxy planets have a gravity scripts can see.
+("no planet"). That shows whether the proxy planets have a gravity scripts can see.
 
-Pasting the GPS again during the flight refreshes the prediction (the oldest sample
-is dropped). If the planet moves faster than `MaxSpeed`, the ship cannot match its
-velocity; the script says so. The collision guard stops the ship in front of
-obstacles; steer past and run `track` to continue.
+Each planet has two zones around the same centre but with different coordinates: an
+outer **orbit zone** and, inside it, a **surface zone**. A teleport between them
+towards the planet leads into the surface zone; its edge is learned then and used
+afterwards (e.g. after a restart). GO between the two climbs straight up or goes
+straight down until the zone changes. Entries recorded by an older version in a
+surface zone are labelled as orbit zone: mark them again.
 
 The zone of a planet reaches farther out than its gravity. A teleport outside
 gravity is assigned to the nearest known planet (within 1.5 times its gravity
 radius plus 50 km), e.g. a base in space near the Moon belongs to the Moon's zone.
 If no planet is known yet, entries recorded there are marked provisionally and
 relabelled as soon as the ship reaches that planet's gravity without another
-teleport. If the base was recorded in the wrong zone by an earlier version, dock by
+teleport. The same holds after the script starts outside gravity (a zone
+change while it was off cannot be seen): the zone it remembers counts as
+provisional until the gravity of a planet confirms or corrects it. If the base was recorded in the wrong zone by an earlier version, dock by
 hand once more.
 
-Zones switch on by themselves at the first teleport into or out of a planet zone.
-If the ship is already in a planet zone when the script is installed, set
-`PlanetZones=true`, otherwise entries recorded before the first teleport count as
-space. The gravity falloff of the mod's planets is measured in flight
+Set `PlanetZones=true` before recording entries in such a world, otherwise they
+count as space. The gravity falloff of the mod's planets is measured in flight
 (`GravityFalloff` is only the start value), so the size of the gravity wells that
 routes avoid in space is estimated correctly.
 
@@ -603,7 +657,14 @@ adds (or updates) a base entry on the map with that dock, its recorded way in an
 its gate connector, and the others are kept. **GO** on a base entry docks there;
 `dock` takes the nearest base with a dock in the current zone within 20 km; if
 there is none, it refuses (teach the dock by hand first, or use GO on a base entry
-for a far base). `undock` uses the dock the ship is at. One dock per base entry:
+for a far base). `undock` uses the dock the ship is at. **GO** or `goto` while docked undocks
+first (along the recorded way out, if there is one) and then starts the flight.
+
+While docked, the ship's thrusters are switched off (the game's dampeners otherwise
+kept firing in the docking direction after the lock). `undock` switches them on
+again, and so does undocking by hand (within a second). `undock` also releases
+locked landing gear and, with a gate, lets go of the connector only once the base
+reports the gate open. One dock per base entry:
 docking by hand at another connector of the same base replaces that base's dock.
 
 **Recorded way in.** If the dock was recorded with a way in (the ship came at
@@ -732,7 +793,8 @@ player game; everything else was checked with the compiler and simulations only.
 **Not or only briefly tested in game**
 - Planet flights (climb, arc, descent, atmosphere limit, wind compensation) were
   developed with simulations and flown only a few times.
-- Real Solar Systems support (zones, `track`) is built for that mod's behaviour as
+- Landing (`land`) was only compile-checked and simulated.
+- Real Solar Systems support (zones) is built for that mod's behaviour as
   described by its author; it was tried in one save.
 - Multiplayer and dedicated servers were never tried.
 
@@ -757,8 +819,8 @@ player game; everything else was checked with the compiler and simulations only.
 - The script runs every tick and does a lot of work; many known asteroids cost
   instructions. It sets thruster and gyroscope overrides, so do not combine it with
   other scripts that do the same.
-- The paste-ready script is minified to fit the 100,000 character limit (about 98k
-  used); the readable source is in this repository.
+- The paste-ready script is minified to fit the 100,000 character limit (almost
+  all of it used); the readable source is in this repository.
 
 ## Development
 

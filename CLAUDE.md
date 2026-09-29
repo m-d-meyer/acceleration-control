@@ -66,7 +66,7 @@ The README describes all commands and Custom Data options for players.
     (`tools/SyntaxCheck/Minifier.cs`) and compile-checks the result.
     The minifier also drops `readonly`, uses `var` where the type matches exactly and
     adds short static wrappers for frequent static API calls (`Math.Max`,
-    `Vector3D.Distance`, ...). Minified size is about 98k of 100k: space is tight;
+    `Vector3D.Distance`, ...). Minified size is about 98.3k of 100k: space is tight;
     config options use the `Option(key, value)` helpers in `Config.cs` to save room.
   - Always rebuild `dist/` before committing source changes.
 - The MDK wiki API docs (`api/*.md` in the wiki clone) are the reference for member
@@ -181,14 +181,12 @@ The README describes all commands and Custom Data options for players.
   zone changes (a planet "running into" a resting ship gives it the orbital speed);
   ORBIT zone follows the planet's orbit, SURFACE zone follows the surface; every GPS
   placed on a planet gets a moving proxy copy ("PROXY_DO_NOT_EDIT"). No PB API is
-  known, so `track GPS:...` takes samples of such a moving GPS (Lagrange fit through
-  2-3 samples), matches the planet's velocity and brakes to `ZoneEntrySpeed` before
-  the zone edge (`ZoneRadiusGuess`, learned per zone at the first entry, stored in
-  `ZoneRadii`). Simulated: ~100 m/s entry if the guess >= real zone, 340-450 m/s if
-  the zone is larger than guessed (hence default 200 km).
+  known. A `track GPS:...` command (samples of such a moving GPS, velocity matching,
+  braking to an entry speed before the zone edge) existed and was removed to make
+  room for landing (user's choice); `ZoneRadii` still stores learned surface edges.
 - RSS config (user): real planets spawn 900,000-9,000,000 km from the origin;
   `EnablePlanetGPSAll`/`EnablePlanetGPSUnlocking` create planet GPS (moving copies
-  usable for `track`); `EnableGridRotationOnZoneTransition` rotates grids at the
+  usable for the removed `track`); `EnableGridRotationOnZoneTransition` rotates grids at the
   surface zone edge. Open question: do proxies have script-visible gravity? The
   status page shows any gravity > 0.001 m/s² ("no planet" in proxy space) to find
   out; if yes, a gravity-based homing without GPS pasting could be added.
@@ -281,10 +279,166 @@ The README describes all commands and Custom Data options for players.
   (enum members, constants, static fields, InvariantCulture) in short fields.
   Ship script ~98.0k after the multi-dock feature.
 
+- The PB whitelist is not checked by the stub compile: the minifier's cached
+  `IFormatProvider` field compiled here but the game refused it ("type or member
+  'IFormatProvider' is prohibited"). Generated wrappers/fields now only use types
+  the script already names (`Allowed` in Minifier.cs). New API types in source
+  code carry the same risk; the in-game "Check code" is the only whitelist test.
+- GO/goto while docked: `UndockFirst` runs `Undock()` and keeps the flight in
+  `_afterUndock`, started at the end of the way out (or of the undock route);
+  cleared on cancel/stop/give-up. User report: after script docking, the thrusters
+  that pushed into the dock stayed at 100 % until a key was pressed; cause not
+  found by reading the code (every tick releases unused axes). Workaround: a new
+  dock connection forces `ReleaseAll(true)`. Follow-up: overrides were 0, the
+  game's dampeners fired in the docking direction (likely a game quirk). Now all
+  own thrusters are disabled on docking (`Thrusters(false)`, `_thrustersOff` saved
+  as ThrustersOff) and enabled by `Undock()` or when CheckDocking sees no dock.
+  `Undock()` also unlocks landing gear (and in reverse path mode each tick), and
+  with a recorded way keeps the connector locked until `GateWait` reports the gate
+  open (`_undockPending`): unlocked and waiting, the connector pulled the ship back.
+- Loaded ship overshot the connector at 2-3 m/s on a recorded way: path speed
+  was min(8, 0.4 x distance) with a hard 1.5 m/s cap 20 m before the dock, i.e. a
+  step from 8 to 1.5 m/s that needs ~3 m/s² of braking. Now v = sqrt(brake x
+  distance) (half of `BrakeAccel` in that direction, max 3) and the dock cap is
+  reached by braking. Simulated (scratchpad `pathbrake.py`, thruster lag 0.5 s):
+  old profile overshoots below ~3 m/s² braking, new one arrives at 1.5 m/s down
+  to 0.5 m/s².
+- Review for fixed cutoffs (user's request after the overshoot): recorded ways
+  had no speed plan for bends or pose turns (target pose jumped per point,
+  0.35 rad align error = full stop). Now `_pathLimits` are planned backwards in
+  `StartPathFollow` (bend cos^2, `TurnSpeed` = segment length x 0.3 rad/s / pose
+  change, braking to the next point with `BrakeAlong` = min(BrakeAccel, 3)), the
+  target pose is interpolated along each segment and speed scales down smoothly
+  with the align error. Simulated (scratchpad `pathbend.py`, 90 degree bend,
+  2D, lag): old 11-23 m off the way, new 0.5-1.9 m. Docking final approach, hold
+  and lateral correction are also capped by `BrakeAlong`. Open (reported, not
+  changed): the guard's look distance grows with speed but cameras see ~6 km, so
+  fast flights outrun what the guard can check; undock without a recorded way
+  backs out blind; FlipTime is a setting, not measured. Ship script ~99.6k.
+- Follow-up (user): gyro P control (gain 2, max 1.5 rad/s) overshot twice on 180
+  degree turns of the large miner. Now per ship axis rate = min(gain x error,
+  sqrt(1.4 x alpha x error)); alpha = `_gyroTorque` (angular accel x mass, saved as
+  GyroTorque) learned every 30 ticks while an axis is commanded > 0.15 rad/s away
+  from its rotation. `FlipTime` property uses it (180 degrees, 20 % + 2 s), the
+  setting only until measured. Simulated (`gyrosim.py`, torque-limited gyros):
+  old 84-156 degree overshoot, new ~1 degree, learned within the first turn.
+  Dodge (user: accelerating sideways is often cheaper than stopping): guard hit
+  closer than 1.3 stopping distances -> if 2 x needed lateral offset / t^2 <
+  min(SideAccel, limit) x BrakeSafety (x 0.5 if stopping is still possible), a
+  waypoint beside the obstacle (clearance x DetourFactor) is inserted and the rest
+  is replanned from it (`_dodge`, `_dodging`; planning from the ship would ignore
+  the obstacle, since the ship is inside its clearance). Simulated
+  (`dodgesim.py`): rocks seen 3-6 km ahead at 100 m/s with 1 m/s² braking are
+  now passed 165-233 m clear instead of a collision after a failed stop.
+- Emergency evasion (user flies 300 m/s): when stopping in time is impossible
+  and the plain dodge is not enough (not for planets), `_evading`: gyros turn the
+  strongest side (`BestThrust`) towards `_evadeDir`, target velocity = v + (aside -
+  motion) x 1000 at unlimited accel, until the obstacle is passed or the path
+  clears it, then replanned from a point outside its clearance (`_dodge`). Guard
+  paused meanwhile. Guard look distance capped at `GuardRange` 8 km (before: up to
+  1.5 stopping distances, tens of km at 300 m/s = 1 s camera charge per 2 km).
+  Simulated (`evadesim.py`, per-axis saturation, turning 0.03-0.5 rad/s², 6 km):
+  390-840 m clear where stopping hit the rock. An estimate of the reach (turn time
+  + thrust) was too pessimistic, so the evasion is always used when stopping fails.
+- Script start: `_zoneProvisional = PlanetZones` (counts from the loaded map), so
+  entries made before the first gravity contact are relabelled if the remembered
+  zone was wrong (zone change while the script was off).
+- User (TSE editor): RSS bodies are nested (Sun > Earth > Moon); 69 km above the
+  Moon the Moon's markers are in another zone, i.e. likely ORBIT and SURFACE zone
+  per body. Open: does the surface zone keep the planet centre at the same
+  coordinates (same zone key) but rotate with the planet? `HandleTeleport` assumes
+  coordinates still hold within one key. Diagnostic: PB info shows the zone key
+  and the last teleport (jump, old > new zone, centre moved, turned about centre).
+- Test: in the Moon's gravity the PB info showed "Zone: space", last teleport
+  83 km "space > space". Zones had never switched on: `_planetZonesSeen` was only
+  set by a teleport into or out of gravity, and this (new) PB's first teleport
+  happened outside gravity. Now any teleport switches zones on.
+- Moon test: orbit and surface zone have the SAME centre key ("P29853,-29355,-390"
+  before and after an 83 km teleport), but different coordinates: a dock taught
+  in the orbit zone, deposits on the surface, GO back -> jump planned 90 degrees
+  off. Now zones are key (orbit) and key + "S" (surface): a same-key teleport
+  inwards (radial velocity < 0) = surface, and the edge radius is stored as
+  `_zoneRadii[key + "S"]`, deciding later (> 1 km from it). StartZoneGoal goes down
+  to 1 km below the edge (unknown: 3 km above the ground) for key -> key + "S".
+  Airless planets: air measured <= AirDetected inside the assumed atmosphere ->
+  `AtmosphereRadius = -1` (no limit); hydrogen-only ships cannot measure air.
+- Moon test 2: GO from the surface zone to the base (orbit zone) climbed towards
+  1000 km (ETA > 99 h), jumped, and afterwards showed 130,000 km to go: the jump
+  crossed the zone edge and RSS moved the ship in the same tick, so the single
+  position jump counted as the jump only. Now a jump that did not move the ship
+  along `_jumpDirection` (cos < 0.98) is also a teleport; a teleport out of a
+  surface zone with no known planet near gives its orbit zone; the edge is not
+  learned from jumps; leaving a surface zone climbs only to 2 km above its
+  learned edge.
+- Zone flights started outside gravity (base in the Moon's orbit zone -> deposit in
+  its surface zone, or back) said "use track or fly yourself": StartZoneGoal needed
+  the planet from gravity. Now `ZoneCenter` takes the centre of the zone's planet
+  from the map (any zone, same centre in orbit and surface zone).
+- Zones are now EXPERIMENTAL and opt-in only (`PlanetZones=true`); the automatic
+  switch-on at the first teleport is removed (user: star gate mods or a carrier's
+  jump also teleport). Earth -> Moon base test failed again: after a teleport
+  outside gravity `NearbyPlanet` compares the position with planet centres from
+  other zones' coordinates (meaningless), picked the Earth's key. The user asked
+  the RSS author for a PB API (zone id, frame conversion, bodies); wait for it.
+- User test: with PlanetZones=false the base (recorded earlier in a zone) could not
+  be docked ("other zone"). `Zone()` maps every zone read from Storage, map
+  import and dock data to "" while PlanetZones is off (applied at load, so after
+  a script restart). Obstacles keep their zone (other frames: phantom planets).
+- Landing test (`land GPS:` to an NPC outpost, ApproachBuffer 200): ~400 m above
+  the ground the guard switched between "Obstacle ahead (rock), going around" and
+  descending. On the last leg a planet hit counted as the target ground only if
+  `FindObstacle(hit.EntityId)` matched and `PlanetAt(final)` was that entry; now
+  any planet hit on the last leg means "stop earlier". Not verified in game.
+- Next test: `land GPS:` ended with "Arrived" ~250 m above the GPS: `Land()` set
+  `_landAfterRoute` only if the mode was Approach, but the start was waiting for
+  camera charge (`_pendingStart`). `land` stopped ~100 m above the ground: hover
+  height was 1.5 x ShipRadius + 10 (large ship), so the 1.2 m grid needed minutes
+  of charge. Now hover = max footprint half width + half height + 5 m, spacing
+  grows so that at most ~2500 rays are cast, scan starts within 5 m of the spot.
+  User: third spot accepted, landed on a slope without problems. The map now shows
+  the landing like docking (`DockTitle` "LANDING", `DockPhaseText` = `_landState`,
+  e.g. "spot 2: scanning 45%", "descending, 12 m"); `_mode >= Mode.Dock` covers
+  Dock, Path and Land on the map.
+- Earth base test: path docking said "Docked" but the thrusters stayed on and a
+  later goto did not undock: `CheckDocking` runs once a second (UpdateShipStatus),
+  `PathVelocity` had already set Mode.Manual, nobody sat in a cockpit, so the
+  connection counted as `_carried`. Now a connection at the known dock (grid id,
+  < 5 m from `_dockPosition`) is always ours. After a manual disconnect the next
+  dock flight hovered ~400 m up, "Obstacle ahead (Static Grid ...), stopping in
+  front of it" in a loop: the flight to the start of the recorded way used
+  StartGoal(dock: false), so `IsBaseHit` was not applied; now also for
+  `_pathAfterRoute && _pathDock`. User's landing settings: MaxSlope 20, MaxBump 4.
+- Minifier step 7 (`MergeFields`) merges same-type instance field and const
+  declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character
   limit), images (mock-ups/diagrams, not screenshots) and their generators. The
   user wants the disclaimer "code written 100% by Claude Opus 5.5, tested in game
   by me" at the top of the Workshop text.
+
+- Landing (`Landing.cs`, `Mode.Land`): `track` was removed for room (user's choice).
+  `land` / `land GPS:` (GoToGps + `_landAfterRoute`). Phases: 0 to a hover spot
+  (1.5 x ShipRadius + 10 m above ground from TryGetPlanetElevation), 1 ground scan
+  (rays 1.2 m apart over the ship box seen from above + 3 m; user found the first
+  4 m grid too coarse. Up to 40 rays or deviation checks per tick, limited by
+  camera charge (waits while a camera facing the point charges); plane sums are
+  accumulated per hit and the deviation pass runs 40 points per tick, so
+  thousands of points stay below the instruction limit. Simulated `rocksim.py`,
+  `landscan.py`: every boulder >= 3 m across hit, none taller than 1.25 m missed),
+  accept if seen >= 3/4, no holes, residual <= MaxBump (1 m), slope <= MaxSlope and tilted
+  only if the weakest side gives 1.2 x g sin(slope); else golden-angle spiral, 12
+  tries. 2 turning (level below 3 degrees, else up = plane normal), 3 vertical
+  descent, gap = lowest gear above the plane, v = min(sqrt(b g) + 0.3, 0.3 + 0.3 g)
+  with g = gap - 1 at full thrust (maxAccel unlimited; scratchpad `descent.py`:
+  ~0.3 m/s touchdown for 0.5-8 m/s² braking, lag 0.5 s; without the linear cap
+  3.7 m/s at 8 m/s²), gears ReadyToLock -> Lock(); ends when locked or still for
+  2 s within 1.5 m. Requires landing gear. Not flown in game.
+  User's ship with inverted-V wings reaching far behind the hull: the footprint is
+  the grid box, so the wings are covered if the cameras reach there.
+  Planned later: stage 2 recall via a rover companion script, stage 3 rover pickup.
+- Size: ~99,840 of 100,000 after landing (messages were shortened, the teleport
+  diagnostic lost its "centre moved/turned" part, `Put()`/`Line()` wrap the
+  status text StringBuilder calls). Anything new needs savings first,
+  or a second PB (user's fallback idea).
 
 ## Open ideas / next steps
 

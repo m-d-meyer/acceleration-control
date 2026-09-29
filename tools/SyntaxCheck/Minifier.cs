@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 
 // Shortens the names of everything the script declares itself (fields,
 // methods, properties, locals, parameters, nested types, enum members) and
@@ -125,6 +127,8 @@ static class Minifier
             string target = pair.Value[0].ToString();
             if (pair.Value.Count * (target.Length - 3) < 60 + target.Length)
                 continue;       // not worth a wrapper
+            if (!Allowed(method.ReturnType, tree, bodyStart) || method.Parameters.Any(p => !Allowed(p.Type, tree, bodyStart)))
+                continue;
             string name;
             do name = ShortName(counter++);
             while (otherNames.Contains(name) || SyntaxFacts.GetKeywordKind(name) != SyntaxKind.None
@@ -165,6 +169,8 @@ static class Minifier
             string target = pair.Value[0].ToString();
             if (pair.Value.Count * (target.Length - 2) < 30 + 2 * target.Length)
                 continue;
+            if (!Allowed(pair.Key is IFieldSymbol ft ? ft.Type : ((IPropertySymbol)pair.Key).Type, tree, bodyStart))
+                continue;
             string name;
             do name = ShortName(counter++);
             while (otherNames.Contains(name) || SyntaxFacts.GetKeywordKind(name) != SyntaxKind.None
@@ -173,7 +179,7 @@ static class Minifier
                 SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
             var type = pair.Key is IFieldSymbol fs ? fs.Type : ((IPropertySymbol)pair.Key).Type;
             bool isConst = pair.Key is IFieldSymbol c && c.IsConst;
-            wrappers.Append((isConst ? "const " : "static ") + (pair.Key is IPropertySymbol ? "IFormatProvider" : type.ToDisplayString(format)) + " " + name + "=" + target + ";\n");
+            wrappers.Append((isConst ? "const " : "static ") + (pair.Key is IPropertySymbol ? type.ToDisplayString() : type.ToDisplayString(format)) + " " + name + "=" + target + ";\n");
             foreach (var access in pair.Value)
                 edits.Add((access.SpanStart, access.Span.Length, name));
         }
@@ -189,7 +195,46 @@ static class Minifier
             }
         var renamed = sb.ToString();
         var body = renamed.Substring(bodyStart, renamed.LastIndexOf('}') - bodyStart) + "\n" + wrappers;
-        return Compact(CSharpSyntaxTree.ParseText(body, new CSharpParseOptions(LanguageVersion.CSharp6, kind: SourceCodeKind.Script)));
+        return Compact(CSharpSyntaxTree.ParseText(MergeFields(body), new CSharpParseOptions(LanguageVersion.CSharp6, kind: SourceCodeKind.Script)));
+    }
+
+    // 7. Fields of the script class with the same type are declared together:
+    //    'double a;double b=1;' -> 'double a,b=1;' (consts likewise). Instance
+    //    field initializers cannot refer to other instance fields, and consts
+    //    are resolved by the compiler, so the order does not matter. Static
+    //    fields keep their place (their initializers run in order).
+    static string MergeFields(string body)
+    {
+        var options = new CSharpParseOptions(LanguageVersion.CSharp6, kind: SourceCodeKind.Script);
+        var root = CSharpSyntaxTree.ParseText(body, options).GetRoot();
+        var groups = new Dictionary<string, List<string>>();
+        var remove = new List<TextSpan>();
+        foreach (var field in root.ChildNodes().OfType<FieldDeclarationSyntax>())
+        {
+            var modifiers = field.Modifiers.Select(m => m.Text).ToList();
+            if (field.AttributeLists.Count > 0 || modifiers.Any(m => m != "const"))
+                continue;
+            string key = (modifiers.Count > 0 ? "const " : "") + field.Declaration.Type.ToString();
+            if (!groups.TryGetValue(key, out var list))
+                groups[key] = list = new List<string>();
+            list.AddRange(field.Declaration.Variables.Select(v => v.ToString()));
+            remove.Add(field.Span);
+        }
+        var sb = new StringBuilder(body);
+        foreach (var span in remove.OrderByDescending(r => r.Start))
+            sb.Remove(span.Start, span.Length);
+        foreach (var group in groups)
+            sb.Append("\n" + group.Key + " " + string.Join(",", group.Value) + ";");
+        return sb.ToString();
+    }
+
+    // The game only accepts whitelisted types (e.g. IFormatProvider is
+    // prohibited, CultureInfo is not). Generated code may only name types the
+    // script itself already names, which the game has accepted.
+    static bool Allowed(ITypeSymbol type, SyntaxTree tree, int bodyStart)
+    {
+        return type.SpecialType != SpecialType.None
+            || Regex.IsMatch(tree.GetText().ToString().Substring(bodyStart), @"\b" + Regex.Escape(type.Name) + @"\b");
     }
 
     static bool IsOwnDeclaration(SyntaxToken token)
