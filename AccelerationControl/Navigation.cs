@@ -960,9 +960,9 @@ namespace IngameScript
         {
             double along = Vector3D.Dot(hit.HitPosition.Value - position, direction);
             double stopDistance = _currentSpeed * _currentSpeed / (2 * Math.Max(BrakeAccel(direction), 0.1));
-            if (_dockAfterRoute && IsBaseHit(hit))
+            if ((_dockAfterRoute || _pathAfterRoute && _pathDock) && IsBaseHit(hit))
             {
-                // Flying to the base: the base and the rock it stands on are
+                // Flying to the base (or the start of the recorded way in): the base and the rock it stands on are
                 // expected close to the approach point (docking has its own checks).
                 // Behind the stop point they do not matter.
                 if (along - ShipRadius > remaining + 5)

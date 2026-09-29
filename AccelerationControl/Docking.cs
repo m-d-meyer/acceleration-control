@@ -78,8 +78,11 @@ namespace IngameScript
                             ActivateDock(d);
                 if (!_connectedIds.Contains(id))
                 {
-                    bool ours = _dockChecked ? _mode == Mode.Dock || _mode == Mode.Path || FindActiveController() != null
-                        : _dockKnown && other == _dockGridId && _dockZone == _zone && Vector3D.Distance(c.OtherConnector.GetPosition(), _dockPosition) < 5;
+                    // Ours: docked by the pilot or the script, or at the known dock
+                    // (this check runs once a second, when the script's docking may
+                    // already have ended and nobody sits in a cockpit).
+                    bool ours = _dockChecked && (_mode == Mode.Dock || _mode == Mode.Path || FindActiveController() != null)
+                        || _dockKnown && other == _dockGridId && _dockZone == _zone && Vector3D.Distance(c.OtherConnector.GetPosition(), _dockPosition) < 5;
                     if (ours && !docked && !_wasConnected)
                     {
                         RecordDock(c);

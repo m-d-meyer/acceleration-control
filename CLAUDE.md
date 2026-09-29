@@ -399,6 +399,15 @@ The README describes all commands and Custom Data options for players.
   the landing like docking (`DockTitle` "LANDING", `DockPhaseText` = `_landState`,
   e.g. "spot 2: scanning 45%", "descending, 12 m"); `_mode >= Mode.Dock` covers
   Dock, Path and Land on the map.
+- Earth base test: path docking said "Docked" but the thrusters stayed on and a
+  later goto did not undock: `CheckDocking` runs once a second (UpdateShipStatus),
+  `PathVelocity` had already set Mode.Manual, nobody sat in a cockpit, so the
+  connection counted as `_carried`. Now a connection at the known dock (grid id,
+  < 5 m from `_dockPosition`) is always ours. After a manual disconnect the next
+  dock flight hovered ~400 m up, "Obstacle ahead (Static Grid ...), stopping in
+  front of it" in a loop: the flight to the start of the recorded way used
+  StartGoal(dock: false), so `IsBaseHit` was not applied; now also for
+  `_pathAfterRoute && _pathDock`. User's landing settings: MaxSlope 20, MaxBump 4.
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character
