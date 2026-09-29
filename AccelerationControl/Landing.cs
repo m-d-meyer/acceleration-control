@@ -17,9 +17,9 @@ namespace IngameScript
         // -----------------------------------------------------------------
 
         const double LandMargin = 3;        // m around the footprint
-        const double LandRough = 1;         // m, largest allowed deviation from the plane
         const double LandLevel = 0.05;      // rad (3 degrees): flatter ground is landed on level
         const int LandTries = 12;
+        const double LandStep = 1.2;        // m between rays: every boulder from 2.5 m across is hit (rocksim.py)
 
         bool _landAfterRoute;
         int _landPhase, _landTry, _landIndex, _landSeen, _landHoles, _landStill;   // phase: 0 to the spot, 1 scanning, 2 turning, 3 down
@@ -27,6 +27,8 @@ namespace IngameScript
         double _landExt1, _landExt2, _landH, _landB, _landC;       // plane: height = H + B u + C v above the spot
         int _landN1, _landN2;
         readonly List<Vector3D> _landHits = new List<Vector3D>();
+        double[] _landSum = new double[8];      // sums u, v, h, uu, uv, vv, uh, vh of the hits
+        double _landRough;
         string _landState = "";
 
         // Height of the ship's centre above the ground while scanning: the
@@ -149,68 +151,98 @@ namespace IngameScript
                 _landExt1 = Math.Max(_landExt1, Math.Abs(Vector3D.Dot(p, _landE1)) + LandMargin);
                 _landExt2 = Math.Max(_landExt2, Math.Abs(Vector3D.Dot(p, _landE2)) + LandMargin);
             }
-            // Rays about 4 m apart, at most 9 x 9.
-            _landN1 = Math.Min((int)(_landExt1 / 2) + 2, 9);
-            _landN2 = Math.Min((int)(_landExt2 / 2) + 2, 9);
+            _landN1 = (int)(_landExt1 * 2 / LandStep) + 2;
+            _landN2 = (int)(_landExt2 * 2 / LandStep) + 2;
             _landHits.Clear();
+            _landSum = new double[8];
             _landIndex = _landSeen = _landHoles = 0;
+            _landRough = 0;
             _landPhase = 1;
-            _landState = "scanning the ground";
         }
 
-        // One ray per tick towards a point 20 m below the expected ground; waits
-        // while a camera that looks there is still charging.
+        // Rays towards points 20 m below the expected ground, as many per tick as
+        // the cameras have charged (waits while a camera that looks there is
+        // charging); then the plane from the sums and, 40 points per tick, the
+        // largest deviation from it (thousands of points in one tick would hit
+        // the instruction limit).
         void GroundScanStep()
         {
-            if (_landIndex < _landN1 * _landN2)
-            {
-                double u = _landExt1 * (2.0 * (_landIndex % _landN1) / (_landN1 - 1) - 1), v = _landExt2 * (2.0 * (_landIndex / _landN1) / (_landN2 - 1) - 1);
-                Vector3D point = _landSpot + _landE1 * u + _landE2 * v - GroundUp * (LandHeight + 20);
-                foreach (IMyCameraBlock camera in _cameras)
-                {
-                    if (!camera.IsWorking || !LooksAt(camera, point))
-                        continue;
-                    camera.EnableRaycast = true;
-                    if (!camera.CanScan(point))
-                        return;
-                    MyDetectedEntityInfo hit = Cast(camera, point);
-                    _landSeen++;
-                    if (hit.IsEmpty() || !hit.HitPosition.HasValue)
-                        _landHoles++;       // no ground: a drop or a hole
-                    else if (!IsOwnHit(hit))
-                        _landHits.Add(hit.HitPosition.Value);
-                    break;
-                }
-                _landIndex++;
-                return;
-            }
             int total = _landN1 * _landN2, n = _landHits.Count;
-            if (_landSeen < total * 3 / 4 || n < 6)
-            {
-                _mode = Mode.Manual;
-                _message = string.Format("Down cameras saw {0} of {1} ground points", _landSeen, total);
-                return;
-            }
-            // Least squares plane height = a + b u + c v through the hits.
-            double su = 0, sv = 0, sh = 0, suu = 0, suv = 0, svv = 0, suh = 0, svh = 0, rough = 0;
             Vector3D up = GroundUp;
-            foreach (Vector3D p in _landHits)
+            for (int k = 0; k < 40; k++)
             {
-                Vector3D d = p - _landSpot;
-                double u = Vector3D.Dot(d, _landE1), v = Vector3D.Dot(d, _landE2), h = Vector3D.Dot(d, up);
-                su += u; sv += v; sh += h; suu += u * u; suv += u * v; svv += v * v; suh += u * h; svh += v * h;
+                if (_landIndex < total)
+                {
+                    double u = _landExt1 * (2.0 * (_landIndex % _landN1) / (_landN1 - 1) - 1), v = _landExt2 * (2.0 * (_landIndex / _landN1) / (_landN2 - 1) - 1);
+                    Vector3D point = _landSpot + _landE1 * u + _landE2 * v - up * (LandHeight + 20);
+                    IMyCameraBlock use = null;
+                    bool faced = false;
+                    foreach (IMyCameraBlock camera in _cameras)
+                        if (camera.IsWorking && LooksAt(camera, point))
+                        {
+                            faced = camera.EnableRaycast = true;
+                            if (camera.CanScan(point))
+                            {
+                                use = camera;
+                                break;
+                            }
+                        }
+                    if (faced && use == null)
+                        break;
+                    if (use != null)
+                    {
+                        MyDetectedEntityInfo hit = Cast(use, point);
+                        _landSeen++;
+                        if (hit.IsEmpty() || !hit.HitPosition.HasValue)
+                            _landHoles++;       // no ground: a drop or a hole
+                        else if (!IsOwnHit(hit))
+                        {
+                            Vector3D d = hit.HitPosition.Value - _landSpot;
+                            _landHits.Add(hit.HitPosition.Value);
+                            u = Vector3D.Dot(d, _landE1);
+                            v = Vector3D.Dot(d, _landE2);
+                            double h = Vector3D.Dot(d, up);
+                            double[] add = { u, v, h, u * u, u * v, v * v, u * h, v * h };
+                            for (int i = 0; i < 8; i++)
+                                _landSum[i] += add[i];
+                        }
+                    }
+                    if (++_landIndex == total)
+                    {
+                        n = _landHits.Count;
+                        if (_landSeen < total * 3 / 4 || n < 6)
+                        {
+                            _mode = Mode.Manual;
+                            _message = string.Format("Down cameras saw {0} of {1} ground points", _landSeen, total);
+                            return;
+                        }
+                        // Least squares plane height = H + B u + C v through the hits.
+                        double[] m = _landSum;
+                        double su = m[0] / n, sv = m[1] / n, sh = m[2] / n, suu = m[3] - n * su * su, suv = m[4] - n * su * sv,
+                            svv = m[5] - n * sv * sv, suh = m[6] - n * su * sh, svh = m[7] - n * sv * sh, det = Math.Max(suu * svv - suv * suv, 1e-6);
+                        _landB = (suh * svv - svh * suv) / det;
+                        _landC = (svh * suu - suh * suv) / det;
+                        _landH = sh - _landB * su - _landC * sv;
+                    }
+                }
+                else if (_landIndex - total < n)
+                    _landRough = Math.Max(_landRough, Math.Abs(PlaneGap(_landHits[_landIndex++ - total])));
+                else
+                {
+                    Evaluate();
+                    return;
+                }
             }
-            su /= n; sv /= n; sh /= n;
-            suu -= n * su * su; suv -= n * su * sv; svv -= n * sv * sv; suh -= n * su * sh; svh -= n * sv * sh;
-            double det = Math.Max(suu * svv - suv * suv, 1e-6);
-            _landB = (suh * svv - svh * suv) / det;
-            _landC = (svh * suu - suh * suv) / det;
-            _landH = sh - _landB * su - _landC * sv;
-            foreach (Vector3D p in _landHits)
-                rough = Math.Max(rough, Math.Abs(PlaneGap(p)));
+            _landState = "scanning " + 100 * _landIndex / (total + n + 1) + "%";
+        }
+
+        void Evaluate()
+        {
+            Vector3D up = GroundUp;
+            double rough = _landRough;
             double slope = Math.Atan(Math.Sqrt(_landB * _landB + _landC * _landC));
             // A tilted landing needs sideways thrust to hold the slope part of gravity.
-            if (_landHoles == 0 && rough <= LandRough && slope <= MathHelper.ToRadians(_maxSlope)
+            if (_landHoles == 0 && rough <= _maxBump && slope <= MathHelper.ToRadians(_maxSlope)
                 && (slope < LandLevel || _weakestAccel > 1.2 * _gravity.Length() * Math.Sin(slope)))
             {
                 _landUp = slope < LandLevel ? up : Vector3D.Normalize(up - _landE1 * _landB - _landE2 * _landC);

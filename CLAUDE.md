@@ -390,9 +390,13 @@ The README describes all commands and Custom Data options for players.
 - Landing (`Landing.cs`, `Mode.Land`): `track` was removed for room (user's choice).
   `land` / `land GPS:` (GoToGps + `_landAfterRoute`). Phases: 0 to a hover spot
   (1.5 x ShipRadius + 10 m above ground from TryGetPlanetElevation), 1 ground scan
-  (grid up to 9 x 9 over the ship box seen from above + 3 m, one ray per tick,
-  waits while a camera facing the point charges), plane fit (least squares),
-  accept if seen >= 3/4, no holes, residual <= 1 m, slope <= MaxSlope and tilted
+  (rays 1.2 m apart over the ship box seen from above + 3 m; user found the first
+  4 m grid too coarse. Up to 40 rays or deviation checks per tick, limited by
+  camera charge (waits while a camera facing the point charges); plane sums are
+  accumulated per hit and the deviation pass runs 40 points per tick, so
+  thousands of points stay below the instruction limit. Simulated `rocksim.py`,
+  `landscan.py`: every boulder >= 3 m across hit, none taller than 1.25 m missed),
+  accept if seen >= 3/4, no holes, residual <= MaxBump (1 m), slope <= MaxSlope and tilted
   only if the weakest side gives 1.2 x g sin(slope); else golden-angle spiral, 12
   tries. 2 turning (level below 3 degrees, else up = plane normal), 3 vertical
   descent, gap = lowest gear above the plane, v = min(sqrt(b g) + 0.3, 0.3 + 0.3 g)
@@ -403,8 +407,9 @@ The README describes all commands and Custom Data options for players.
   User's ship with inverted-V wings reaching far behind the hull: the footprint is
   the grid box, so the wings are covered if the cameras reach there.
   Planned later: stage 2 recall via a rover companion script, stage 3 rover pickup.
-- Size: ~99,960 of 100,000 after landing (messages were shortened, the teleport
-  diagnostic lost its "centre moved/turned" part). Anything new needs savings first,
+- Size: ~99,840 of 100,000 after landing (messages were shortened, the teleport
+  diagnostic lost its "centre moved/turned" part, `Put()`/`Line()` wrap the
+  status text StringBuilder calls). Anything new needs savings first,
   or a second PB (user's fallback idea).
 
 ## Open ideas / next steps

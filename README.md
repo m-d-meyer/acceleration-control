@@ -166,6 +166,7 @@ first run. Edit them there and run `reload`.
 | `CompensateWind`     | `true`    | Measure wind, drag and lift and compensate them during flights |
 | `WaterLevel`         | `0`       | Water surface above sea level (water mod); planet routes cruise at least 200 m above it (m) |
 | `MaxSlope`           | `15`      | Steepest ground `land` accepts (degrees); from 3 degrees on the ship lands tilted along the slope |
+| `MaxBump`            | `1`       | Largest bump or dip `land` accepts under the ship, relative to the fitted ground plane (m); about the ship's belly clearance |
 
 ## Drive assists
 
@@ -491,16 +492,19 @@ down.
 1. The ship moves to a point 1.5 ship radii + 10 m above the ground (from the
    game's surface height) and holds its heading.
 2. The cameras scan the ground under the ship's **whole footprint**: its bounding
-   box seen from above, plus 3 m all round, on a grid of up to 9 x 9 rays about
-   4 m apart. Wings, outriggers and anything else that sticks out are inside the
+   box seen from above, plus 3 m all round, on a grid of rays 1.2 m apart (a
+   20 x 30 m footprint: about 500 rays). As many rays per tick as the cameras have
+   charged (2 km of range per second each), so it takes a few seconds with several
+   cameras and up to a minute or more for a large ship with one; the control page
+   shows the progress. Wings, outriggers and anything else that sticks out are inside the
    box, so they are covered too (the rays must reach them: put cameras under the
    wings of wide ships).
 3. A plane is fitted through the hits. The spot is taken if
    - the cameras saw at least 3/4 of the points (else the landing stops and asks for
      cameras facing down),
    - no ray went through without hitting ground (a drop or a hole),
-   - no hit lies more than 1 m above or below the plane (boulders, trees, parked
-     ships, ledges),
+   - no hit lies more than `MaxBump` (1 m) above or below the plane (boulders,
+     trees, parked ships, ledges),
    - the slope is at most `MaxSlope`, and for a tilted landing the ship's weakest
      side can push 1.2 times the part of gravity along the slope.
    Otherwise the next spot on a spiral around the target is tried (up to 12, spread
@@ -513,15 +517,20 @@ down.
 
 To take off, use `goto`/GO: flights unlock the landing gear and start upwards.
 
-Simulated (scratchpad): the plane fit finds slopes of 0-20 degrees within 0.3
-degrees on wavy ground and rejects a 1.5 m boulder in the footprint; the descent
+Simulated (scratchpad `rocksim.py`, `landscan.py`): with rays 1.2 m apart every
+boulder from 3 m across is hit, from 2.5 m 97 % (with 4 m spacing only 12-59 %).
+On 600 random hilly spots with one boulder of 2-6 m each, no boulder taller than
+1.25 m was missed (the missed ones were 1.0-1.2 m high, at the `MaxBump` limit); a
+4 m grid missed 52 of 232. On hilly ground a large ship finds about half of the
+spots even enough, so the spiral search matters. The plane fit finds slopes within
+0.3 degrees; the descent
 touches down at about 0.3 m/s with 0.5-8 m/s² of braking and 0.5 s thruster lag
 (without the cap near the ground up to 3.7 m/s). Not
 flown in game yet.
 
 Not covered: the ship's sides above the ground (a wing next to a cliff wall or a
-tree taller than the ship's belly beside the footprint margin), objects between the
-rays, and ground that moves (water, other ships).
+tree taller than the ship's belly beside the footprint margin), rocks smaller than
+about 2.5 m across (between the rays), and ground that moves (water, other ships).
 
 ### Real Solar Systems (experimental, off by default)
 

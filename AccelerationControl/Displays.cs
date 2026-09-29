@@ -35,6 +35,16 @@ namespace IngameScript
         readonly List<IMyTextPanel> _mapPanels = new List<IMyTextPanel>();
         readonly List<IMyTextPanel> _listPanels = new List<IMyTextPanel>();
         readonly StringBuilder _text = new StringBuilder();
+
+        void Put(string format, params object[] args)
+        {
+            _text.AppendFormat(format, args);
+        }
+
+        void Line(string text = "")
+        {
+            _text.AppendLine(text);
+        }
         readonly List<KeyValuePair<string, double>> _oreSorted = new List<KeyValuePair<string, double>>();
 
         void FindDisplays()
@@ -108,27 +118,27 @@ namespace IngameScript
             double mass = info != null ? info.CalculateShipMass().PhysicalMass : 0;
 
             _text.Clear();
-            _text.AppendLine("Acceleration Control");
-            _text.AppendLine(_enabled ? "Status: ON" : "Status: OFF (vanilla thrust)");
-            _text.AppendFormat("Limit: {0:0.00} m/s² ({1:0.00} g)\n", _limit, _limit / 9.81);
-            _text.AppendLine("Dampeners: " + (_limitDampeners ? "limited" : "full thrust"));
+            Line("Acceleration Control");
+            Line(_enabled ? "Status: ON" : "Status: OFF (vanilla thrust)");
+            Put("Limit: {0:0.00} m/s² ({1:0.00} g)\n", _limit, _limit / 9.81);
+            Line("Dampeners: " + (_limitDampeners ? "limited" : "full thrust"));
             AppendModeStatus();
             AppendPlanetStatus();
 
             if (mass > 0)
             {
-                _text.AppendLine("Max. acceleration:");
-                _text.AppendFormat(" Fwd {0:0.0}  Back {1:0.0}\n", MaxAccel(2, 1, mass), MaxAccel(2, 0, mass));
-                _text.AppendFormat(" Up  {0:0.0}  Down {1:0.0}\n", MaxAccel(1, 0, mass), MaxAccel(1, 1, mass));
-                _text.AppendFormat(" Left {0:0.0}  Right {1:0.0}\n", MaxAccel(0, 1, mass), MaxAccel(0, 0, mass));
+                Line("Max. acceleration:");
+                Put(" Fwd {0:0.0}  Back {1:0.0}\n", MaxAccel(2, 1, mass), MaxAccel(2, 0, mass));
+                Put(" Up  {0:0.0}  Down {1:0.0}\n", MaxAccel(1, 0, mass), MaxAccel(1, 1, mass));
+                Put(" Left {0:0.0}  Right {1:0.0}\n", MaxAccel(0, 1, mass), MaxAccel(0, 0, mass));
             }
             else
             {
-                _text.AppendLine("No ship controller found");
+                Line("No ship controller found");
             }
 
             if (_message.Length > 0)
-                _text.AppendLine(_message);
+                Line(_message);
             return _text.ToString();
         }
 
@@ -136,48 +146,48 @@ namespace IngameScript
         void AppendPlanetStatus()
         {
             if (_zoneGoal)
-                _text.AppendLine("Waiting for the zone of " + _zoneGoalName);
+                Line("Waiting for the zone of " + _zoneGoalName);
             // Any measurable gravity is shown, also without a real planet (e.g. a
             // Real Solar Systems proxy).
             if (_planet == null && _gravity.LengthSquared() < 1e-6)
                 return;
-            _text.AppendFormat("Gravity {0:0.000} g", _gravity.Length() / 9.81);
+            Put("Gravity {0:0.000} g", _gravity.Length() / 9.81);
             if (_planet == null)
                 _text.Append("  no planet");
             else
                 _text.Append("  alt " + FormatDistance(Vector3D.Distance(ReferencePosition(), _planet.Center) - _planet.Radius));
             if (_air >= 0)
-                _text.AppendFormat("  air {0:0}%", _air * 100);
-            _text.AppendLine();
+                Put("  air {0:0}%", _air * 100);
+            Line();
             if (_disturbance.LengthSquared() > 0.01)
-                _text.AppendFormat("Wind/drag {0:0.0} m/s² compensated\n", _disturbance.Length());
+                Put("Wind/drag {0:0.0} m/s² compensated\n", _disturbance.Length());
         }
 
         void AppendModeStatus()
         {
             if (_scanPending)
-                _text.AppendFormat("Scanning... camera {0:0}%\n", ScanCharge() * 100);
+                Put("Scanning... camera {0:0}%\n", ScanCharge() * 100);
             switch (_mode)
             {
                 case Mode.Cruise:
-                    _text.AppendFormat("Cruise: {0:0.00} m/s (now {1:0.00})\n", _cruiseSpeed, _forwardSpeed);
+                    Put("Cruise: {0:0.00} m/s (now {1:0.00})\n", _cruiseSpeed, _forwardSpeed);
                     break;
                 case Mode.Jump:
-                    _text.AppendFormat("Jump {0}: {1}\n", FormatDistance(_jumpDistance), _jumpState);
+                    Put("Jump {0}: {1}\n", FormatDistance(_jumpDistance), _jumpState);
                     break;
                 case Mode.Dock:
                 case Mode.Path:
-                    _text.AppendLine(DockTitle + ": " + DockPhaseText());
+                    Line(DockTitle + ": " + DockPhaseText());
                     break;
                 case Mode.Land:
-                    _text.AppendLine("Landing: " + _landState + (_landPhase > 2 ? ", " + FormatDistance(_targetDistance) : ""));
+                    Line("Landing: " + _landState + (_landPhase > 2 ? ", " + FormatDistance(_targetDistance) : ""));
                     break;
                 case Mode.Approach:
-                    _text.AppendFormat("Approach {0}: {1}, {2:0} m/s\n", _targetName, FormatDistance(_remainingDistance), _currentSpeed);
-                    _text.AppendFormat("{0}, stopping distance {1}, {2}\n", _approachPhase, FormatDistance(_stopDistance), EtaText());
+                    Put("Approach {0}: {1}, {2:0} m/s\n", _targetName, FormatDistance(_remainingDistance), _currentSpeed);
+                    Put("{0}, stopping distance {1}, {2}\n", _approachPhase, FormatDistance(_stopDistance), EtaText());
                     break;
                 default:
-                    _text.AppendFormat("Cruise speed: {0:0.00} m/s (off)\n", _cruiseSpeed);
+                    Put("Cruise speed: {0:0.00} m/s (off)\n", _cruiseSpeed);
                     break;
             }
         }
@@ -185,47 +195,47 @@ namespace IngameScript
         string BuildStatusText()
         {
             _text.Clear();
-            _text.AppendLine("Ship Status");
+            Line("Ship Status");
 
             if (_cargoMaxVolume > 0)
             {
                 double fill = _cargoVolume / _cargoMaxVolume;
-                _text.AppendFormat("Cargo {0} {1,4:0}%  {2}\n", Bar(fill, 10), fill * 100, FormatMass(_cargoMass));
+                Put("Cargo {0} {1,4:0}%  {2}\n", Bar(fill, 10), fill * 100, FormatMass(_cargoMass));
                 AppendOres();
             }
 
             if (_batteryMax > 0)
             {
-                _text.AppendFormat("Battery  {0,4:0}%  ", _batteryStored / _batteryMax * 100);
+                Put("Battery  {0,4:0}%  ", _batteryStored / _batteryMax * 100);
                 if (_batteryNetOutput > 1e-6)
-                    _text.AppendFormat("{0}  -{1:0.00} MW\n", FormatTime(BatteryTimeRemaining()), _batteryNetOutput);
+                    Put("{0}  -{1:0.00} MW\n", FormatTime(BatteryTimeRemaining()), _batteryNetOutput);
                 else
-                    _text.AppendFormat("charging +{0:0.00} MW\n", -_batteryNetOutput);
+                    Put("charging +{0:0.00} MW\n", -_batteryNetOutput);
             }
 
             if (_reactors.Count > 0)
-                _text.AppendFormat("Uranium  {0}  {1}\n", FormatMass(_uranium), FormatTime(TimeRemaining(_uranium, _uraniumRate)));
+                Put("Uranium  {0}  {1}\n", FormatMass(_uranium), FormatTime(TimeRemaining(_uranium, _uraniumRate)));
 
             if (_hydrogenCapacity > 0)
-                _text.AppendFormat("Hydrogen {0,4:0}%  {1}  {2}\n", _hydrogen / _hydrogenCapacity * 100,
+                Put("Hydrogen {0,4:0}%  {1}  {2}\n", _hydrogen / _hydrogenCapacity * 100,
                     FormatVolume(_hydrogen), FormatTime(TimeRemaining(_hydrogen, _hydrogenRate)));
 
             if (_jumpMax > 0)
-                _text.AppendFormat("Jump     {0,4:0}%\n", _jumpStored / _jumpMax * 100);
+                Put("Jump     {0,4:0}%\n", _jumpStored / _jumpMax * 100);
 
             double total = _deltaVHydrogen + _deltaVElectric;
             if (total > 0)
             {
-                _text.AppendLine("Delta-v (estimate):");
+                Line("Delta-v (estimate):");
                 if (_deltaVHydrogen > 0)
-                    _text.AppendFormat(" Hydrogen {0,7:0} m/s{1}\n", _deltaVHydrogen, _hydrogenCalibrated ? "" : " *");
+                    Put(" Hydrogen {0,7:0} m/s{1}\n", _deltaVHydrogen, _hydrogenCalibrated ? "" : " *");
                 if (_deltaVElectric > 0)
-                    _text.AppendFormat(" Electric {0,7:0} m/s{1}\n", _deltaVElectric,
+                    Put(" Electric {0,7:0} m/s{1}\n", _deltaVElectric,
                         _reactors.Count > 0 && !_uraniumCalibrated ? " *" : "");
-                _text.AppendFormat(" Total    {0,7:0} m/s\n", total);
-                _text.AppendFormat(" = {0:0.#} trips at {1:0} m/s\n", total / TripDeltaV(), _maxSpeed);
+                Put(" Total    {0,7:0} m/s\n", total);
+                Put(" = {0:0.#} trips at {1:0} m/s\n", total / TripDeltaV(), _maxSpeed);
                 if (!_hydrogenCalibrated || (_reactors.Count > 0 && !_uraniumCalibrated))
-                    _text.AppendLine(" * not calibrated yet");
+                    Line(" * not calibrated yet");
             }
 
             return _text.ToString();
@@ -239,9 +249,9 @@ namespace IngameScript
             _oreSorted.Sort((a, b) => b.Value.CompareTo(a.Value));
 
             for (int i = 0; i < _oreSorted.Count && i < MaxOreLines; i++)
-                _text.AppendFormat("  {0,-10} {1,9}\n", _oreSorted[i].Key, FormatMass(_oreSorted[i].Value));
+                Put("  {0,-10} {1,9}\n", _oreSorted[i].Key, FormatMass(_oreSorted[i].Value));
             if (_oreSorted.Count > MaxOreLines)
-                _text.AppendFormat("  +{0} more\n", _oreSorted.Count - MaxOreLines);
+                Put("  +{0} more\n", _oreSorted.Count - MaxOreLines);
         }
 
         void WriteCockpitSurface(IMyTextSurfaceProvider provider, int index, string text)

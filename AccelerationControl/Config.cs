@@ -81,7 +81,7 @@ namespace IngameScript
         double _gravityFalloff = 7;
         bool _compensateWind = true;
         double _waterLevel = 0;
-        double _maxSlope = 15;
+        double _maxSlope = 15, _maxBump = 1;
         float _screenTextScale = 1;
 
         // ---- state ----
@@ -185,6 +185,7 @@ namespace IngameScript
             _compensateWind = Option("CompensateWind", _compensateWind);
             _waterLevel = Option("WaterLevel", _waterLevel);
             _maxSlope = Option("MaxSlope", _maxSlope);
+            _maxBump = Option("MaxBump", _maxBump);
             _screenTextScale = (float)MathHelper.Clamp(Option("ScreenTextScale", _screenTextScale), 0.5, 2);
 
             _ini.SetSectionComment(IniSection, " Units: m/s², m/s, m. Options: see README. Run 'reload' after editing.");
