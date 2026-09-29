@@ -247,7 +247,7 @@ namespace IngameScript
                     break;
                 case "stop":
                     _mode = Mode.Manual;
-                    _scanPending = _tracking = _zoneGoal = _pendingStart = false;
+                    _scanPending = _zoneGoal = _pendingStart = _landAfterRoute = false;
                     _afterUndock = null;
                     _undockPending = false;
                     break;
@@ -255,6 +255,7 @@ namespace IngameScript
                     HandleMarkCommand(parts);
                     break;
                 case "goto":
+                    _landAfterRoute = false;
                     if (parts.Length > 1)
                         GoToGps(argument.Substring(argument.IndexOf(' ') + 1));
                     else
@@ -266,8 +267,8 @@ namespace IngameScript
                 case "water":
                     HandleWaterCommand(value);
                     break;
-                case "track":
-                    HandleTrackCommand(parts.Length > 1 ? (value == "clear" ? "clear" : argument.Substring(argument.IndexOf(' ') + 1)) : null);
+                case "land":
+                    Land(parts.Length > 1 ? argument.Substring(argument.IndexOf(' ') + 1) : null);
                     break;
                 case "dock":
                     if (ChooseDock())

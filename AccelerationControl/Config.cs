@@ -80,10 +80,9 @@ namespace IngameScript
         double _atmosphereSpeed = 100;
         double _gravityFalloff = 7;
         bool _compensateWind = true;
-        double _zoneEntrySpeed = 100;
         double _waterLevel = 0;
+        double _maxSlope = 15;
         float _screenTextScale = 1;
-        double _zoneRadiusGuess = 200000;
 
         // ---- state ----
         double _limit;
@@ -184,10 +183,9 @@ namespace IngameScript
             _atmosphereSpeed = Option("AtmosphereSpeed", _atmosphereSpeed);
             _gravityFalloff = Option("GravityFalloff", _gravityFalloff);
             _compensateWind = Option("CompensateWind", _compensateWind);
-            _zoneEntrySpeed = Option("ZoneEntrySpeed", _zoneEntrySpeed);
             _waterLevel = Option("WaterLevel", _waterLevel);
+            _maxSlope = Option("MaxSlope", _maxSlope);
             _screenTextScale = (float)MathHelper.Clamp(Option("ScreenTextScale", _screenTextScale), 0.5, 2);
-            _zoneRadiusGuess = Option("ZoneRadiusGuess", _zoneRadiusGuess);
 
             _ini.SetSectionComment(IniSection, " Units: m/s², m/s, m. Options: see README. Run 'reload' after editing.");
             Me.CustomData = _ini.ToString();

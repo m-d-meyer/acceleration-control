@@ -17,6 +17,7 @@ Vanilla thrusters always fire at 100 %: an empty miner jumps around, a full one 
 [*][b]Navigation[/b]: GO to any map entry or GPS. Routes around known asteroids, cameras scan ahead (collision guard), braking planned for every corner, jump drive for long legs, ETA on screen
 [*][b]Docking[/b]: dock once by hand, then [i]dock[/i] replays your own way in - also into tight hangars. One dock per base, gates open over the antenna
 [*][b]Planets[/b]: climb, fly at cruise height, descend vertically, level flight in atmosphere, wind and drag compensated
+[*][b]Landing[/b]: [i]land[/i] scans the ground under the whole ship, picks a flat spot (or searches one nearby), lands level or along a gentle slope and locks the landing gear
 [*][b]Real Solar Systems[/b] mod: experimental zone support (off by default)
 [*]Flights go on when you leave the cockpit
 [/list]
@@ -42,6 +43,7 @@ All options are in the Custom Data; run [i]reload[/i] after editing.
 [tr][td]mark iron / mark iron here[/td][td]put a deposit on the map[/td][/tr]
 [tr][td]goto / goto GPS:...[/td][td]fly to the selected entry or a GPS[/td][/tr]
 [tr][td]dock / undock[/td][td]dock at the nearest known dock / leave it[/td][/tr]
+[tr][td]land / land GPS:...[/td][td]land below the ship / at a GPS[/td][/tr]
 [tr][td]stop[/td][td]cancel the current flight[/td][/tr]
 [tr][td]map send[/td][td]share the map with other ships[/td][/tr]
 [/table]
@@ -65,7 +67,7 @@ Flights on planets climb, follow the curvature at a cruise height above terrain 
 
 [h2]Limitations - please read[/h2]
 [list]
-[*]Tested in single player only. Planet flights and Real Solar Systems support were tested only briefly; multiplayer and dedicated servers never.
+[*]Tested in single player only. Planet flights and Real Solar Systems support were tested only briefly, landing not yet; multiplayer and dedicated servers never.
 [*]The script only knows what its cameras have hit. Raycasts often miss asteroids beyond ~6 km, asteroids are treated as spheres, ships and stations are only seen ahead of the ship. Few cameras = less protection.
 [*]Bases must stand still while docking. A moved base is found again when a camera sees it, a moving one cannot be followed.
 [*]The game may refuse a jump started by a script: then press Jump yourself when asked, the script continues afterwards.

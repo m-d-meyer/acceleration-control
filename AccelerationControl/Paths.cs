@@ -562,9 +562,7 @@ namespace IngameScript
 
         static string Dir(Vector3D d)
         {
-            return d.X.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) + ","
-                + d.Y.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) + ","
-                + d.Z.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+            return string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:0.####},{1:0.####},{2:0.####}", d.X, d.Y, d.Z);
         }
 
         List<PathPoint> ParsePath(string text)

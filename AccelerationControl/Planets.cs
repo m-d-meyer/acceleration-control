@@ -65,17 +65,7 @@ namespace IngameScript
         readonly List<IMyThrust> _ionThrusters = new List<IMyThrust>();
         double _air = -1;               // air density estimate 0..1, -1 = unknown (no suitable thrusters)
 
-        // Rendezvous with a moving proxy planet in space: samples of its GPS
-        // (Real Solar Systems keeps a moving copy of every GPS placed on a planet).
-        const int MaxTrackSamples = 3;
-        const double MinSampleSpacing = 3;          // s between samples
-        readonly List<Vector3D> _trackPositions = new List<Vector3D>();
-        readonly List<double> _trackTimes = new List<double>();
         readonly Dictionary<string, double> _zoneRadii = new Dictionary<string, double>();  // learned zone radius in proxy space
-        double _clock;                  // s since the script started
-        bool _tracking;
-        string _trackName = "";
-        Vector3D _trackVelocity;
 
         Vector3D _disturbance;          // external acceleration (wind, drag, lift), m/s^2
         Vector3D _thrustForce;          // total thrust force of the last tick, N
@@ -148,7 +138,6 @@ namespace IngameScript
             if (c == null)
                 return;
             _gravity = c.GetNaturalGravity();
-            _clock += MathHelper.Clamp(Runtime.TimeSinceLastRun.TotalSeconds, 0, 1);
             Vector3D position = ReferencePosition(), velocity = c.GetShipVelocities().LinearVelocity;
             Vector3D before = _lastPosition;
             foreach (IMyJumpDrive d in _jumpDrives)
@@ -235,17 +224,10 @@ namespace IngameScript
             if (teleported || hasPlanet)
                 _zoneProvisional = teleported && !hasPlanet && zone == "";
             bool changed = zone != _zone;
-            // For finding out how Real Solar Systems nests its zones (e.g. orbit
-            // and surface zone of one planet): what the last teleport did, shown
-            // in the programmable block's info. "turned" = angle about the planet
-            // centre between before and after (a rotating surface frame).
+            // What the last teleport did, shown in the programmable block's info.
             if (teleported)
                 _teleportInfo = "Last teleport: " + FormatDistance(Vector3D.Distance(before, position)) + ", zone " + (_zone == "" ? "space" : _zone)
-                    + " > " + (zone == "" ? "space" : zone) + (hasPlanet && _hadCenter ? ", centre moved " + FormatDistance(Vector3D.Distance(center, _lastCenter))
-                    + ", turned " + MathHelper.ToDegrees(Math.Acos(MathHelper.Clamp(Vector3D.Dot(Vector3D.Normalize(before - _lastCenter), Vector3D.Normalize(position - center)), -1, 1))).ToString("0.00") + " deg" : "");
-            _hadCenter = hasPlanet;
-            if (hasPlanet)
-                _lastCenter = center;
+                    + " > " + (zone == "" ? "space" : zone);
             if (changed)
                 SwitchZone(zone);
             if (teleported && _zoneProvisional)
@@ -254,15 +236,10 @@ namespace IngameScript
                 _provisionalObstacles = _obstacles.Count;
             }
             if (teleported)
-            {
-                if (_tracking)
-                    LearnZoneRadius(before);
                 OnTeleport(changed);
-            }
         }
 
-        bool _zoneProvisional, _dockProvisional, _hadCenter;
-        Vector3D _lastCenter;
+        bool _zoneProvisional, _dockProvisional;
         string _teleportInfo = "";
         int _provisionalDeposits, _provisionalObstacles;
 
@@ -337,7 +314,6 @@ namespace IngameScript
 
         void HandleTeleport(bool zoneChanged)
         {
-            _tracking = false;
             _observerReady = false;
             _disturbance = Vector3D.Zero;
             _replanPending = false;
@@ -428,153 +404,7 @@ namespace IngameScript
                 _message = (down ? "Down into the surface zone" : "Leaving the planet zone") + ", then on to " + name;
             }
             else
-                _message = name + " is in another zone: run 'track' with its moving GPS (twice, 10 s apart), or fly there yourself";
-        }
-
-        // -----------------------------------------------------------------
-        //  Rendezvous with a moving planet (proxy space)
-        // -----------------------------------------------------------------
-
-        // track GPS:...   add a sample of the moving GPS and fly to it once two are known
-        // track           continue with the samples known
-        // track clear     forget the samples
-        void HandleTrackCommand(string text)
-        {
-            if (text == "clear")
-            {
-                _trackPositions.Clear();
-                _trackTimes.Clear();
-                _tracking = false;
-                _message = "Tracking samples cleared";
-                return;
-            }
-            if (text != null)
-            {
-                int start = text.IndexOf("GPS:", StringComparison.OrdinalIgnoreCase);
-                string[] p = start >= 0 ? text.Substring(start).Split(':') : new string[0];
-                double x, y, z;
-                if (p.Length < 5 || !TryParseNumber(p[2], out x) || !TryParseNumber(p[3], out y) || !TryParseNumber(p[4], out z))
-                {
-                    _message = "Usage: track GPS:name:x:y:z:  (the planet's moving GPS, twice)";
-                    return;
-                }
-                if (p[1] != _trackName)
-                {
-                    _trackPositions.Clear();
-                    _trackTimes.Clear();
-                    _trackName = p[1];
-                }
-                int last = _trackTimes.Count - 1;
-                if (last >= 0 && _clock - _trackTimes[last] < MinSampleSpacing)
-                {
-                    _trackPositions.RemoveAt(last);     // pasted twice quickly: keep the newer one
-                    _trackTimes.RemoveAt(last);
-                }
-                _trackPositions.Add(new Vector3D(x, y, z));
-                _trackTimes.Add(_clock);
-                if (_trackPositions.Count > MaxTrackSamples)
-                {
-                    _trackPositions.RemoveAt(0);
-                    _trackTimes.RemoveAt(0);
-                }
-            }
-            if (_trackPositions.Count < 2)
-            {
-                _message = _trackPositions.Count == 0 ? "No samples: track GPS:..." : "Sample stored: paste the same GPS again in 10-30 s";
-                return;
-            }
-            if (_zone != "")
-            {
-                _message = "Tracking works in space only (the planets move there)";
-                return;
-            }
-            Vector3D position, velocity;
-            PredictTrack(_clock, out position, out velocity);
-            _route.Clear();
-            _route.Add(position);
-            _temporaryObstacles.Clear();
-            _dockAfterRoute = false;
-            bool waiting = _zoneGoal;
-            StartRoute(_trackName);
-            _zoneGoal = waiting;
-            _tracking = true;
-            _message = string.Format("Following {0}: moving at {1:0} m/s", _trackName, velocity.Length())
-                + (velocity.Length() > _maxSpeed * 0.9 ? ", faster than MaxSpeed allows to match!" : "");
-        }
-
-        // Position and velocity of the tracked GPS at time t: linear through the
-        // last two samples, a parabola through three (curved orbits). Pasting
-        // the GPS again during the flight refreshes the prediction.
-        void PredictTrack(double t, out Vector3D position, out Vector3D velocity)
-        {
-            int n = _trackPositions.Count;
-            if (n < 3)
-            {
-                Vector3D a = _trackPositions[n - 2], b = _trackPositions[n - 1];
-                double dt = Math.Max(_trackTimes[n - 1] - _trackTimes[n - 2], 1e-3);
-                velocity = (b - a) / dt;
-                position = b + velocity * (t - _trackTimes[n - 1]);
-                return;
-            }
-            // Lagrange polynomial through the three samples and its derivative.
-            position = velocity = Vector3D.Zero;
-            for (int i = 0; i < 3; i++)
-            {
-                double ti = _trackTimes[i], den = 1, num = 1, dnum = 0;
-                for (int j = 0; j < 3; j++)
-                {
-                    if (j == i)
-                        continue;
-                    den *= ti - _trackTimes[j];
-                    dnum = dnum * (t - _trackTimes[j]) + num;   // product rule
-                    num *= t - _trackTimes[j];
-                }
-                position += _trackPositions[i] * (num / den);
-                velocity += _trackPositions[i] * (dnum / den);
-            }
-        }
-
-        // Target velocity while following the moving planet: its own velocity plus
-        // an approach towards it. The speed relative to the planet is braked to
-        // ZoneEntrySpeed at the edge of its zone (learned at the first entry,
-        // ZoneRadiusGuess until then), because the zone change keeps that speed.
-        bool TrackVelocity(Vector3D velocity, out Vector3D targetVelocity)
-        {
-            Vector3D planetPosition, planetVelocity;
-            PredictTrack(_clock, out planetPosition, out planetVelocity);
-            _trackVelocity = planetVelocity;
-            _approachTarget = _route[0] = planetPosition;
-            Vector3D toTarget = planetPosition - ReferencePosition();
-            double distance = toTarget.Length();
-            _targetDistance = _remainingDistance = distance;
-            Vector3D direction = toTarget / Math.Max(distance, 1e-3);
-            double brake = BrakeAccel(direction), radius;
-            if (!_zoneRadii.TryGetValue(_zoneGoal ? _zoneGoalZone : "", out radius))
-                radius = _zoneRadiusGuess;
-            double entry = Math.Max(_zoneEntrySpeed, 1);
-            double speed = Math.Min(_maxSpeed * 2, Math.Sqrt(entry * entry + 2 * brake * Math.Max(distance - radius, 0)));
-            speed = Math.Min(speed, Math.Max(distance * _velocityGain * 0.5, distance > radius ? entry : 0));
-            targetVelocity = planetVelocity + direction * speed;
-            if (targetVelocity.Length() > _maxSpeed)
-                targetVelocity = Vector3D.Normalize(targetVelocity) * _maxSpeed;
-            double closing = Vector3D.Dot(velocity - planetVelocity, direction);
-            _stopDistance = closing > 0 ? closing * closing / (2 * Math.Max(brake, 0.01)) : 0;
-            _approachPhase = "FOLLOWING";
-            return true;
-        }
-
-        // At the zone change: how far from the tracked GPS the zone began.
-        void LearnZoneRadius(Vector3D before)
-        {
-            Vector3D planetPosition, planetVelocity;
-            PredictTrack(_clock, out planetPosition, out planetVelocity);
-            double radius = Vector3D.Distance(before, planetPosition);
-            string zone = _zone;
-            if (zone != "" && radius > 100)
-            {
-                _zoneRadii[zone] = radius;
-                _mapChanged = true;
-            }
+                _message = name + " is in another zone: fly there yourself";
         }
 
         // Flights need enough upward thrust to hover (with some margin to climb and brake).
@@ -587,7 +417,7 @@ namespace IngameScript
             if (up >= g * 1.1)
                 return true;
             _mode = Mode.Manual;
-            _message = string.Format("Not enough upward thrust: {0:0.0} m/s² for {1:0.0} m/s² of gravity", up, g);
+            _message = string.Format("Upward thrust {0:0.0} < gravity {1:0.0} m/s²", up, g);
             return false;
         }
 

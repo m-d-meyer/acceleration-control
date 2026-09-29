@@ -138,7 +138,7 @@ namespace IngameScript
                 _mode = Mode.Manual;
             _dockEntry = AddDeposit(BaseName, _dockPosition, false);
             _mapChanged = true;
-            _message = HasDockPath ? "Docked. Dock position and the way in saved for 'dock'" : "Docked. Dock position saved, but no way in: the script saw less than 20 m of it. Fly out and dock by hand again";
+            _message = HasDockPath ? "Docked. Dock position and the way in saved for 'dock'" : "Docked, but the way in was not recorded: fly out and dock by hand again";
         }
 
         // GO / goto while docked: undock first (the recorded way out if there is
@@ -205,7 +205,7 @@ namespace IngameScript
                     best = d;
             if (best == null || Vector3D.Distance(best.Position, ReferencePosition()) > DockRange)
             {
-                _message = "No known dock within 20 km: dock by hand once to teach it, or GO on a base entry";
+                _message = "No known dock within 20 km";
                 return false;
             }
             ActivateDock(best);
@@ -257,7 +257,7 @@ namespace IngameScript
             }
             StartGoal(DockApproachPoint, BaseName, true);
             if (_mode == Mode.Approach && !_departing)
-                _message = "No recorded way in: flying to the point in front of the connector";
+                _message = "No recorded way in: flying to the connector";
         }
 
         // Is the connector close to the approach point or inside the path into the dock?
@@ -428,8 +428,7 @@ namespace IngameScript
                 Vector3D shift = _dockAxis * DockTravel * half * 0.5;
                 for (int i = 0; i < 8; i++)
                 {
-                    Vector3D corner = new Vector3D((i & 1) == 0 ? min.X : max.X, (i & 2) == 0 ? min.Y : max.Y, (i & 4) == 0 ? min.Z : max.Z);
-                    _dockScanPoints.Add(Vector3D.Transform(corner, docked) + shift);
+                    _dockScanPoints.Add(Vector3D.Transform(Corner(i, min, max), docked) + shift);
                 }
                 _dockScanPoints.Add(Vector3D.Transform((min + max) / 2, docked) + shift);
             }
@@ -448,6 +447,11 @@ namespace IngameScript
             double half = grid.GridSize / 2;
             min = new Vector3D(grid.Min) * grid.GridSize - new Vector3D(half);
             max = new Vector3D(grid.Max) * grid.GridSize + new Vector3D(half);
+        }
+
+        static Vector3D Corner(int i, Vector3D min, Vector3D max)
+        {
+            return new Vector3D((i & 1) == 0 ? min.X : max.X, (i & 2) == 0 ? min.Y : max.Y, (i & 4) == 0 ? min.Z : max.Z);
         }
 
         // Travel distance from the docked pose out to the approach point.
@@ -503,7 +507,7 @@ namespace IngameScript
             {
                 int result = _dockScanBlocker != null ? ScanBlocked : ScanClear;
                 if (_dockScanSeen == 0 && result == ScanClear)
-                    _message = "No camera can see the docking path, docking without check";
+                    _message = "Docking path unseen, docking without check";
                 else if (result == ScanBlocked)
                     _message = "Waiting: " + _dockScanBlocker + " is in the way";
                 _dockScanIndex = _dockScanSeen = 0;

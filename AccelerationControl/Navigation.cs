@@ -362,7 +362,7 @@ namespace IngameScript
             if (leave < 0)
             {
                 _mode = Mode.Manual;
-                _message = "Close to a rock and no way out seen by the cameras: move away by hand";
+                _message = "No way out seen: move away by hand";
                 return;
             }
             if (leave > 0)
@@ -669,7 +669,7 @@ namespace IngameScript
                 return 1;
             }
             _mode = Mode.Manual;
-            _message = "Too tight to turn and no straight way out seen: fly out by hand";
+            _message = "Too tight to turn: fly out by hand";
             return 1;
         }
 
@@ -744,7 +744,7 @@ namespace IngameScript
 
         void StartRoute(string name)
         {
-            _departing = _resumeGoal = _replanPending = _flipBraking = _tracking = _dodging = _evading = false;
+            _departing = _resumeGoal = _replanPending = _flipBraking = _dodging = _evading = false;
             _routeIndex = 0;
             _jumpCheckedLeg = -1;
             _legStart = ReferencePosition();
@@ -960,19 +960,6 @@ namespace IngameScript
         {
             double along = Vector3D.Dot(hit.HitPosition.Value - position, direction);
             double stopDistance = _currentSpeed * _currentSpeed / (2 * Math.Max(BrakeAccel(direction), 0.1));
-            if (_tracking)
-            {
-                // Following a moving planet: no route to plan around, stop in front.
-                if (hit.Type == MyDetectedEntityType.Asteroid)
-                    RegisterObstacle(hit);
-                bool waiting = _zoneGoal;
-                _route.Clear();
-                _route.Add(position + direction * Math.Max(along - StopOffset, 0));
-                StartRoute(_targetName);
-                _zoneGoal = waiting;
-                _message = "Obstacle ahead, stopping: steer past it, then run 'track' to continue";
-                return;
-            }
             if (_dockAfterRoute && IsBaseHit(hit))
             {
                 // Flying to the base: the base and the rock it stands on are
@@ -1126,7 +1113,7 @@ namespace IngameScript
         // the measured rotation and corrected if needed.
         void UpdateGyros(IMyShipController controller, Vector3D velocity)
         {
-            bool wanted = _gyros.Count > 0 && (_mode == Mode.Jump || _mode == Mode.Dock || _mode == Mode.Path || (_alignShip && _mode == Mode.Approach));
+            bool wanted = _gyros.Count > 0 && (_mode == Mode.Jump || _mode >= Mode.Dock || (_alignShip && _mode == Mode.Approach));
             // The player turning the ship takes over the gyroscopes.
             if (controller.RotationIndicator.LengthSquared() > 0.01f || Math.Abs(controller.RollIndicator) > 0.01f)
                 wanted = false;
@@ -1145,6 +1132,13 @@ namespace IngameScript
             {
                 desired = _pathF;       // the recorded pose of the next point
                 desiredUp = _pathU;
+            }
+            else if (_mode == Mode.Land)
+            {
+                // Level, or along the ground's slope for a tilted landing; the
+                // heading the footprint was measured with.
+                desiredUp = _landPhase > 1 ? _landUp : GroundUp;
+                desired = Vector3D.Normalize(_landE1 - desiredUp * Vector3D.Dot(_landE1, desiredUp));
             }
             else if (_mode == Mode.Dock && _dockPhase == DockPhase.Clearance)
                 desired = matrix.Forward;       // hold until the space to turn is checked

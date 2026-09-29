@@ -181,14 +181,12 @@ The README describes all commands and Custom Data options for players.
   zone changes (a planet "running into" a resting ship gives it the orbital speed);
   ORBIT zone follows the planet's orbit, SURFACE zone follows the surface; every GPS
   placed on a planet gets a moving proxy copy ("PROXY_DO_NOT_EDIT"). No PB API is
-  known, so `track GPS:...` takes samples of such a moving GPS (Lagrange fit through
-  2-3 samples), matches the planet's velocity and brakes to `ZoneEntrySpeed` before
-  the zone edge (`ZoneRadiusGuess`, learned per zone at the first entry, stored in
-  `ZoneRadii`). Simulated: ~100 m/s entry if the guess >= real zone, 340-450 m/s if
-  the zone is larger than guessed (hence default 200 km).
+  known. A `track GPS:...` command (samples of such a moving GPS, velocity matching,
+  braking to an entry speed before the zone edge) existed and was removed to make
+  room for landing (user's choice); `ZoneRadii` still stores learned surface edges.
 - RSS config (user): real planets spawn 900,000-9,000,000 km from the origin;
   `EnablePlanetGPSAll`/`EnablePlanetGPSUnlocking` create planet GPS (moving copies
-  usable for `track`); `EnableGridRotationOnZoneTransition` rotates grids at the
+  usable for the removed `track`); `EnableGridRotationOnZoneTransition` rotates grids at the
   surface zone edge. Open question: do proxies have script-visible gravity? The
   status page shows any gravity > 0.001 m/s² ("no planet" in proxy space) to find
   out; if yes, a gravity-based homing without GPS pasting could be added.
@@ -388,6 +386,26 @@ The README describes all commands and Custom Data options for players.
   limit), images (mock-ups/diagrams, not screenshots) and their generators. The
   user wants the disclaimer "code written 100% by Claude Opus 5.5, tested in game
   by me" at the top of the Workshop text.
+
+- Landing (`Landing.cs`, `Mode.Land`): `track` was removed for room (user's choice).
+  `land` / `land GPS:` (GoToGps + `_landAfterRoute`). Phases: 0 to a hover spot
+  (1.5 x ShipRadius + 10 m above ground from TryGetPlanetElevation), 1 ground scan
+  (grid up to 9 x 9 over the ship box seen from above + 3 m, one ray per tick,
+  waits while a camera facing the point charges), plane fit (least squares),
+  accept if seen >= 3/4, no holes, residual <= 1 m, slope <= MaxSlope and tilted
+  only if the weakest side gives 1.2 x g sin(slope); else golden-angle spiral, 12
+  tries. 2 turning (level below 3 degrees, else up = plane normal), 3 vertical
+  descent, gap = lowest gear above the plane, v = min(sqrt(b g) + 0.3, 0.3 + 0.3 g)
+  with g = gap - 1 at full thrust (maxAccel unlimited; scratchpad `descent.py`:
+  ~0.3 m/s touchdown for 0.5-8 m/s² braking, lag 0.5 s; without the linear cap
+  3.7 m/s at 8 m/s²), gears ReadyToLock -> Lock(); ends when locked or still for
+  2 s within 1.5 m. Requires landing gear. Not flown in game.
+  User's ship with inverted-V wings reaching far behind the hull: the footprint is
+  the grid box, so the wings are covered if the cameras reach there.
+  Planned later: stage 2 recall via a rover companion script, stage 3 rover pickup.
+- Size: ~99,960 of 100,000 after landing (messages were shortened, the teleport
+  diagnostic lost its "centre moved/turned" part). Anything new needs savings first,
+  or a second PB (user's fallback idea).
 
 ## Open ideas / next steps
 

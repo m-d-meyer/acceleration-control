@@ -31,7 +31,7 @@ namespace IngameScript
         const double ArrivalRoughSpeed = 1.0;       // m/s - within max(ArrivalTolerance, ApproachBuffer / 4), slower than this
         const double WaypointRadius = 50;           // m - intermediate waypoints count as reached within this
 
-        enum Mode { Manual, Cruise, Approach, Jump, Dock, Path }
+        enum Mode { Manual, Cruise, Approach, Jump, Dock, Path, Land }
         enum ScanPurpose { Approach, Mark }
 
         readonly List<IMyCameraBlock> _cameras = new List<IMyCameraBlock>();
@@ -83,9 +83,9 @@ namespace IngameScript
             }
             if (_mode != Mode.Manual && _mode != Mode.Cruise && move.LengthSquared() > InputDeadzone * InputDeadzone)
             {
-                _message = _mode == Mode.Jump ? "Jump cancelled" : _mode == Mode.Dock || _mode == Mode.Path ? "Docking cancelled" : "Approach cancelled";
+                _message = _mode == Mode.Jump ? "Jump cancelled" : _mode == Mode.Land ? "Landing cancelled" : _mode == Mode.Dock || _mode == Mode.Path ? "Docking cancelled" : "Approach cancelled";
                 _mode = Mode.Manual;
-                _dockAfterRoute = _departing = _resumeGoal = _zoneGoal = _pendingStart = _pathAfterRoute = false;
+                _dockAfterRoute = _departing = _resumeGoal = _zoneGoal = _pendingStart = _pathAfterRoute = _landAfterRoute = false;
                 _afterUndock = null;
                 _undockPending = false;
                 return false;
@@ -107,6 +107,12 @@ namespace IngameScript
             {
                 maxAccel = Math.Min(_limit, 3);
                 return PathVelocity(out targetVelocity);
+            }
+
+            if (_mode == Mode.Land)
+            {
+                maxAccel = 1e9;     // the descent is planned with the full braking thrust
+                return LandVelocity(out targetVelocity);
             }
 
             if (_mode == Mode.Approach)
@@ -382,7 +388,7 @@ namespace IngameScript
             double top = InAtmosphere && _atmosphereSpeed > 0 ? Math.Min(_maxSpeed, _atmosphereSpeed) : _maxSpeed;
             double v = Math.Min(_currentSpeed, top), t = 0;
             Vector3D from = ReferencePosition();
-            for (int i = _tracking ? _route.Count - 1 : _routeIndex; i < _route.Count; i++)
+            for (int i = _routeIndex; i < _route.Count; i++)
             {
                 double end = i < _route.Count - 1 && i < _cornerLimits.Count ? Math.Min(_cornerLimits[i], top) : 0;
                 t += LegTime(Vector3D.Distance(from, _route[i]), v, end, a, b, top);
@@ -441,8 +447,6 @@ namespace IngameScript
 
         bool ApproachVelocity(Vector3D velocity, out Vector3D targetVelocity)
         {
-            if (_tracking)
-                return TrackVelocity(velocity, out targetVelocity);
             targetVelocity = Vector3D.Zero;
             Vector3D position = ReferencePosition();
             Vector3D toTarget = _approachTarget - position;
@@ -503,6 +507,11 @@ namespace IngameScript
                 if (_dockAfterRoute)
                 {
                     StartDockAlign();
+                    return false;
+                }
+                if (_landAfterRoute)
+                {
+                    StartLanding();
                     return false;
                 }
                 _mode = Mode.Manual;

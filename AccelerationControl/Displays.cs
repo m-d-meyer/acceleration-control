@@ -137,24 +137,14 @@ namespace IngameScript
         {
             if (_zoneGoal)
                 _text.AppendLine("Waiting for the zone of " + _zoneGoalName);
-            IMyShipController reference = _controller ?? _layoutController;
-            if (_tracking && _mode == Mode.Approach && reference != null)
-                _text.AppendFormat("Planet moves {0:0} m/s, closing {1:0} m/s\n", _trackVelocity.Length(),
-                    Vector3D.Dot(reference.GetShipVelocities().LinearVelocity - _trackVelocity,
-                        Vector3D.Normalize(_approachTarget - ReferencePosition())));
             // Any measurable gravity is shown, also without a real planet (e.g. a
-            // Real Solar Systems proxy), with its direction relative to a followed GPS.
+            // Real Solar Systems proxy).
             if (_planet == null && _gravity.LengthSquared() < 1e-6)
                 return;
             _text.AppendFormat("Gravity {0:0.000} g", _gravity.Length() / 9.81);
             if (_planet == null)
-            {
                 _text.Append("  no planet");
-                if (_tracking && _mode == Mode.Approach)
-                    _text.AppendFormat("  {0:0}° off GPS", MathHelper.ToDegrees(Math.Acos(MathHelper.Clamp(Vector3D.Dot(
-                        Vector3D.Normalize(_gravity), Vector3D.Normalize(_approachTarget - ReferencePosition())), -1, 1))));
-            }
-            if (_planet != null)
+            else
                 _text.Append("  alt " + FormatDistance(Vector3D.Distance(ReferencePosition(), _planet.Center) - _planet.Radius));
             if (_air >= 0)
                 _text.AppendFormat("  air {0:0}%", _air * 100);
@@ -178,6 +168,9 @@ namespace IngameScript
                 case Mode.Dock:
                 case Mode.Path:
                     _text.AppendLine(DockTitle + ": " + DockPhaseText());
+                    break;
+                case Mode.Land:
+                    _text.AppendLine("Landing: " + _landState + (_landPhase > 2 ? ", " + FormatDistance(_targetDistance) : ""));
                     break;
                 case Mode.Approach:
                     _text.AppendFormat("Approach {0}: {1}, {2:0} m/s\n", _targetName, FormatDistance(_remainingDistance), _currentSpeed);

@@ -98,7 +98,7 @@ namespace IngameScript
 
         void CheckJumpOnRoute()
         {
-            if (_mode != Mode.Approach || _probing || _departing || _tracking || !_useJump || _jumpDrives.Count == 0
+            if (_mode != Mode.Approach || _probing || _departing || !_useJump || _jumpDrives.Count == 0
                 || _jumpCheckedLeg == _routeIndex || _gravity.LengthSquared() > 0.01 || _jumpMax <= 0 || _jumpStored < _jumpMax * 0.99)
                 return;
             _jumpCheckedLeg = _routeIndex;
@@ -181,7 +181,7 @@ namespace IngameScript
             else if (_jumpTicks - _jumpTriggerTick == JumpManualTicks)
             {
                 _jumpState = "press JUMP on your toolbar";
-                _message = "Ship aligned, distance set: press the jump drive's Jump action";
+                _message = "Aligned: press the jump drive's Jump action";
             }
             else if (_jumpTicks > JumpTimeoutTicks)
             {
