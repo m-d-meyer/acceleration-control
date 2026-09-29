@@ -121,6 +121,13 @@ namespace IngameScript
             get { return _planetZonesConfig; }
         }
 
+        // Zones recorded while PlanetZones was on count as one ("" = space)
+        // when it is off, so a base recorded in a zone stays reachable.
+        string Zone(string zone)
+        {
+            return PlanetZones ? zone : "";
+        }
+
         static string ZoneKey(Vector3D planetCenter)
         {
             return "P" + Math.Round(planetCenter.X / 1000) + "," + Math.Round(planetCenter.Y / 1000) + "," + Math.Round(planetCenter.Z / 1000);

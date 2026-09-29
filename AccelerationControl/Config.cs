@@ -316,7 +316,7 @@ namespace IngameScript
                 if (long.TryParse(id, out grid))
                     _baseGrids.Add(grid);
             }
-            _dockZone = ini.Get(section, "DockZone").ToString("");
+            _dockZone = Zone(ini.Get(section, "DockZone").ToString(""));
         }
 
         void LoadState()
@@ -351,7 +351,7 @@ namespace IngameScript
                     _gyroCalibrated[i] = gyro[3 + i] == "1";
             }
             ReadDock(state, StateSection);
-            _zone = state.Get(StateSection, "Zone").ToString("");
+            _zone = Zone(state.Get(StateSection, "Zone").ToString(""));
             _thrustersOff = state.Get(StateSection, "ThrustersOff").ToBoolean(false);
             string[] came = state.Get(StateSection, "CameFrom").ToString("").Split(';');
             if (came.Length == 6)

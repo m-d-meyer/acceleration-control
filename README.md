@@ -158,7 +158,7 @@ first run. Edit them there and run `reload`.
 | `DockApproach`       | `30`      | Distance in front of the base connector where docking starts (m, plus ship radius) |
 | `UseStrongestThrusters` | `true` | Turn the ship so its strongest thrusters push along the flight, and flip for braking if worth it |
 | `FlipTime`           | `30`      | Seconds planned for turning around before braking, until the ship's turning is measured |
-| `PlanetZones`        | `false`   | Real Solar Systems (experimental): each planet zone has its own coordinates |
+| `PlanetZones`        | `false`   | Real Solar Systems (experimental): each planet zone has its own coordinates. While off, zones recorded earlier are ignored (everything counts as one space; takes effect when the script restarts) |
 | `PlanetCruiseHeight` | `1500`    | Height above the ground (start, target, terrain seen) for flights on a planet (m); short hops fly lower |
 | `AtmosphereHeight`   | `12000`   | Assumed top of the atmosphere above sea level until the ship has measured it (m) |
 | `AtmosphereSpeed`    | `100`     | Speed limit inside an atmosphere (m/s); the ship brakes to it before entering, `0` = off |

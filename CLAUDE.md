@@ -380,6 +380,10 @@ The README describes all commands and Custom Data options for players.
   outside gravity `NearbyPlanet` compares the position with planet centres from
   other zones' coordinates (meaningless), picked the Earth's key. The user asked
   the RSS author for a PB API (zone id, frame conversion, bodies); wait for it.
+- User test: with PlanetZones=false the base (recorded earlier in a zone) could not
+  be docked ("other zone"). `Zone()` maps every zone read from Storage, map
+  import and dock data to "" while PlanetZones is off (applied at load, so after
+  a script restart).
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character

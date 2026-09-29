@@ -497,7 +497,7 @@ namespace IngameScript
                 if (p.Length < 6 || !int.TryParse(p[1], out number) || !TryParseNumber(p[2], out x)
                     || !TryParseNumber(p[3], out y) || !TryParseNumber(p[4], out z))
                     break;
-                var deposit = new Deposit { Ore = p[0], Number = number, Position = new Vector3D(x, y, z), Mined = p[5] == "1", Zone = p.Length > 6 ? p[6] : "" };
+                var deposit = new Deposit { Ore = p[0], Number = number, Position = new Vector3D(x, y, z), Mined = p[5] == "1", Zone = Zone(p.Length > 6 ? p[6] : "") };
                 string path = state.Get(MapSection, "DP" + i).ToString("");
                 if (path.Length > 0)
                     deposit.Path = ParsePath(path);
@@ -519,7 +519,7 @@ namespace IngameScript
                 if (p.Length > 9)
                     TryParseNumber(p[9], out water);
                 var o = new Obstacle { Planet = p[0] == "P", EntityId = id, Center = new Vector3D(x, y, z), Radius = r, GravityRadius = g,
-                    Zone = p.Length > 7 ? p[7] : "", AtmosphereRadius = atmosphere, WaterRadius = water };
+                    Zone = Zone(p.Length > 7 ? p[7] : ""), AtmosphereRadius = atmosphere, WaterRadius = water };
                 (o.Zone == _zone ? _obstacles : _otherObstacles).Add(o);
             }
             _mapChanged = true;
@@ -559,7 +559,7 @@ namespace IngameScript
                 string[] p = raw.Trim().Split(':');
                 double x, y, z, r, g;
                 if (p.Length == 2 && p[0] == "ZONE")
-                    zone = p[1];
+                    zone = Zone(p[1]);
                 else if (p.Length >= 5 && p[0] == "GPS" && TryParseNumber(p[2], out x) && TryParseNumber(p[3], out y) && TryParseNumber(p[4], out z))
                 {
                     // "Iron #2" -> Iron; other names become waypoints with that name
