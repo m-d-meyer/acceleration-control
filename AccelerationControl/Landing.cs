@@ -239,7 +239,7 @@ namespace IngameScript
                     return;
                 }
             }
-            _landState = "scanning " + 100 * _landIndex / (total + n + 1) + "%";
+            _landState = "spot " + (_landTry + 1) + ": scanning " + 100 * _landIndex / (total + n + 1) + "%";
         }
 
         void Evaluate()

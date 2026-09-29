@@ -395,6 +395,10 @@ The README describes all commands and Custom Data options for players.
   height was 1.5 x ShipRadius + 10 (large ship), so the 1.2 m grid needed minutes
   of charge. Now hover = max footprint half width + half height + 5 m, spacing
   grows so that at most ~2500 rays are cast, scan starts within 5 m of the spot.
+  User: third spot accepted, landed on a slope without problems. The map now shows
+  the landing like docking (`DockTitle` "LANDING", `DockPhaseText` = `_landState`,
+  e.g. "spot 2: scanning 45%", "descending, 12 m"); `_mode >= Mode.Dock` covers
+  Dock, Path and Land on the map.
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character

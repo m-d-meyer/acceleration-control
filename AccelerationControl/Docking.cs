@@ -576,11 +576,13 @@ namespace IngameScript
 
         string DockTitle
         {
-            get { return _mode == Mode.Path && !_pathDock ? "TO " + _pathName : "DOCKING"; }
+            get { return _mode == Mode.Land ? "LANDING" : _mode == Mode.Path && !_pathDock ? "TO " + _pathName : "DOCKING"; }
         }
 
         string DockPhaseText()
         {
+            if (_mode == Mode.Land)
+                return _landState + (_landPhase > 2 ? ", " + FormatDistance(_targetDistance) : "");
             if (_mode == Mode.Path)
                 return PathStateText();
             switch (_dockPhase)

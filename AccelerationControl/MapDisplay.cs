@@ -333,7 +333,7 @@ namespace IngameScript
             Box(x, y, width, height, 1, GridColor);
             float left = x + 12, right = x + width - 12;
 
-            if (_mode == Mode.Jump || _mode == Mode.Dock || _mode == Mode.Path)
+            if (_mode == Mode.Jump || _mode >= Mode.Dock)
             {
                 bool jump = _mode == Mode.Jump;
                 Text(jump ? "JUMP  " + FormatDistance(_jumpDistance) : DockTitle, left, y + 6, 0.8f, jump ? JumpColor : Cyan);
@@ -405,7 +405,7 @@ namespace IngameScript
                 detail = _jumpState;
                 color = JumpColor;
             }
-            else if (_mode == Mode.Dock || _mode == Mode.Path)
+            else if (_mode >= Mode.Dock)
             {
                 title = DockTitle;
                 detail = DockPhaseText();
@@ -528,7 +528,7 @@ namespace IngameScript
             Line(6, fy, 506, fy, 1, GridColor);
             if (_mode == Mode.Jump)
                 Text("JUMP " + FormatDistance(_jumpDistance) + "  " + _jumpState, 10, fy + 6, 0.66f, JumpColor);
-            else if (_mode == Mode.Dock || _mode == Mode.Path)
+            else if (_mode >= Mode.Dock)
                 Text(DockTitle + "  " + DockPhaseText(), 10, fy + 6, 0.66f, Cyan);
             else if (_mode == Mode.Approach)
             {

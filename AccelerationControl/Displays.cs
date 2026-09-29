@@ -177,10 +177,8 @@ namespace IngameScript
                     break;
                 case Mode.Dock:
                 case Mode.Path:
-                    Line(DockTitle + ": " + DockPhaseText());
-                    break;
                 case Mode.Land:
-                    Line("Landing: " + _landState + (_landPhase > 2 ? ", " + FormatDistance(_targetDistance) : ""));
+                    Line(DockTitle + ": " + DockPhaseText());
                     break;
                 case Mode.Approach:
                     Put("Approach {0}: {1}, {2:0} m/s\n", _targetName, FormatDistance(_remainingDistance), _currentSpeed);
