@@ -10,6 +10,7 @@ Material for the Steam Workshop items.
   - `map.png` (map screens) and `status.png` (status page) are mock-ups of the
     script's screens; the in-game look differs in details.
   - `accel.png`, `route.png`, `docking.png`, `planet.png`, `landing.png` are explanatory diagrams.
+  - `cover.png` (Workshop preview, 1024 x 1024) is the radar mock-up with the title (`cover.py`).
     `route.png` is computed: a 2D copy of the script's route planner places the
     waypoints, and a simple point-mass simulation (corner speeds planned
     backwards, waypoint switching as in the script) draws the flown line.
