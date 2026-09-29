@@ -389,6 +389,12 @@ The README describes all commands and Custom Data options for players.
   descending. On the last leg a planet hit counted as the target ground only if
   `FindObstacle(hit.EntityId)` matched and `PlanetAt(final)` was that entry; now
   any planet hit on the last leg means "stop earlier". Not verified in game.
+- Next test: `land GPS:` ended with "Arrived" ~250 m above the GPS: `Land()` set
+  `_landAfterRoute` only if the mode was Approach, but the start was waiting for
+  camera charge (`_pendingStart`). `land` stopped ~100 m above the ground: hover
+  height was 1.5 x ShipRadius + 10 (large ship), so the 1.2 m grid needed minutes
+  of charge. Now hover = max footprint half width + half height + 5 m, spacing
+  grows so that at most ~2500 rays are cast, scan starts within 5 m of the spot.
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character

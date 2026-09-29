@@ -489,11 +489,14 @@ break through. The control page shows it as
 (like `goto`) and lands there. Needs gravity, landing gear and cameras that look
 down.
 
-1. The ship moves to a point 1.5 ship radii + 10 m above the ground (from the
-   game's surface height) and holds its heading.
+1. The ship moves to a point above the ground (from the game's surface height)
+   where a camera under its middle sees the edges of the footprint: half the
+   footprint's width + half the ship's height + 5 m for the ship's centre. It
+   holds its heading.
 2. The cameras scan the ground under the ship's **whole footprint**: its bounding
    box seen from above, plus 3 m all round, on a grid of rays 1.2 m apart (a
-   20 x 30 m footprint: about 500 rays). As many rays per tick as the cameras have
+   20 x 30 m footprint: about 500 rays; large ships get wider spacing, at most
+   about 2500 rays). As many rays per tick as the cameras have
    charged (2 km of range per second each), so it takes a few seconds with several
    cameras and up to a minute or more for a large ship with one; the control page
    shows the progress. Wings, outriggers and anything else that sticks out are inside the

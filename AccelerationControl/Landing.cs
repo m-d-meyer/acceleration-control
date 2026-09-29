@@ -24,18 +24,19 @@ namespace IngameScript
         bool _landAfterRoute;
         int _landPhase, _landTry, _landIndex, _landSeen, _landHoles, _landStill;   // phase: 0 to the spot, 1 scanning, 2 turning, 3 down
         Vector3D _landTarget, _landSpot, _landUp, _landE1, _landE2;
-        double _landExt1, _landExt2, _landH, _landB, _landC;       // plane: height = H + B u + C v above the spot
+        double _landExt0, _landExt1, _landExt2, _landH, _landB, _landC;       // plane: height = H + B u + C v above the spot
         int _landN1, _landN2;
         readonly List<Vector3D> _landHits = new List<Vector3D>();
         double[] _landSum = new double[8];      // sums u, v, h, uu, uv, vv, uh, vh of the hits
         double _landRough;
         string _landState = "";
 
-        // Height of the ship's centre above the ground while scanning: the
-        // cameras (45 degree cones) must see past the footprint's edge.
+        // Height of the ship's centre above the ground while scanning: a camera
+        // under the ship (45 degree cone) sees the footprint's edges. (1.5 ship
+        // radii + 10 m put a large ship 100 m up: long rays, minutes of charge.)
         double LandHeight
         {
-            get { return ShipRadius * 1.5 + 10; }
+            get { return Math.Max(_landExt1, _landExt2) + _landExt0 + 5; }
         }
 
         Vector3D GroundUp
@@ -48,7 +49,8 @@ namespace IngameScript
             if (gps != null)
             {
                 GoToGps(gps);
-                _landAfterRoute = _mode == Mode.Approach || _afterUndock != null;
+                // Also while the start waits for camera charge (or an undock).
+                _landAfterRoute = _mode > Mode.Cruise || _pendingStart || _afterUndock != null;
                 return;
             }
             StartLanding();
@@ -78,6 +80,18 @@ namespace IngameScript
             Vector3D up = GroundUp, f = c.WorldMatrix.Forward - up * Vector3D.Dot(c.WorldMatrix.Forward, up);
             _landE1 = f.LengthSquared() > 0.01 ? Vector3D.Normalize(f) : Vector3D.CalculatePerpendicularVector(up);
             _landE2 = Vector3D.Cross(up, _landE1);
+            // The footprint: the ship's box seen from above, plus the margin;
+            // _landExt0 its half height.
+            Vector3D min, max;
+            GridBox(out min, out max);
+            _landExt0 = _landExt1 = _landExt2 = 0;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3D p = Vector3D.Transform(Corner(i, min, max), Me.CubeGrid.WorldMatrix) - ReferencePosition();
+                _landExt0 = Math.Max(_landExt0, Math.Abs(Vector3D.Dot(p, up)));
+                _landExt1 = Math.Max(_landExt1, Math.Abs(Vector3D.Dot(p, _landE1)) + LandMargin);
+                _landExt2 = Math.Max(_landExt2, Math.Abs(Vector3D.Dot(p, _landE2)) + LandMargin);
+            }
             double a = _landTry * 2.4, r = ShipRadius * 0.8 * Math.Sqrt(_landTry), elevation;
             _landSpot = _landTarget + (_landE1 * Math.Cos(a) + _landE2 * Math.Sin(a)) * r;
             Vector3D position = ReferencePosition();
@@ -91,7 +105,7 @@ namespace IngameScript
         {
             Vector3D position = ReferencePosition(), up = GroundUp, toSpot = _landSpot - position;
             targetVelocity = ClampLength(toSpot * 0.5, Math.Sqrt(BrakeAlong(toSpot) * toSpot.Length()));
-            if (_landPhase == 0 && toSpot.Length() < 1.5 && _currentSpeed < 0.5)
+            if (_landPhase == 0 && toSpot.Length() < 5 && _currentSpeed < 1)
                 StartGroundScan();
             else if (_landPhase == 1)
                 GroundScanStep();
@@ -141,18 +155,10 @@ namespace IngameScript
 
         void StartGroundScan()
         {
-            // The footprint: the ship's box seen from above, plus the margin.
-            Vector3D min, max;
-            GridBox(out min, out max);
-            _landExt1 = _landExt2 = 0;
-            for (int i = 0; i < 8; i++)
-            {
-                Vector3D p = Vector3D.Transform(Corner(i, min, max), Me.CubeGrid.WorldMatrix) - _landSpot;
-                _landExt1 = Math.Max(_landExt1, Math.Abs(Vector3D.Dot(p, _landE1)) + LandMargin);
-                _landExt2 = Math.Max(_landExt2, Math.Abs(Vector3D.Dot(p, _landE2)) + LandMargin);
-            }
-            _landN1 = (int)(_landExt1 * 2 / LandStep) + 2;
-            _landN2 = (int)(_landExt2 * 2 / LandStep) + 2;
+            // Rays LandStep apart, wider for large ships: at most about 2500.
+            double step = Math.Max(LandStep, Math.Sqrt(_landExt1 * _landExt2 / 625));
+            _landN1 = (int)(_landExt1 * 2 / step) + 2;
+            _landN2 = (int)(_landExt2 * 2 / step) + 2;
             _landHits.Clear();
             _landSum = new double[8];
             _landIndex = _landSeen = _landHoles = 0;
