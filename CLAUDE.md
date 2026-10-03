@@ -414,6 +414,10 @@ The README describes all commands and Custom Data options for players.
   limit), images (mock-ups/diagrams, not screenshots) and their generators. The
   user wants the disclaimer "code written 100% by Claude Opus 5.5, tested in game
   by me" at the top of the Workshop text.
+  Published on the Steam Workshop (script + DockGate), cover `workshop/cover.py`.
+  A few days later: 234 visitors, 107 subscribers, featured in Keen's Community
+  Spotlight. Changes now reach other players: avoid storage format changes that
+  force a manual re-dock, and keep the README/Workshop text in step.
 
 - Landing (`Landing.cs`, `Mode.Land`): `track` was removed for room (user's choice).
   `land` / `land GPS:` (GoToGps + `_landAfterRoute`). Phases: 0 to a hover spot
