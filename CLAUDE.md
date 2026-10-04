@@ -263,7 +263,7 @@ The README describes all commands and Custom Data options for players.
   "Dock Open"/"Dock Close" (name part matching the connector name selects a dock),
   replies by unicast "busy", then "ready" when "Dock Gate" blocks stopped. Ship:
   `Gate()`, `GateWait()` (2 s for an answer, 60 s for opening), connector id saved
-  as DockGate. Not tested in game.
+  as DockGate. Tested in game by the user for a long time, no problems.
 - Ship script at ~99.0k of 100k after this; the Custom Data help comment was cut to
   one line to make room.
 

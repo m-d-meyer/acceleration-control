@@ -797,13 +797,13 @@ water mod); everything else was checked with the compiler and simulations only.
   a base was seen at about 100 m/s and 100 m, the ship swerved past it), jumps (the
   pilot presses Jump when asked).
 - Docking: recording by hand, `dock`/GO along the recorded way at a planet base and
-  a space base, into a hangar, undocking and GO while docked.
+  a space base, into a hangar, undocking and GO while docked, gates opened by the
+  `DockGate` companion script.
 - Planets: several flights from orbit down to the surface and hops in atmosphere.
 - Landing: several landings, also tilted on a slope after the scan refused the
   first spots.
 
 **Not or only briefly tested in game**
-- Gates (`DockGate` companion script).
 - Wind, drag and lift compensation runs during flights, its accuracy was never
   measured; water levels (`water here`) were hardly used.
 - Real Solar Systems zones were tried in one save and were not reliable, hence
