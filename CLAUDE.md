@@ -263,7 +263,7 @@ The README describes all commands and Custom Data options for players.
   "Dock Open"/"Dock Close" (name part matching the connector name selects a dock),
   replies by unicast "busy", then "ready" when "Dock Gate" blocks stopped. Ship:
   `Gate()`, `GateWait()` (2 s for an answer, 60 s for opening), connector id saved
-  as DockGate. Not tested in game.
+  as DockGate. Tested in game by the user for a long time, no problems.
 - Ship script at ~99.0k of 100k after this; the Custom Data help comment was cut to
   one line to make room.
 
@@ -408,12 +408,46 @@ The README describes all commands and Custom Data options for players.
   front of it" in a loop: the flight to the start of the recorded way used
   StartGoal(dock: false), so `IsBaseHit` was not applied; now also for
   `_pathAfterRoute && _pathDock`. User's landing settings: MaxSlope 20, MaxBump 4.
+- Space base test (after a manual jump 23 km from the base, 300 m/s, strongest
+  thrusters off, BrakeSafety=1): braked too late towards the base; a ship in the
+  base's shipyard was seen at ~100 m/s and 100 m, the emergency evasion worked (no
+  collision). Then a loop: the resume after the stop planned from inside that
+  grid's temporary-obstacle clearance (ignored by planning), straight through it
+  again, guard stop, turn, repeat. Now `NeedsDeparture` also counts
+  `_temporaryObstacles` (move away first), and dock flights (`_dockAfterRoute` or
+  path dock) cap the speed at sqrt(400 + brake x distance to the shell around the
+  base box + ShipRadius + ApproachBuffer): at most 20 m/s at the shell with half
+  the braking in reserve. The PB info no longer shows the last teleport (room).
+- Next test: ROUTE found a route to the space base, GO said "No complete route
+  found". The map's "Route 1 legs 31 km" mixes the ROUTE preview's leg count
+  (`_previewRoute`) with the length of GO's own failed plan (`_routeLength`): GO
+  plans to `DockTarget` (start of the recorded way), not to the base entry, and
+  its detours failed. A first guess (instruction budget used up before planning,
+  deferral to the next tick) changed nothing and was removed. Now the failure
+  names the obstacle (`_planBlock`, set when `MaxDetourDepth` is reached): kind,
+  clearance, distance from ship and target; "planning took too long" if the
+  budget ran out. Result: "No route around rock: clearance 296 m, 28.41 km from
+  ship, 305 m from target" - the dock target lay 9 m outside a rock's clearance.
+  Simulated (scratchpad `neartarget*.py`, 2D port of the planner): one rock alone
+  never fails, but with 1-5 more rocks near the target 13 % of plans failed. Now
+  (a) obstacles whose clearance x 1.5 contains the target count with half the
+  buffer, (b) `PlanRoute` retries with half and a quarter of `ApproachBuffer`
+  (`PlanOnce`): 1.3 % failed, at least 50 m kept beyond rock + ship radius (0
+  buffer would give 0.4 %, but 0.2 m). (c) The guard treats a rock as the target
+  rock on the last leg within (radius + StopOffset) x 1.5 of the end point (same
+  idea, else it would stop/replan in front of it). Open risk: mid-route passes
+  planned with a reduced buffer may get guard ring-ray hits and replans.
+  Size 99,981: more messages shortened. User: these changes worked in game.
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character
   limit), images (mock-ups/diagrams, not screenshots) and their generators. The
   user wants the disclaimer "code written 100% by Claude Opus 5.5, tested in game
   by me" at the top of the Workshop text.
+  Published on the Steam Workshop (script + DockGate), cover `workshop/cover.py`.
+  A few days later: 234 visitors, 107 subscribers, featured in Keen's Community
+  Spotlight. Changes now reach other players: avoid storage format changes that
+  force a manual re-dock, and keep the README/Workshop text in step.
 
 - Landing (`Landing.cs`, `Mode.Land`): `track` was removed for room (user's choice).
   `land` / `land GPS:` (GoToGps + `_landAfterRoute`). Phases: 0 to a hover spot
@@ -431,7 +465,8 @@ The README describes all commands and Custom Data options for players.
   with g = gap - 1 at full thrust (maxAccel unlimited; scratchpad `descent.py`:
   ~0.3 m/s touchdown for 0.5-8 m/s² braking, lag 0.5 s; without the linear cap
   3.7 m/s at 8 m/s²), gears ReadyToLock -> Lock(); ends when locked or still for
-  2 s within 1.5 m. Requires landing gear. Not flown in game.
+  2 s within 1.5 m. Requires landing gear. Flown in game several times (also
+  tilted on a slope); orbit-to-surface flights flown several times too.
   User's ship with inverted-V wings reaching far behind the hull: the footprint is
   the grid box, so the wings are covered if the cameras reach there.
   Planned later: stage 2 recall via a rover companion script, stage 3 rover pickup.

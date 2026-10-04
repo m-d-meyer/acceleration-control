@@ -45,6 +45,7 @@ namespace IngameScript
         int _routeIndex;
         readonly List<double> _cornerLimits = new List<double>();
         readonly List<double> _limitBuffer = new List<double>();
+        Obstacle _planBlock;        // the obstacle planning gave up on
         readonly List<Obstacle> _planOwners = new List<Obstacle>();    // obstacle each planned waypoint goes around
         const double MaxDetourWiden = 5000;         // m - detour waypoints are moved out at most this far
         const double BrakeShare = 0.7;              // share of the braking planned for routes with turns
@@ -82,10 +83,24 @@ namespace IngameScript
         // could not be found within the depth limit.
         // Near a planet the route climbs to a cruise height, follows the
         // curvature and ends above the target (see Planets.cs).
+        // Among crowded rocks again with half and a quarter of the buffer
+        // (simulated, neartarget3.py: 13 % -> 1.3 % failed plans near a base among
+        // rocks, at least 50 m kept beyond rock and ship radius).
         bool PlanRoute(Vector3D from, Vector3D to, List<Vector3D> route)
+        {
+            double buffer = _approachBuffer;
+            bool ok = false;
+            for (int i = 0; i < 3 && !ok; i++, _approachBuffer *= 0.5)
+                ok = PlanOnce(from, to, route);
+            _approachBuffer = buffer;
+            return ok;
+        }
+
+        bool PlanOnce(Vector3D from, Vector3D to, List<Vector3D> route)
         {
             route.Clear();
             _planOwners.Clear();
+            _planBlock = null;
             if (InGravity)
                 UpdatePlanet();
             double cruise;
@@ -147,6 +162,8 @@ namespace IngameScript
             Obstacle o = BlockingObstacle(a, b, atStart, atTarget);
             if (o == null)
                 return true;
+            if (depth >= MaxDetourDepth)
+                _planBlock = o;
             if (depth >= MaxDetourDepth || Runtime.CurrentInstructionCount > Runtime.MaxInstructionCount * PlanBudget)
                 return false;
             Vector3D detour = DetourPoint(o, a, b);
@@ -173,6 +190,11 @@ namespace IngameScript
             {
                 Obstacle o = i < _obstacles.Count ? _obstacles[i] : _temporaryObstacles[i - _obstacles.Count];
                 double clearance = Clearance(o, b);
+                // Near the target half the buffer (the end point keeps its own
+                // distance): a target 9 m outside a rock's clearance among other
+                // rocks made every detour end inside one, planning gave up.
+                if (skipAtB && !o.Planet && Vector3D.Distance(b, o.Center) < clearance * 1.5)
+                    clearance -= _approachBuffer * 0.5;
                 if ((skipAtA && Vector3D.Distance(a, o.Center) < clearance) || (skipAtB && Vector3D.Distance(b, o.Center) < clearance))
                     continue;
                 if (DistanceToSegment(o.Center, a, b) >= clearance)
@@ -390,7 +412,12 @@ namespace IngameScript
             {
                 _mode = Mode.Manual;
                 _dockAfterRoute = false;
-                _message = "No complete route found";
+                // Which obstacle the planning could not get around, how large its
+                // clearance is and how far it is from the ship and the target.
+                Obstacle o = _planBlock;
+                _message = o == null ? "No route: planning took too long" : string.Format("No route around {0}: clearance {1}, {2} from ship, {3} from target",
+                    o.Planet ? "planet" : _temporaryObstacles.Contains(o) ? "grid" : "rock", FormatDistance(Clearance(o, stop)),
+                    FormatDistance(Vector3D.Distance(from, o.Center)), FormatDistance(Vector3D.Distance(stop, o.Center)));
                 return;
             }
             if (TryStartJump(from, _route[0], stop, _goalName))
@@ -414,7 +441,11 @@ namespace IngameScript
                 return 0;
             Vector3D back = reference.WorldMatrix.Backward, away = back;
             double need = 0;
-            foreach (Obstacle o in _obstacles)
+            // Ships and stations seen on this flight count too: after an emergency
+            // stop next to one, planning ignored it (the ship was inside its
+            // clearance), led straight through it again and the guard stopped the
+            // ship over and over.
+            foreach (Obstacle o in _obstacles.Concat(_temporaryObstacles))
             {
                 if (o.Planet)
                     continue;
@@ -477,7 +508,7 @@ namespace IngameScript
             _pendingStart = true;
             _pendingStartTick = _ticks + 60;
             _mode = Mode.Manual;
-            _message = "Charging the cameras to check the way out";
+            _message = "Charging cameras";
         }
 
         void RunPendingStart()
@@ -665,7 +696,7 @@ namespace IngameScript
                 _route.Add(center + axis * (2 * r + _approachBuffer));
                 StartRoute("leaving");
                 _departing = true;
-                _message = "Too tight to turn: moving out straight first";
+                _message = "Too tight: moving out first";
                 return 1;
             }
             _mode = Mode.Manual;
@@ -877,7 +908,7 @@ namespace IngameScript
             else
             {
                 _mode = Mode.Manual;
-                _message = "Path blocked, no way around found. Stopped.";
+                _message = "No way around found, stopped";
             }
         }
 
@@ -997,7 +1028,7 @@ namespace IngameScript
             // known) is an obstacle. (Matching planet hits to a map entry failed
             // once and made a descent replan in a loop.)
             Obstacle rock = voxel ? FindObstacle(hit.EntityId) : null;
-            if (OnLastLeg && (hit.Type == MyDetectedEntityType.Planet || rock != null && Vector3D.Distance(_route[_route.Count - 1], rock.Center) < rock.Radius + StopOffset))
+            if (OnLastLeg && (hit.Type == MyDetectedEntityType.Planet || rock != null && Vector3D.Distance(_route[_route.Count - 1], rock.Center) < (rock.Radius + StopOffset) * 1.5))
             {
                 // Most likely the target rock itself: stop earlier. Small corrections
                 // are ignored (the end point is only hit roughly anyway), and the new
@@ -1009,7 +1040,7 @@ namespace IngameScript
                     return;
                 _approachTarget = position + direction * stop;
                 _route[_route.Count - 1] = _approachTarget;
-                _message = "Surface closer than scanned, stopping earlier";
+                _message = "Surface closer, stopping earlier";
                 return;
             }
 

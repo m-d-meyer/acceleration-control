@@ -131,9 +131,9 @@ namespace IngameScript
                 _message = "Map cleared";
             }
             else if (value == "clear")
-                _message = "Run 'map clear confirm' to delete all entries";
+                _message = "Run 'map clear confirm'";
             else
-                _message = "Usage: map import | map send | map clear confirm";
+                _message = "Usage: map import|send|clear confirm";
         }
 
         string NormalizeOre(string name)

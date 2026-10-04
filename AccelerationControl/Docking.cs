@@ -141,7 +141,7 @@ namespace IngameScript
                 _mode = Mode.Manual;
             _dockEntry = AddDeposit(BaseName, _dockPosition, false);
             _mapChanged = true;
-            _message = HasDockPath ? "Docked. Dock position and the way in saved for 'dock'" : "Docked, but the way in was not recorded: fly out and dock by hand again";
+            _message = HasDockPath ? "Docked, way in saved" : "Docked; way in not recorded: dock by hand again";
         }
 
         // GO / goto while docked: undock first (the recorded way out if there is
@@ -237,7 +237,7 @@ namespace IngameScript
         {
             if (!_dockKnown)
             {
-                _message = "Dock once by hand first, then 'dock' knows where to go";
+                _message = "Dock by hand once first";
                 return;
             }
             if (DockConnector() == null)

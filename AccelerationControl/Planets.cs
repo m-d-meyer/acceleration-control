@@ -233,10 +233,6 @@ namespace IngameScript
             if (teleported || hasPlanet)
                 _zoneProvisional = teleported && !hasPlanet && zone == "";
             bool changed = zone != _zone;
-            // What the last teleport did, shown in the programmable block's info.
-            if (teleported)
-                _teleportInfo = "Last teleport: " + FormatDistance(Vector3D.Distance(before, position)) + ", zone " + (_zone == "" ? "space" : _zone)
-                    + " > " + (zone == "" ? "space" : zone);
             if (changed)
                 SwitchZone(zone);
             if (teleported && _zoneProvisional)
@@ -249,7 +245,6 @@ namespace IngameScript
         }
 
         bool _zoneProvisional, _dockProvisional;
-        string _teleportInfo = "";
         int _provisionalDeposits, _provisionalObstacles;
 
         // The zone of the nearest known planet whose gravity well (with a wide
@@ -331,13 +326,13 @@ namespace IngameScript
                 // Same zone (e.g. between the orbit and the surface of a planet): the
                 // target's coordinates still hold, only the way there is planned again.
                 Replan();
-                _message = "Teleported within the zone, route planned again";
+                _message = "Teleported, route planned again";
                 return;
             }
             if (!zoneChanged && _mode == Mode.Dock)
             {
                 StartDocking();
-                _message = "Teleported within the zone, docking again";
+                _message = "Teleported, docking again";
                 return;
             }
             if (_zoneGoal && _zoneGoalZone == _zone)
@@ -357,7 +352,7 @@ namespace IngameScript
                 _dockAfterRoute = _departing = _resumeGoal = false;
             }
             _message = "Teleported (" + ZoneName(_zone) + ")" + (flying ? ", flight stopped" : "")
-                + (_zoneGoal ? ". " + _zoneGoalName + " is in another zone: fly there, the flight continues after the zone change" : "");
+                + (_zoneGoal ? ". " + _zoneGoalName + " is in another zone: fly there" : "");
         }
 
         // The zone change can leave the ship falling towards the planet fast. The

@@ -238,7 +238,7 @@ namespace IngameScript
             if (hit.IsEmpty() || !hit.HitPosition.HasValue)
             {
                 if (_scanPurpose == ScanPurpose.Mark)
-                    _message = "Nothing found within " + FormatDistance(range) + ". Asteroids far away are often not detected, fly closer.";
+                    _message = "Nothing found within " + FormatDistance(range) + ", fly closer";
                 else
                     StartProbe(origin, direction, range);
                 return;
@@ -567,6 +567,13 @@ namespace IngameScript
             // Close in: approach proportionally so the ship settles instead of oscillating.
             if (endSpeed <= 0)
                 speed = Math.Min(speed, distance * _velocityGain * 0.5);
+            // Flying to the base: arrive at its surroundings (box + ship + buffer)
+            // at most 20 m/s, braking with half the thrust; the other half is the
+            // reserve for what lies there (a ship in a shipyard was only seen at
+            // 100 m/s and 100 m, evaded at full thrust).
+            if (_baseKnown && (_dockAfterRoute || _pathAfterRoute && _pathDock))
+                speed = Math.Min(speed, Math.Sqrt(400 + brake * Math.Max(Vector3D.Distance(position, FromBase(_baseCenterLocal))
+                    - _baseHalf.Length() - ShipRadius - _approachBuffer, 0)));
             // Atmosphere: limited speed inside, braked in time before entering.
             // Only the leg that goes down into it counts (routes above the atmosphere keep their speed).
             speed = Math.Min(speed, AtmosphereSpeedLimit(position, _approachTarget, brake));

@@ -265,7 +265,7 @@ namespace IngameScript
             StartGoal(_path[0].P, name, false, false, true);
             _pathAfterRoute = _mode == Mode.Approach || _pendingStart;
             if (_mode == Mode.Approach && !_departing)
-                _message = "Flying to the start of the recorded way to " + name;
+                _message = "To the recorded way of " + name;
         }
 
         void StartPathFollow(int index)
@@ -382,7 +382,7 @@ namespace IngameScript
                 if (++_pathEndTicks > 60 * 15)
                 {
                     _mode = Mode.Manual;
-                    _message = "At the dock, but the connector does not lock";
+                    _message = "Connector does not lock";
                     return false;
                 }
                 targetVelocity = ClampLength((_dockPosition - _dockAxis * 0.3 - own.GetPosition()) * 0.5, 0.5);
@@ -427,7 +427,7 @@ namespace IngameScript
                 if (_ticks - _pathBlockedSince > PathGiveUpTicks * (_pathDock || _pathReverseDock ? 6 : 1))
                 {
                     _mode = Mode.Manual;
-                    _message = "The recorded way stays blocked: please take over";
+                    _message = "Way blocked: please take over";
                     _afterUndock = null;
                     return false;
                 }
