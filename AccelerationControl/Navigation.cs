@@ -377,8 +377,22 @@ namespace IngameScript
             ContinueGoal();
         }
 
+        // Planning gets the rest of the tick's instruction budget; after a busy
+        // start (GO from the map: buttons, choosing and loading the dock) that
+        // was used up and planning gave up at once ("No complete route found",
+        // a single leg). Then it runs again at the start of the next tick.
+        bool _planDeferred;
+
         void ContinueGoal()
         {
+            if (!_planDeferred && Runtime.CurrentInstructionCount > Runtime.MaxInstructionCount * 0.2)
+            {
+                _planDeferred = _pendingStart = true;
+                _pendingStartTick = _ticks + 1;
+                _mode = Mode.Manual;
+                return;
+            }
+            _planDeferred = false;
             Vector3D from = ReferencePosition();
             Vector3D stop = _goalDock || _goalExact ? _goalTarget : StopPoint(from, _goalTarget);
             if (_goalDock && Vector3D.Distance(from, stop) < 20)
@@ -481,7 +495,7 @@ namespace IngameScript
             _pendingStart = true;
             _pendingStartTick = _ticks + 60;
             _mode = Mode.Manual;
-            _message = "Charging the cameras to check the way out";
+            _message = "Charging cameras";
         }
 
         void RunPendingStart()
@@ -881,7 +895,7 @@ namespace IngameScript
             else
             {
                 _mode = Mode.Manual;
-                _message = "Path blocked, no way around found. Stopped.";
+                _message = "No way around found, stopped";
             }
         }
 
@@ -1013,7 +1027,7 @@ namespace IngameScript
                     return;
                 _approachTarget = position + direction * stop;
                 _route[_route.Count - 1] = _approachTarget;
-                _message = "Surface closer than scanned, stopping earlier";
+                _message = "Surface closer, stopping earlier";
                 return;
             }
 

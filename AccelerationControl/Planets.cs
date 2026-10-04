@@ -326,13 +326,13 @@ namespace IngameScript
                 // Same zone (e.g. between the orbit and the surface of a planet): the
                 // target's coordinates still hold, only the way there is planned again.
                 Replan();
-                _message = "Teleported within the zone, route planned again";
+                _message = "Teleported, route planned again";
                 return;
             }
             if (!zoneChanged && _mode == Mode.Dock)
             {
                 StartDocking();
-                _message = "Teleported within the zone, docking again";
+                _message = "Teleported, docking again";
                 return;
             }
             if (_zoneGoal && _zoneGoalZone == _zone)

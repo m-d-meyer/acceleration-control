@@ -92,7 +92,7 @@ namespace IngameScript
                     _dialog = Dialog.None;
                     break;
                 default:
-                    _message = "Usage: ui [on|off] or ui left|right|up|down|ok|back";
+                    _message = "Usage: ui [on|off|left|right|up|down|ok|back]";
                     break;
             }
         }

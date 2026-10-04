@@ -265,7 +265,7 @@ namespace IngameScript
             StartGoal(_path[0].P, name, false, false, true);
             _pathAfterRoute = _mode == Mode.Approach || _pendingStart;
             if (_mode == Mode.Approach && !_departing)
-                _message = "Flying to the start of the recorded way to " + name;
+                _message = "To the recorded way of " + name;
         }
 
         void StartPathFollow(int index)
