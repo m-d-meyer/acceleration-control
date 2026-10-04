@@ -528,8 +528,8 @@ On 600 random hilly spots with one boulder of 2-6 m each, no boulder taller than
 spots even enough, so the spiral search matters. The plane fit finds slopes within
 0.3 degrees; the descent
 touches down at about 0.3 m/s with 0.5-8 m/s² of braking and 0.5 s thruster lag
-(without the cap near the ground up to 3.7 m/s). Not
-flown in game yet.
+(without the cap near the ground up to 3.7 m/s). Flown in game several times,
+also on a slope.
 
 Not covered: the ship's sides above the ground (a wing next to a cliff wall or a
 tree taller than the ship's belly beside the footprint margin), rocks smaller than
@@ -787,15 +787,27 @@ at the limit until the ship is almost stopped.
 
 ## Limitations
 
-Good to know before relying on the script. "Tested" below means flown in a single
-player game; everything else was checked with the compiler and simulations only.
+Good to know before relying on the script. "Tested" means flown by the author in a
+single player game (with a speed mod, Real Solar Systems, Aerodynamic Physics and a
+water mod); everything else was checked with the compiler and simulations only.
+
+**Tested in game**
+- Acceleration limit, cruise, approach, ore map and screens, routes around
+  asteroids, the collision guard (once also the emergency evasion: a ship parked at
+  a base was seen at about 100 m/s and 100 m, the ship swerved past it), jumps (the
+  pilot presses Jump when asked).
+- Docking: recording by hand, `dock`/GO along the recorded way at a planet base and
+  a space base, into a hangar, undocking and GO while docked.
+- Planets: several flights from orbit down to the surface and hops in atmosphere.
+- Landing: several landings, also tilted on a slope after the scan refused the
+  first spots.
 
 **Not or only briefly tested in game**
-- Planet flights (climb, arc, descent, atmosphere limit, wind compensation) were
-  developed with simulations and flown only a few times.
-- Landing (`land`) was only compile-checked and simulated.
-- Real Solar Systems support (zones) is built for that mod's behaviour as
-  described by its author; it was tried in one save.
+- Gates (`DockGate` companion script).
+- Wind, drag and lift compensation runs during flights, its accuracy was never
+  measured; water levels (`water here`) were hardly used.
+- Real Solar Systems zones were tried in one save and were not reliable, hence
+  experimental and off by default.
 - Multiplayer and dedicated servers were never tried.
 
 **Bases and docking**
@@ -805,12 +817,18 @@ player game; everything else was checked with the compiler and simulations only.
   runs (last 300 m, at least 20 m flown by hand) and is replayed slowly (8 m/s);
   the ship does not steer around something new on it, it waits and then hands over.
 - Gates need the `DockGate` script on the base and antennas in range.
+- Close to a base among several asteroids, routes may keep less than
+  `ApproachBuffer` from a rock (at least 50 m beyond the rock and the ship's radius)
+  when no route with the full buffer exists.
 
 **Sensing**
 - The script only knows what its cameras have hit. Camera rays often miss asteroids
   farther than about 6 km, asteroids are approximated by spheres, and ships and
   stations are not on the map: the collision guard sees them only ahead of the ship.
   Few or badly placed cameras mean less protection.
+- Landing needs cameras facing down that reach the whole footprint; rocks smaller
+  than about 2.5 m across can lie between the rays, and nothing beside the
+  footprint (a cliff wall next to a wing) is checked.
 - Scripts cannot see water (water mod) or read wind; wind, drag and lift are
   estimated from how the ship reacts.
 

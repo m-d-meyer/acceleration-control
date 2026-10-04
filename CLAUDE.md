@@ -437,7 +437,7 @@ The README describes all commands and Custom Data options for players.
   rock on the last leg within (radius + StopOffset) x 1.5 of the end point (same
   idea, else it would stop/replan in front of it). Open risk: mid-route passes
   planned with a reduced buffer may get guard ring-ray hits and replans.
-  Size 99,981: more messages shortened.
+  Size 99,981: more messages shortened. User: these changes worked in game.
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character
@@ -465,7 +465,8 @@ The README describes all commands and Custom Data options for players.
   with g = gap - 1 at full thrust (maxAccel unlimited; scratchpad `descent.py`:
   ~0.3 m/s touchdown for 0.5-8 m/s² braking, lag 0.5 s; without the linear cap
   3.7 m/s at 8 m/s²), gears ReadyToLock -> Lock(); ends when locked or still for
-  2 s within 1.5 m. Requires landing gear. Not flown in game.
+  2 s within 1.5 m. Requires landing gear. Flown in game several times (also
+  tilted on a slope); orbit-to-surface flights flown several times too.
   User's ship with inverted-V wings reaching far behind the hull: the footprint is
   the grid box, so the wings are covered if the cameras reach there.
   Planned later: stage 2 recall via a rover companion script, stage 3 rover pickup.
