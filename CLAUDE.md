@@ -426,7 +426,18 @@ The README describes all commands and Custom Data options for players.
   deferral to the next tick) changed nothing and was removed. Now the failure
   names the obstacle (`_planBlock`, set when `MaxDetourDepth` is reached): kind,
   clearance, distance from ship and target; "planning took too long" if the
-  budget ran out. Waiting for the user's screenshot with that message.
+  budget ran out. Result: "No route around rock: clearance 296 m, 28.41 km from
+  ship, 305 m from target" - the dock target lay 9 m outside a rock's clearance.
+  Simulated (scratchpad `neartarget*.py`, 2D port of the planner): one rock alone
+  never fails, but with 1-5 more rocks near the target 13 % of plans failed. Now
+  (a) obstacles whose clearance x 1.5 contains the target count with half the
+  buffer, (b) `PlanRoute` retries with half and a quarter of `ApproachBuffer`
+  (`PlanOnce`): 1.3 % failed, at least 50 m kept beyond rock + ship radius (0
+  buffer would give 0.4 %, but 0.2 m). (c) The guard treats a rock as the target
+  rock on the last leg within (radius + StopOffset) x 1.5 of the end point (same
+  idea, else it would stop/replan in front of it). Open risk: mid-route passes
+  planned with a reduced buffer may get guard ring-ray hits and replans.
+  Size 99,981: more messages shortened.
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character

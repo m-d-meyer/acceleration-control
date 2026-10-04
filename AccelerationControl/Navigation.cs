@@ -83,7 +83,20 @@ namespace IngameScript
         // could not be found within the depth limit.
         // Near a planet the route climbs to a cruise height, follows the
         // curvature and ends above the target (see Planets.cs).
+        // Among crowded rocks again with half and a quarter of the buffer
+        // (simulated, neartarget3.py: 13 % -> 1.3 % failed plans near a base among
+        // rocks, at least 50 m kept beyond rock and ship radius).
         bool PlanRoute(Vector3D from, Vector3D to, List<Vector3D> route)
+        {
+            double buffer = _approachBuffer;
+            bool ok = false;
+            for (int i = 0; i < 3 && !ok; i++, _approachBuffer *= 0.5)
+                ok = PlanOnce(from, to, route);
+            _approachBuffer = buffer;
+            return ok;
+        }
+
+        bool PlanOnce(Vector3D from, Vector3D to, List<Vector3D> route)
         {
             route.Clear();
             _planOwners.Clear();
@@ -177,6 +190,11 @@ namespace IngameScript
             {
                 Obstacle o = i < _obstacles.Count ? _obstacles[i] : _temporaryObstacles[i - _obstacles.Count];
                 double clearance = Clearance(o, b);
+                // Near the target half the buffer (the end point keeps its own
+                // distance): a target 9 m outside a rock's clearance among other
+                // rocks made every detour end inside one, planning gave up.
+                if (skipAtB && !o.Planet && Vector3D.Distance(b, o.Center) < clearance * 1.5)
+                    clearance -= _approachBuffer * 0.5;
                 if ((skipAtA && Vector3D.Distance(a, o.Center) < clearance) || (skipAtB && Vector3D.Distance(b, o.Center) < clearance))
                     continue;
                 if (DistanceToSegment(o.Center, a, b) >= clearance)
@@ -678,7 +696,7 @@ namespace IngameScript
                 _route.Add(center + axis * (2 * r + _approachBuffer));
                 StartRoute("leaving");
                 _departing = true;
-                _message = "Too tight to turn: moving out straight first";
+                _message = "Too tight: moving out first";
                 return 1;
             }
             _mode = Mode.Manual;
@@ -1010,7 +1028,7 @@ namespace IngameScript
             // known) is an obstacle. (Matching planet hits to a map entry failed
             // once and made a descent replan in a loop.)
             Obstacle rock = voxel ? FindObstacle(hit.EntityId) : null;
-            if (OnLastLeg && (hit.Type == MyDetectedEntityType.Planet || rock != null && Vector3D.Distance(_route[_route.Count - 1], rock.Center) < rock.Radius + StopOffset))
+            if (OnLastLeg && (hit.Type == MyDetectedEntityType.Planet || rock != null && Vector3D.Distance(_route[_route.Count - 1], rock.Center) < (rock.Radius + StopOffset) * 1.5))
             {
                 // Most likely the target rock itself: stop earlier. Small corrections
                 // are ignored (the end point is only hit roughly anyway), and the new

@@ -382,7 +382,7 @@ namespace IngameScript
                 if (++_pathEndTicks > 60 * 15)
                 {
                     _mode = Mode.Manual;
-                    _message = "At the dock, but the connector does not lock";
+                    _message = "Connector does not lock";
                     return false;
                 }
                 targetVelocity = ClampLength((_dockPosition - _dockAxis * 0.3 - own.GetPosition()) * 0.5, 0.5);
