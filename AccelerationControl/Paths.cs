@@ -427,7 +427,7 @@ namespace IngameScript
                 if (_ticks - _pathBlockedSince > PathGiveUpTicks * (_pathDock || _pathReverseDock ? 6 : 1))
                 {
                     _mode = Mode.Manual;
-                    _message = "The recorded way stays blocked: please take over";
+                    _message = "Way blocked: please take over";
                     _afterUndock = null;
                     return false;
                 }

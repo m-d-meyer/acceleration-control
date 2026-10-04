@@ -419,12 +419,14 @@ The README describes all commands and Custom Data options for players.
   base box + ShipRadius + ApproachBuffer): at most 20 m/s at the shell with half
   the braking in reserve. The PB info no longer shows the last teleport (room).
 - Next test: ROUTE found a route to the space base, GO said "No complete route
-  found" (map: "Route 1 legs 31 km"). `PlanSegment` stops when the tick has used
-  `PlanBudget` (70 %) of the instruction limit; GO from the map does a lot in the
-  same tick (UI, ChooseDock/ActivateDock MyIni parsing, departure checks), so
-  planning gave up at once. `ContinueGoal` now defers itself to the start of the
-  next tick (`_planDeferred` + `_pendingStart`) when more than 20 % is used.
-  Several messages were shortened for room.
+  found". The map's "Route 1 legs 31 km" mixes the ROUTE preview's leg count
+  (`_previewRoute`) with the length of GO's own failed plan (`_routeLength`): GO
+  plans to `DockTarget` (start of the recorded way), not to the base entry, and
+  its detours failed. A first guess (instruction budget used up before planning,
+  deferral to the next tick) changed nothing and was removed. Now the failure
+  names the obstacle (`_planBlock`, set when `MaxDetourDepth` is reached): kind,
+  clearance, distance from ship and target; "planning took too long" if the
+  budget ran out. Waiting for the user's screenshot with that message.
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character

@@ -238,7 +238,7 @@ namespace IngameScript
             if (hit.IsEmpty() || !hit.HitPosition.HasValue)
             {
                 if (_scanPurpose == ScanPurpose.Mark)
-                    _message = "Nothing found within " + FormatDistance(range) + ". Asteroids far away are often not detected, fly closer.";
+                    _message = "Nothing found within " + FormatDistance(range) + ", fly closer";
                 else
                     StartProbe(origin, direction, range);
                 return;

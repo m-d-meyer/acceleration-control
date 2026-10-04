@@ -45,6 +45,7 @@ namespace IngameScript
         int _routeIndex;
         readonly List<double> _cornerLimits = new List<double>();
         readonly List<double> _limitBuffer = new List<double>();
+        Obstacle _planBlock;        // the obstacle planning gave up on
         readonly List<Obstacle> _planOwners = new List<Obstacle>();    // obstacle each planned waypoint goes around
         const double MaxDetourWiden = 5000;         // m - detour waypoints are moved out at most this far
         const double BrakeShare = 0.7;              // share of the braking planned for routes with turns
@@ -86,6 +87,7 @@ namespace IngameScript
         {
             route.Clear();
             _planOwners.Clear();
+            _planBlock = null;
             if (InGravity)
                 UpdatePlanet();
             double cruise;
@@ -147,6 +149,8 @@ namespace IngameScript
             Obstacle o = BlockingObstacle(a, b, atStart, atTarget);
             if (o == null)
                 return true;
+            if (depth >= MaxDetourDepth)
+                _planBlock = o;
             if (depth >= MaxDetourDepth || Runtime.CurrentInstructionCount > Runtime.MaxInstructionCount * PlanBudget)
                 return false;
             Vector3D detour = DetourPoint(o, a, b);
@@ -377,22 +381,8 @@ namespace IngameScript
             ContinueGoal();
         }
 
-        // Planning gets the rest of the tick's instruction budget; after a busy
-        // start (GO from the map: buttons, choosing and loading the dock) that
-        // was used up and planning gave up at once ("No complete route found",
-        // a single leg). Then it runs again at the start of the next tick.
-        bool _planDeferred;
-
         void ContinueGoal()
         {
-            if (!_planDeferred && Runtime.CurrentInstructionCount > Runtime.MaxInstructionCount * 0.2)
-            {
-                _planDeferred = _pendingStart = true;
-                _pendingStartTick = _ticks + 1;
-                _mode = Mode.Manual;
-                return;
-            }
-            _planDeferred = false;
             Vector3D from = ReferencePosition();
             Vector3D stop = _goalDock || _goalExact ? _goalTarget : StopPoint(from, _goalTarget);
             if (_goalDock && Vector3D.Distance(from, stop) < 20)
@@ -404,7 +394,12 @@ namespace IngameScript
             {
                 _mode = Mode.Manual;
                 _dockAfterRoute = false;
-                _message = "No complete route found";
+                // Which obstacle the planning could not get around, how large its
+                // clearance is and how far it is from the ship and the target.
+                Obstacle o = _planBlock;
+                _message = o == null ? "No route: planning took too long" : string.Format("No route around {0}: clearance {1}, {2} from ship, {3} from target",
+                    o.Planet ? "planet" : _temporaryObstacles.Contains(o) ? "grid" : "rock", FormatDistance(Clearance(o, stop)),
+                    FormatDistance(Vector3D.Distance(from, o.Center)), FormatDistance(Vector3D.Distance(stop, o.Center)));
                 return;
             }
             if (TryStartJump(from, _route[0], stop, _goalName))

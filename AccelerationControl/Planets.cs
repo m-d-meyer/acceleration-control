@@ -352,7 +352,7 @@ namespace IngameScript
                 _dockAfterRoute = _departing = _resumeGoal = false;
             }
             _message = "Teleported (" + ZoneName(_zone) + ")" + (flying ? ", flight stopped" : "")
-                + (_zoneGoal ? ". " + _zoneGoalName + " is in another zone: fly there, the flight continues after the zone change" : "");
+                + (_zoneGoal ? ". " + _zoneGoalName + " is in another zone: fly there" : "");
         }
 
         // The zone change can leave the ship falling towards the planet fast. The
