@@ -62,7 +62,7 @@ namespace IngameScript
 
             string control = BuildControlText(info);
             string status = BuildStatusText();
-            Echo(control + "\n" + status + "\n" + _mapScreenInfo + "\nZone: " + (_zone == "" ? "space" : _zone) + "\n" + _teleportInfo);
+            Echo(control + "\n" + status + "\n" + _mapScreenInfo + "\nZone: " + (_zone == "" ? "space" : _zone));
 
             foreach (IMyTextPanel p in _controlPanels)
                 WriteSurface(p, control);

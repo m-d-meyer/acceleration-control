@@ -233,10 +233,6 @@ namespace IngameScript
             if (teleported || hasPlanet)
                 _zoneProvisional = teleported && !hasPlanet && zone == "";
             bool changed = zone != _zone;
-            // What the last teleport did, shown in the programmable block's info.
-            if (teleported)
-                _teleportInfo = "Last teleport: " + FormatDistance(Vector3D.Distance(before, position)) + ", zone " + (_zone == "" ? "space" : _zone)
-                    + " > " + (zone == "" ? "space" : zone);
             if (changed)
                 SwitchZone(zone);
             if (teleported && _zoneProvisional)
@@ -249,7 +245,6 @@ namespace IngameScript
         }
 
         bool _zoneProvisional, _dockProvisional;
-        string _teleportInfo = "";
         int _provisionalDeposits, _provisionalObstacles;
 
         // The zone of the nearest known planet whose gravity well (with a wide

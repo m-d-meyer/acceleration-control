@@ -414,7 +414,11 @@ namespace IngameScript
                 return 0;
             Vector3D back = reference.WorldMatrix.Backward, away = back;
             double need = 0;
-            foreach (Obstacle o in _obstacles)
+            // Ships and stations seen on this flight count too: after an emergency
+            // stop next to one, planning ignored it (the ship was inside its
+            // clearance), led straight through it again and the guard stopped the
+            // ship over and over.
+            foreach (Obstacle o in _obstacles.Concat(_temporaryObstacles))
             {
                 if (o.Planet)
                     continue;

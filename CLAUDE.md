@@ -408,6 +408,16 @@ The README describes all commands and Custom Data options for players.
   front of it" in a loop: the flight to the start of the recorded way used
   StartGoal(dock: false), so `IsBaseHit` was not applied; now also for
   `_pathAfterRoute && _pathDock`. User's landing settings: MaxSlope 20, MaxBump 4.
+- Space base test (after a manual jump 23 km from the base, 300 m/s, strongest
+  thrusters off, BrakeSafety=1): braked too late towards the base; a ship in the
+  base's shipyard was seen at ~100 m/s and 100 m, the emergency evasion worked (no
+  collision). Then a loop: the resume after the stop planned from inside that
+  grid's temporary-obstacle clearance (ignored by planning), straight through it
+  again, guard stop, turn, repeat. Now `NeedsDeparture` also counts
+  `_temporaryObstacles` (move away first), and dock flights (`_dockAfterRoute` or
+  path dock) cap the speed at sqrt(400 + brake x distance to the shell around the
+  base box + ShipRadius + ApproachBuffer): at most 20 m/s at the shell with half
+  the braking in reserve. The PB info no longer shows the last teleport (room).
 - Minifier step 7 (`MergeFields`) merges same-type instance field and const
   declarations (-2.7k characters). Ship script ~98.3k.
 - Workshop: `workshop/` holds the Steam descriptions (BBCode, 8000 character
